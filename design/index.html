@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="vi">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hồi Máu · Bộ thiết kế UX/UI</title>
+<style>
+:root{color-scheme:light;font-family:system-ui,sans-serif;color:#182743;background:#f7f9fc}body{max-width:1500px;margin:auto;padding:32px}h1{font-size:28px;margin-bottom:12px}p{max-width:70ch;line-height:1.6;color:#56647b}nav{display:flex;flex-wrap:wrap;gap:20px;margin:24px 0}a{color:#2458d3}a:focus-visible{outline:3px solid #2458d3;outline-offset:5px}section{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:32px;align-items:start}.screen{text-decoration:none;display:block;min-width:0}.screen img{display:block;width:100%;height:auto;border:1px solid #dce3ee;border-radius:20px;background:white}.screen span{display:block;padding:12px 0;font-weight:600;line-height:1.5}.motion{max-width:360px}h2{margin-top:56px}footer{margin-top:56px;color:#56647b;line-height:1.6}@media(max-width:520px){body{padding:20px}section{grid-template-columns:1fr 1fr;gap:18px}.screen span{font-size:14px}}
+</style>
+<header><h1>Hồi Máu</h1><p>Bộ thiết kế UX/UI mobile. Nhấn một màn để xem ảnh đầy đủ. Đây là mockup tĩnh với dữ liệu minh họa, không phải ứng dụng có thể thao tác.</p>
+<nav aria-label="Tài liệu thiết kế"><a href="../docs/design/screen-map.md">Phân tích màn hình</a><a href="../docs/design/animation.md">Đặc tả animation</a><a href="motion/playground.html">Xem chuyển động trực tiếp</a><a href="../DESIGN.md">Hệ thống thiết kế</a><a href="hoiMau.pen">Tệp thiết kế .pen</a></nav></header>
+<main><h2>Animation</h2><p>Các bản xem trước bên dưới đứng yên. Chỉ mở GIF khi bạn muốn xem chuyển động; quay lại trang này để dừng.</p><section aria-label="GIF minh họa">
+<a class="screen motion" href="motion/mam-idle.gif"><img src="motion/mam-idle-static.png" alt="Mầm đồng hành — ảnh tĩnh"><span>Mầm đồng hành · Mở GIF</span></a>
+<a class="screen motion" href="motion/water-check-in.gif"><img src="motion/water-check-in-static.png" alt="Ghi nhận nước — ảnh tĩnh"><span>Ghi nhận nước · Mở GIF</span></a>
+<a class="screen motion" href="motion/quest-complete.gif"><img src="motion/quest-complete-static.png" alt="Hoàn thành nhiệm vụ — ảnh tĩnh"><span>Hoàn thành nhiệm vụ · Mở GIF</span></a>
+</section><h2>Động tác mẫu</h2><p>Ảnh tĩnh là tư thế chính của mỗi động tác. Mở video (WebM, lặp, không tiếng) khi muốn xem chuyển động.</p><section aria-label="Video động tác mẫu">
+<a class="screen motion" href="motion/exercises/exercise-xoay-vai.webm"><img src="motion/exercises/exercise-xoay-vai.png" alt="Xoay vai — tư thế chính" loading="lazy"><span>Xoay vai · Mở video</span></a>
+<a class="screen motion" href="motion/exercises/exercise-squat.webm"><img src="motion/exercises/exercise-squat.png" alt="Squat tay trước ngực — tư thế chính" loading="lazy"><span>Squat tay trước ngực · Mở video</span></a>
+<a class="screen motion" href="motion/exercises/exercise-chong-day-tua-ban.webm"><img src="motion/exercises/exercise-chong-day-tua-ban.png" alt="Chống đẩy tựa bàn — tư thế chính" loading="lazy"><span>Chống đẩy tựa bàn · Mở video</span></a>
+<a class="screen motion" href="motion/exercises/exercise-chung-chan-lui.webm"><img src="motion/exercises/exercise-chung-chan-lui.png" alt="Chùng chân lùi — tư thế chính" loading="lazy"><span>Chùng chân lùi · Mở video</span></a>
+<a class="screen motion" href="motion/exercises/exercise-plank-tua-goi.webm"><img src="motion/exercises/exercise-plank-tua-goi.png" alt="Plank tựa gối — tư thế chính" loading="lazy"><span>Plank tựa gối · Mở video</span></a>
+<a class="screen motion" href="motion/exercises/exercise-tha-long-vai.webm"><img src="motion/exercises/exercise-tha-long-vai.png" alt="Thả lỏng vai — tư thế chính" loading="lazy"><span>Thả lỏng vai · Mở video</span></a>
+</section><h2>Màn hình và trạng thái</h2><section aria-label="Bộ màn hình">
+<a class="screen" href="exports/b8eJy.png"><img src="exports/b8eJy.png" alt="S01 · Hồi Máu" loading="lazy"><span>S01 · Hồi Máu</span></a>
+<a class="screen" href="exports/TcZD8.png"><img src="exports/TcZD8.png" alt="S02 · Chào bạn trở lại" loading="lazy"><span>S02 · Chào bạn trở lại</span></a>
+<a class="screen" href="exports/V6LcP7.png"><img src="exports/V6LcP7.png" alt="S03 · Tạo tài khoản" loading="lazy"><span>S03 · Tạo tài khoản</span></a>
+<a class="screen" href="exports/u1OKLV.png"><img src="exports/u1OKLV.png" alt="S04 · Lấy lại mật khẩu" loading="lazy"><span>S04 · Lấy lại mật khẩu</span></a>
+<a class="screen" href="exports/jW04V.png"><img src="exports/jW04V.png" alt="S05 · Bắt đầu từ bạn" loading="lazy"><span>S05 · Bắt đầu từ bạn</span></a>
+<a class="screen" href="exports/FbJFS.png"><img src="exports/FbJFS.png" alt="S06 · Nhịp sống của bạn" loading="lazy"><span>S06 · Nhịp sống của bạn</span></a>
+<a class="screen" href="exports/QbhYB.png"><img src="exports/QbhYB.png" alt="S07 · Bạn muốn điều gì?" loading="lazy"><span>S07 · Bạn muốn điều gì?</span></a>
+<a class="screen" href="exports/vycPL.png"><img src="exports/vycPL.png" alt="S08 · Lộ trình dành cho bạn" loading="lazy"><span>S08 · Lộ trình dành cho bạn</span></a>
+<a class="screen" href="exports/mkkB6.png"><img src="exports/mkkB6.png" alt="S09 · Hôm nay" loading="lazy"><span>S09 · Hôm nay</span></a>
+<a class="screen" href="exports/mHL7Z.png"><img src="exports/mHL7Z.png" alt="S10 · Nhiệm vụ hôm nay" loading="lazy"><span>S10 · Nhiệm vụ hôm nay</span></a>
+<a class="screen" href="exports/UOrGL.png"><img src="exports/UOrGL.png" alt="S11 · Nước đã được ghi" loading="lazy"><span>S11 · Nước đã được ghi</span></a>
+<a class="screen" href="exports/H2v7g5.png"><img src="exports/H2v7g5.png" alt="S12 · Lộ trình" loading="lazy"><span>S12 · Lộ trình</span></a>
+<a class="screen" href="exports/ZwVM3.png"><img src="exports/ZwVM3.png" alt="S13 · Thực đơn hôm nay" loading="lazy"><span>S13 · Thực đơn hôm nay</span></a>
+<a class="screen" href="exports/zKZIJ.png"><img src="exports/zKZIJ.png" alt="S14 · Cơm gà, rau củ" loading="lazy"><span>S14 · Cơm gà, rau củ</span></a>
+<a class="screen" href="exports/JdM0t.png"><img src="exports/JdM0t.png" alt="S15 · Đổi món bữa trưa" loading="lazy"><span>S15 · Đổi món bữa trưa</span></a>
+<a class="screen" href="exports/ZbyUz.png"><img src="exports/ZbyUz.png" alt="S16 · Ghi bữa ăn" loading="lazy"><span>S16 · Ghi bữa ăn</span></a>
+<a class="screen" href="exports/JBBlk.png"><img src="exports/JBBlk.png" alt="S17 · Chọn buổi tập" loading="lazy"><span>S17 · Chọn buổi tập</span></a>
+<a class="screen" href="exports/cOuMz.png"><img src="exports/cOuMz.png" alt="S18 · Toàn thân vừa sức" loading="lazy"><span>S18 · Toàn thân vừa sức</span></a>
+<a class="screen" href="exports/DGERU.png"><img src="exports/DGERU.png" alt="S19 · Đang tập" loading="lazy"><span>S19 · Đang tập</span></a>
+<a class="screen" href="exports/HfvU7.png"><img src="exports/HfvU7.png" alt="S20 · Bạn đã dành thời gian cho mình" loading="lazy"><span>S20 · Bạn đã dành thời gian cho mình</span></a>
+<a class="screen" href="exports/joQWF.png"><img src="exports/joQWF.png" alt="S21 · Hành trình của bạn" loading="lazy"><span>S21 · Hành trình của bạn</span></a>
+<a class="screen" href="exports/Gk0Gr.png"><img src="exports/Gk0Gr.png" alt="S22 · Mầm của bạn" loading="lazy"><span>S22 · Mầm của bạn</span></a>
+<a class="screen" href="exports/G7A9k.png"><img src="exports/G7A9k.png" alt="S23 · Cửa hàng" loading="lazy"><span>S23 · Cửa hàng</span></a>
+<a class="screen" href="exports/v2Gfc.png"><img src="exports/v2Gfc.png" alt="S24 · Kho đồ của bạn" loading="lazy"><span>S24 · Kho đồ của bạn</span></a>
+<a class="screen" href="exports/bybJN.png"><img src="exports/bybJN.png" alt="S25 · Tổ đội" loading="lazy"><span>S25 · Tổ đội</span></a>
+<a class="screen" href="exports/Cpvl0.png"><img src="exports/Cpvl0.png" alt="S26 · Tham gia tổ đội" loading="lazy"><span>S26 · Tham gia tổ đội</span></a>
+<a class="screen" href="exports/RfnlZ.png"><img src="exports/RfnlZ.png" alt="S27 · Nhịp sống mới" loading="lazy"><span>S27 · Nhịp sống mới</span></a>
+<a class="screen" href="exports/f5ur9O.png"><img src="exports/f5ur9O.png" alt="S28 · Bảng xếp hạng" loading="lazy"><span>S28 · Bảng xếp hạng</span></a>
+<a class="screen" href="exports/TODex.png"><img src="exports/TODex.png" alt="S29 · Gửi một lời nhắc" loading="lazy"><span>S29 · Gửi một lời nhắc</span></a>
+<a class="screen" href="exports/frzo5.png"><img src="exports/frzo5.png" alt="S30 · Hộp thư" loading="lazy"><span>S30 · Hộp thư</span></a>
+<a class="screen" href="exports/SuvJc.png"><img src="exports/SuvJc.png" alt="S31 · Cá nhân" loading="lazy"><span>S31 · Cá nhân</span></a>
+<a class="screen" href="exports/Mp65y.png"><img src="exports/Mp65y.png" alt="S32 · Góc giải tỏa" loading="lazy"><span>S32 · Góc giải tỏa</span></a>
+<a class="screen" href="exports/ty0Yg.png"><img src="exports/ty0Yg.png" alt="S33 · Một khoảng nghỉ" loading="lazy"><span>S33 · Một khoảng nghỉ</span></a>
+<a class="screen" href="exports/cidAa.png"><img src="exports/cidAa.png" alt="S34 · Vé giữ nhịp" loading="lazy"><span>S34 · Vé giữ nhịp</span></a>
+<a class="screen" href="exports/m3luOo.png"><img src="exports/m3luOo.png" alt="S35 · Cài đặt" loading="lazy"><span>S35 · Cài đặt</span></a>
+<a class="screen" href="exports/Frajn.png"><img src="exports/Frajn.png" alt="S36 · Thông báo" loading="lazy"><span>S36 · Thông báo</span></a>
+<a class="screen" href="exports/vbvgI.png"><img src="exports/vbvgI.png" alt="S37 · Hồ sơ &amp; mục tiêu" loading="lazy"><span>S37 · Hồ sơ &amp; mục tiêu</span></a>
+<a class="screen" href="exports/KFpw2.png"><img src="exports/KFpw2.png" alt="S38 · Bạn đang ngoại tuyến" loading="lazy"><span>S38 · Bạn đang ngoại tuyến</span></a>
+<a class="screen" href="exports/U9crd.png"><img src="exports/U9crd.png" alt="S39 · Đang lấy hành trình" loading="lazy"><span>S39 · Đang lấy hành trình</span></a>
+<a class="screen" href="exports/qbdWt.png"><img src="exports/qbdWt.png" alt="S40 · Chủ đề Rừng xanh" loading="lazy"><span>S40 · Chủ đề Rừng xanh</span></a>
+<a class="screen" href="exports/pjFPC.png"><img src="exports/pjFPC.png" alt="S41 · Buổi tập đang tạm dừng" loading="lazy"><span>S41 · Buổi tập đang tạm dừng</span></a>
+<a class="screen" href="exports/b3ei1G.png"><img src="exports/b3ei1G.png" alt="S42 · Tạo tổ đội" loading="lazy"><span>S42 · Tạo tổ đội</span></a>
+<a class="screen" href="exports/gvby3.png"><img src="exports/gvby3.png" alt="S43 · Chọn mục tiêu an toàn" loading="lazy"><span>S43 · Chọn mục tiêu an toàn</span></a>
+<a class="screen" href="exports/mofMJ.png"><img src="exports/mofMJ.png" alt="S44 · Dữ liệu &amp; quyền riêng tư" loading="lazy"><span>S44 · Dữ liệu &amp; quyền riêng tư</span></a>
+<a class="screen" href="exports/sGjFW.png"><img src="exports/sGjFW.png" alt="S45 · Khép lại hôm nay" loading="lazy"><span>S45 · Khép lại hôm nay</span></a>
+<a class="screen" href="exports/l4AwA.png"><img src="exports/l4AwA.png" alt="S46 · Cấp độ &amp; tiện ích" loading="lazy"><span>S46 · Cấp độ &amp; tiện ích</span></a>
+<a class="screen" href="exports/tV0Mh.png"><img src="exports/tV0Mh.png" alt="S47 · Hiểu chỉ số của bạn" loading="lazy"><span>S47 · Hiểu chỉ số của bạn</span></a>
+<a class="screen" href="exports/p5cc9.png"><img src="exports/p5cc9.png" alt="S48 · Chưa có bài phù hợp" loading="lazy"><span>S48 · Chưa có bài phù hợp</span></a>
+<a class="screen" href="exports/x8BT1.png"><img src="exports/x8BT1.png" alt="S49 · Những trang đã viết" loading="lazy"><span>S49 · Những trang đã viết</span></a>
+<a class="screen" href="exports/UjRcF.png"><img src="exports/UjRcF.png" alt="S50 · Một trang của bạn" loading="lazy"><span>S50 · Một trang của bạn</span></a>
+<a class="screen" href="exports/s4ZXly.png"><img src="exports/s4ZXly.png" alt="S51 · Lịch sử ghi nhận" loading="lazy"><span>S51 · Lịch sử ghi nhận</span></a>
+<a class="screen" href="exports/RbWbf.png"><img src="exports/RbWbf.png" alt="S52 · Xóa tài khoản?" loading="lazy"><span>S52 · Xóa tài khoản?</span></a>
+<a class="screen" href="exports/pvg3t.png"><img src="exports/pvg3t.png" alt="S53 · Trợ giúp &amp; thông tin" loading="lazy"><span>S53 · Trợ giúp &amp; thông tin</span></a>
+<a class="screen" href="exports/N0zNN5.png"><img src="exports/N0zNN5.png" alt="S54 · Quản lý tổ đội" loading="lazy"><span>S54 · Quản lý tổ đội</span></a>
+<a class="screen" href="exports/kh7gT.png"><img src="exports/kh7gT.png" alt="S55 · Đặt mật khẩu mới" loading="lazy"><span>S55 · Đặt mật khẩu mới</span></a>
+<a class="screen" href="exports/sBK4t.png"><img src="exports/sBK4t.png" alt="S56 · Bạn không cần ở một mình" loading="lazy"><span>S56 · Bạn không cần ở một mình</span></a>
+<a class="screen" href="exports/kYya8.png"><img src="exports/kYya8.png" alt="S57 · Hôm nay · Vừa ghi nhận" loading="lazy"><span>S57 · Hôm nay · Vừa ghi nhận</span></a>
+<a class="screen" href="exports/HW10N.png"><img src="exports/HW10N.png" alt="S58 · Hôm nay · Chưa lưu được" loading="lazy"><span>S58 · Hôm nay · Chưa lưu được</span></a>
+<a class="screen" href="exports/EMvDr.png"><img src="exports/EMvDr.png" alt="S59 · Đổi món · Hết lượt" loading="lazy"><span>S59 · Đổi món · Hết lượt</span></a>
+<a class="screen" href="exports/W2noq8.png"><img src="exports/W2noq8.png" alt="S60 · Bắt đầu từ bạn · Cần kiểm tra" loading="lazy"><span>S60 · Bắt đầu từ bạn · Cần kiểm tra</span></a>
+<a class="screen" href="exports/C3h9Z.png"><img src="exports/C3h9Z.png" alt="S61 · Chưa thể bắt đầu" loading="lazy"><span>S61 · Chưa thể bắt đầu</span></a>
+<a class="screen" href="exports/wgAlz.png"><img src="exports/wgAlz.png" alt="S62 · Lộ trình · Đã điều chỉnh an toàn" loading="lazy"><span>S62 · Lộ trình · Đã điều chỉnh an toàn</span></a>
+<a class="screen" href="exports/XG4AU.png"><img src="exports/XG4AU.png" alt="S63 · Thoát buổi tập?" loading="lazy"><span>S63 · Thoát buổi tập?</span></a>
+<a class="screen" href="exports/YgIFj.png"><img src="exports/YgIFj.png" alt="S64 · Kết quả · Buổi tập dở" loading="lazy"><span>S64 · Kết quả · Buổi tập dở</span></a>
+<a class="screen" href="exports/vu7kd.png"><img src="exports/vu7kd.png" alt="S65 · Lên cấp" loading="lazy"><span>S65 · Lên cấp</span></a>
+<a class="screen" href="exports/vQDKp.png"><img src="exports/vQDKp.png" alt="S66 · Cột mốc 7 ngày" loading="lazy"><span>S66 · Cột mốc 7 ngày</span></a>
+<a class="screen" href="exports/G8ocEs.png"><img src="exports/G8ocEs.png" alt="S67 · Hành trình · Bắt đầu lại" loading="lazy"><span>S67 · Hành trình · Bắt đầu lại</span></a>
+<a class="screen" href="exports/Y6l1xG.png"><img src="exports/Y6l1xG.png" alt="S68 · Hành trình lớn lên" loading="lazy"><span>S68 · Hành trình lớn lên</span></a>
+<a class="screen" href="exports/gDfJT.png"><img src="exports/gDfJT.png" alt="S69 · Mầm tiến hóa" loading="lazy"><span>S69 · Mầm tiến hóa</span></a>
+<a class="screen" href="exports/vVM9N.png"><img src="exports/vVM9N.png" alt="S70 · Mầm · Đang mệt" loading="lazy"><span>S70 · Mầm · Đang mệt</span></a>
+<a class="screen" href="exports/UImIh.png"><img src="exports/UImIh.png" alt="S71 · Xác nhận mua · Chưa đủ xu" loading="lazy"><span>S71 · Xác nhận mua · Chưa đủ xu</span></a>
+<a class="screen" href="exports/s9u0h.png"><img src="exports/s9u0h.png" alt="S72 · Đã mở khóa" loading="lazy"><span>S72 · Đã mở khóa</span></a>
+<a class="screen" href="exports/hrSfO.png"><img src="exports/hrSfO.png" alt="S73 · Bảng xếp hạng · Chưa đủ điều kiện" loading="lazy"><span>S73 · Bảng xếp hạng · Chưa đủ điều kiện</span></a>
+<a class="screen" href="exports/E7S7md.png"><img src="exports/E7S7md.png" alt="S74 · Gửi lời nhắc · Chưa gửi được" loading="lazy"><span>S74 · Gửi lời nhắc · Chưa gửi được</span></a>
+<a class="screen" href="exports/Bb1Ek.png"><img src="exports/Bb1Ek.png" alt="S75 · Hộp thư trống" loading="lazy"><span>S75 · Hộp thư trống</span></a>
+<a class="screen" href="exports/ng09K.png"><img src="exports/ng09K.png" alt="S76 · Tổ đội đang lặng" loading="lazy"><span>S76 · Tổ đội đang lặng</span></a>
+<a class="screen" href="exports/JejAH.png"><img src="exports/JejAH.png" alt="S77 · Một khoảng nghỉ · Nhận vé" loading="lazy"><span>S77 · Một khoảng nghỉ · Nhận vé</span></a>
+<a class="screen" href="exports/TW9Pn.png"><img src="exports/TW9Pn.png" alt="S78 · Xem trước vé giữ nhịp" loading="lazy"><span>S78 · Xem trước vé giữ nhịp</span></a>
+<a class="screen" href="exports/hHwpx.png"><img src="exports/hHwpx.png" alt="S79 · Hiển thị &amp; chuyển động" loading="lazy"><span>S79 · Hiển thị &amp; chuyển động</span></a>
+<a class="screen" href="exports/bsqA1.png"><img src="exports/bsqA1.png" alt="S80 · Thông báo · Chưa cấp quyền" loading="lazy"><span>S80 · Thông báo · Chưa cấp quyền</span></a>
+<a class="screen" href="exports/O9c1o3.png"><img src="exports/O9c1o3.png" alt="S81 · Đổi hướng · Chưa đến lúc" loading="lazy"><span>S81 · Đổi hướng · Chưa đến lúc</span></a>
+<a class="screen" href="exports/W3CR6.png"><img src="exports/W3CR6.png" alt="S82 · Động tác mẫu" loading="lazy"><span>S82 · Động tác mẫu</span></a>
+</section></main>
+<footer>Thiết kế theo Impeccable · Icon Lucide · Be Vietnam Pro &amp; Inter · Mầm là SVG tạo riêng. Ảnh và nội dung minh họa cần được đối chiếu thư viện sản phẩm trước phát hành.</footer>
+</html>

@@ -18,7 +18,6 @@ Mở terminal khác và chạy `npm run android`. Với iOS, xem [hướng dẫn
 - [Phạm vi mobile và quyết định mở](docs/product/mobile-scope.md)
 - [Kiến trúc và quy tắc thư mục](docs/architecture.md)
 - [Kiểm thử và phát hành](docs/testing-and-release.md)
-- [Kế hoạch triển khai](docs/superpowers/plans/2026-09-10-project-implementation.md)
 - [Thiết kế giao diện](design/hoiMau.pen)
 
 ## Cấu trúc hiện tại

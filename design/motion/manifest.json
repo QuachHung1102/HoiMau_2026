@@ -1,0 +1,26 @@
+[
+  {
+    "name": "mam-idle",
+    "width": 480,
+    "height": 480,
+    "frames": 60,
+    "durationMs": 3000,
+    "bytes": 456491
+  },
+  {
+    "name": "water-check-in",
+    "width": 480,
+    "height": 480,
+    "frames": 40,
+    "durationMs": 2000,
+    "bytes": 282374
+  },
+  {
+    "name": "quest-complete",
+    "width": 480,
+    "height": 480,
+    "frames": 48,
+    "durationMs": 2400,
+    "bytes": 443131
+  }
+]
