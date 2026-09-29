@@ -66,6 +66,9 @@ yarn-error.log
 # testing
 /coverage
 
+# Local design tooling and agent working files
+/.design-work/
+
 # Yarn
 .yarn/*
 !.yarn/patches
@@ -73,3 +76,16 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# AI tooling and agent docs (must not be pushed)
+/.playwright-mcp/
+/.serena/
+/.superpowers/
+/docs/superpowers/
+/PRODUCT.md
+/CLAUDE.md
+/AGENTS.md
+/GEMINI.md
+/.claude/
+/.cursor/
+/.codex/

@@ -1,0 +1,3850 @@
+[
+  {
+    "id": "press-scale",
+    "tier": 1,
+    "kind": "micro",
+    "screens": [
+      "*"
+    ],
+    "trigger": "tap:press-in",
+    "durationToken": "press",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "button",
+    "reducedMotion": "Không co giãn; chỉ đổi màu nhấn theo control của nền tảng.",
+    "tracks": [
+      {
+        "target": ".d-btn",
+        "keyframes": [
+          {
+            "transform": "scale(1)"
+          },
+          {
+            "transform": "scale(0.98)"
+          }
+        ],
+        "iterations": 2,
+        "direction": "alternate"
+      }
+    ]
+  },
+  {
+    "id": "check-draw",
+    "tier": 1,
+    "kind": "micro",
+    "screens": [
+      "*"
+    ],
+    "trigger": "tap:select",
+    "durationToken": "feedback",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "check",
+    "reducedMotion": "Dấu chọn hiện ngay cùng nhãn trạng thái.",
+    "tracks": [
+      {
+        "target": ".fill",
+        "keyframes": [
+          {
+            "transform": "scale(0.6)",
+            "opacity": 0
+          },
+          {
+            "transform": "scale(1)",
+            "opacity": 1
+          }
+        ],
+        "easingToken": "pop"
+      },
+      {
+        "target": ".tick",
+        "keyframes": [
+          {
+            "strokeDashoffset": 1
+          },
+          {
+            "strokeDashoffset": 0
+          }
+        ],
+        "delayMs": 60
+      }
+    ]
+  },
+  {
+    "id": "switch-slide",
+    "tier": 1,
+    "kind": "micro",
+    "screens": [
+      "*"
+    ],
+    "trigger": "tap:toggle",
+    "durationToken": "feedback",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "switch",
+    "reducedMotion": "Nút gạt đổi vị trí ngay; nhãn “Đang bật / Đang tắt” cập nhật.",
+    "tracks": [
+      {
+        "target": ".thumb",
+        "keyframes": [
+          {
+            "transform": "translateX(0px)"
+          },
+          {
+            "transform": "translateX(20px)"
+          }
+        ]
+      },
+      {
+        "target": ".d-switch",
+        "keyframes": [
+          {
+            "backgroundColor": "#DCE3EE"
+          },
+          {
+            "backgroundColor": "#2458D3"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "tab-pill",
+    "tier": 1,
+    "kind": "micro",
+    "screens": [
+      "S09",
+      "S12",
+      "S25",
+      "S27",
+      "S31"
+    ],
+    "trigger": "tap:tab",
+    "durationToken": "transition",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "tabs",
+    "reducedMotion": "Mục vừa chọn đổi nền ngay, không trượt.",
+    "tracks": [
+      {
+        "target": ".pill",
+        "keyframes": [
+          {
+            "transform": "translateX(0px)"
+          },
+          {
+            "transform": "translateX(60px)"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "chip-select",
+    "tier": 2,
+    "kind": "micro",
+    "screens": [
+      "*"
+    ],
+    "trigger": "tap:chip",
+    "durationToken": "feedback",
+    "easingToken": "pop",
+    "loop": false,
+    "demo": "chips",
+    "reducedMotion": "Chip đổi màu và thêm dấu chọn ngay.",
+    "tracks": [
+      {
+        "target": ".on",
+        "keyframes": [
+          {
+            "transform": "scale(0.96)",
+            "backgroundColor": "#EAF0FF",
+            "color": "#2458D3"
+          },
+          {
+            "transform": "scale(1)",
+            "backgroundColor": "#2458D3",
+            "color": "#FFFFFF"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "list-stagger",
+    "tier": 2,
+    "kind": "transition",
+    "screens": [
+      "S10",
+      "S13",
+      "S21",
+      "S27",
+      "S30",
+      "S49",
+      "S51"
+    ],
+    "trigger": "enter:first-load",
+    "durationToken": "transition",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "rows",
+    "reducedMotion": "Tất cả hàng hiện cùng lúc, không dịch chuyển.",
+    "tracks": [
+      {
+        "target": "li",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "translateY(8px)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translateY(0px)"
+          }
+        ],
+        "staggerMs": 40
+      }
+    ]
+  },
+  {
+    "id": "number-roll",
+    "tier": 1,
+    "kind": "feedback",
+    "screens": [
+      "S08",
+      "S09",
+      "S20",
+      "S23",
+      "S46"
+    ],
+    "trigger": "state:value-changed",
+    "durationToken": "countUp",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "number",
+    "value": 2394,
+    "label": "kcal mỗi ngày",
+    "reducedMotion": "Hiện ngay giá trị cuối cùng.",
+    "tracks": [
+      {
+        "type": "count",
+        "target": ".d-num",
+        "from": 0,
+        "to": 2394
+      }
+    ]
+  },
+  {
+    "id": "progress-fill",
+    "tier": 1,
+    "kind": "feedback",
+    "screens": [
+      "S09",
+      "S13",
+      "S22",
+      "S27",
+      "S46"
+    ],
+    "trigger": "state:value-changed",
+    "durationToken": "celebration",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "bar",
+    "value": 0.31,
+    "label": "Sức sống 31/100",
+    "reducedMotion": "Thanh vẽ ngay ở độ dài cuối; con số luôn hiện cạnh thanh.",
+    "tracks": [
+      {
+        "target": ".fill",
+        "keyframes": [
+          {
+            "transform": "scaleX(0.26)"
+          },
+          {
+            "transform": "scaleX(0.31)"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "skeleton-shimmer",
+    "tier": 1,
+    "kind": "ambient",
+    "screens": [
+      "S39"
+    ],
+    "trigger": "state:loading",
+    "durationToken": "shimmerLoop",
+    "easingToken": "linear",
+    "loop": true,
+    "demo": "skeleton",
+    "reducedMotion": "Khối xám đứng yên, không lấp lánh.",
+    "tracks": [
+      {
+        "target": ".d-skel i",
+        "keyframes": [
+          {
+            "backgroundPosition": "-240px 0"
+          },
+          {
+            "backgroundPosition": "240px 0"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "snackbar-undo",
+    "tier": 1,
+    "kind": "feedback",
+    "screens": [
+      "S09"
+    ],
+    "trigger": "confirmed:progress-saved",
+    "durationToken": "transition",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "snackbar",
+    "reducedMotion": "Thanh thông báo hiện ngay; thời gian hoàn tác còn lại ghi bằng chữ.",
+    "tracks": [
+      {
+        "target": ".d-snack",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "translateY(24px)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translateY(0px)"
+          }
+        ]
+      },
+      {
+        "target": ".countdown",
+        "keyframes": [
+          {
+            "transform": "scaleX(1)"
+          },
+          {
+            "transform": "scaleX(0)"
+          }
+        ],
+        "durationToken": "undoWindow",
+        "easingToken": "linear",
+        "delayMs": 320
+      }
+    ]
+  },
+  {
+    "id": "field-error",
+    "tier": 1,
+    "kind": "feedback",
+    "screens": [
+      "*"
+    ],
+    "trigger": "state:invalid",
+    "durationToken": "feedback",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "field",
+    "reducedMotion": "Viền đỏ và lời nhắn hiện ngay; không rung.",
+    "tracks": [
+      {
+        "target": ".input",
+        "keyframes": [
+          {
+            "borderColor": "#DCE3EE"
+          },
+          {
+            "borderColor": "#B63838"
+          }
+        ]
+      },
+      {
+        "target": ".msg",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "translateY(-4px)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translateY(0px)"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "pending-pulse",
+    "tier": 1,
+    "kind": "ambient",
+    "screens": [
+      "S09",
+      "S38"
+    ],
+    "trigger": "state:queued",
+    "durationToken": "celebration",
+    "easingToken": "idle",
+    "loop": false,
+    "demo": "pending",
+    "reducedMotion": "Chấm tĩnh kèm chữ “Đang chờ gửi”.",
+    "tracks": [
+      {
+        "target": ".dot",
+        "keyframes": [
+          {
+            "transform": "scale(1)",
+            "opacity": 1
+          },
+          {
+            "transform": "scale(1.6)",
+            "opacity": 0.4
+          },
+          {
+            "transform": "scale(1)",
+            "opacity": 1
+          }
+        ],
+        "iterations": 2
+      }
+    ]
+  },
+  {
+    "id": "water-check-in",
+    "tier": 1,
+    "kind": "feedback",
+    "screens": [
+      "S09"
+    ],
+    "trigger": "state:pending",
+    "durationToken": "celebration",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "water",
+    "reducedMotion": "Ô nước đổi sang đã chọn ngay; nhãn “4 / 8 phần · đang lưu”.",
+    "tracks": [
+      {
+        "target": ".new .drop",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "translateY(-40px)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translateY(0px)",
+            "offset": 0.6
+          },
+          {
+            "opacity": 0,
+            "transform": "translateY(6px)"
+          }
+        ]
+      },
+      {
+        "target": ".new .level",
+        "keyframes": [
+          {
+            "transform": "scaleY(0)"
+          },
+          {
+            "transform": "scaleY(1)"
+          }
+        ],
+        "delayMs": 200
+      }
+    ]
+  },
+  {
+    "id": "quest-complete",
+    "tier": 1,
+    "kind": "reward",
+    "screens": [
+      "S10",
+      "S20"
+    ],
+    "trigger": "confirmed:quest-completed",
+    "durationToken": "celebration",
+    "easingToken": "pop",
+    "loop": false,
+    "demo": "quest",
+    "reducedMotion": "Dấu hoàn thành và “+50 XP” hiện tĩnh.",
+    "tracks": [
+      {
+        "target": ".fill",
+        "keyframes": [
+          {
+            "transform": "scale(0.6)",
+            "opacity": 0
+          },
+          {
+            "transform": "scale(1)",
+            "opacity": 1
+          }
+        ]
+      },
+      {
+        "target": ".tick",
+        "keyframes": [
+          {
+            "strokeDashoffset": 1
+          },
+          {
+            "strokeDashoffset": 0
+          }
+        ],
+        "easingToken": "enter",
+        "delayMs": 60
+      },
+      {
+        "target": ".d-chip",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "translateY(6px) scale(0.9)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translateY(0px) scale(1)"
+          }
+        ],
+        "delayMs": 150
+      }
+    ]
+  },
+  {
+    "id": "mam-idle",
+    "tier": 1,
+    "kind": "mascot",
+    "screens": [
+      "S01",
+      "S09",
+      "S22"
+    ],
+    "trigger": "visible:screen-focused",
+    "durationToken": "mascotIdle",
+    "easingToken": "idle",
+    "loop": true,
+    "demo": "mam",
+    "mood": "neutral",
+    "reducedMotion": "Mầm đứng yên; tâm trạng được nói bằng chữ bên cạnh.",
+    "tracks": [
+      {
+        "target": "svg",
+        "keyframes": [
+          {
+            "transform": "translateY(0px)"
+          },
+          {
+            "transform": "translateY(-4px)"
+          },
+          {
+            "transform": "translateY(0px)"
+          }
+        ]
+      },
+      {
+        "target": ".d-shadow",
+        "keyframes": [
+          {
+            "transform": "scaleX(1)"
+          },
+          {
+            "transform": "scaleX(0.9)"
+          },
+          {
+            "transform": "scaleX(1)"
+          }
+        ]
+      },
+      {
+        "target": "#leaf-left",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(-4deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ]
+      },
+      {
+        "target": "#leaf-right",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(4deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ],
+        "delayMs": 150
+      },
+      {
+        "target": "#face-neutral .eye",
+        "keyframes": [
+          {
+            "transform": "scaleY(1)"
+          },
+          {
+            "transform": "scaleY(1)",
+            "offset": 0.9
+          },
+          {
+            "transform": "scaleY(0.1)",
+            "offset": 0.95
+          },
+          {
+            "transform": "scaleY(1)"
+          }
+        ],
+        "easingToken": "linear"
+      }
+    ]
+  },
+  {
+    "id": "mam-happy",
+    "tier": 1,
+    "kind": "mascot",
+    "screens": [
+      "S09",
+      "S22"
+    ],
+    "trigger": "confirmed:progress-saved",
+    "durationToken": "celebration",
+    "easingToken": "pop",
+    "loop": false,
+    "demo": "mam",
+    "mood": "happy",
+    "reducedMotion": "Mầm đổi sang mặt vui ngay, kèm lời “Mầm vui vì bạn vừa ghi nhận”.",
+    "tracks": [
+      {
+        "target": "svg",
+        "keyframes": [
+          {
+            "transform": "translateY(0px) scale(1)"
+          },
+          {
+            "transform": "translateY(-10px) scale(1.03)",
+            "offset": 0.4
+          },
+          {
+            "transform": "translateY(0px) scale(1)"
+          }
+        ]
+      },
+      {
+        "target": "#leaf-left",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(-12deg)",
+            "offset": 0.4
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ]
+      },
+      {
+        "target": "#leaf-right",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(12deg)",
+            "offset": 0.4
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mam-cheer",
+    "tier": 1,
+    "kind": "celebration",
+    "screens": [
+      "S20",
+      "S65"
+    ],
+    "trigger": "confirmed:story-complete",
+    "durationToken": "celebrationLong",
+    "easingToken": "pop",
+    "loop": false,
+    "demo": "mam",
+    "mood": "happy",
+    "reducedMotion": "Mầm mặt vui đứng yên cùng lời chúc mừng.",
+    "tracks": [
+      {
+        "target": "svg",
+        "keyframes": [
+          {
+            "transform": "translateY(0px)"
+          },
+          {
+            "transform": "translateY(-12px)",
+            "offset": 0.2
+          },
+          {
+            "transform": "translateY(0px)",
+            "offset": 0.4
+          },
+          {
+            "transform": "translateY(-8px)",
+            "offset": 0.6
+          },
+          {
+            "transform": "translateY(0px)"
+          }
+        ],
+        "easingToken": "enter"
+      },
+      {
+        "target": "#arm-right",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(-20deg)",
+            "offset": 0.25
+          },
+          {
+            "transform": "rotate(8deg)",
+            "offset": 0.5
+          },
+          {
+            "transform": "rotate(-14deg)",
+            "offset": 0.75
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "type": "particles",
+        "count": 12,
+        "distance": 80,
+        "delayMs": 120,
+        "durationToken": "countUp"
+      }
+    ]
+  },
+  {
+    "id": "mam-tired",
+    "tier": 1,
+    "kind": "mascot",
+    "screens": [
+      "S09",
+      "S22",
+      "S27",
+      "S70"
+    ],
+    "trigger": "state:mood-tired",
+    "durationToken": "mascotTired",
+    "easingToken": "idle",
+    "loop": true,
+    "demo": "mam",
+    "mood": "tired",
+    "reducedMotion": "Mầm mặt buồn ngủ đứng yên; chữ “Mầm hơi buồn ngủ, đang chờ bạn quay lại”.",
+    "tracks": [
+      {
+        "target": "svg",
+        "keyframes": [
+          {
+            "transform": "translateY(0px) rotate(0deg)"
+          },
+          {
+            "transform": "translateY(2px) rotate(-2deg)"
+          },
+          {
+            "transform": "translateY(0px) rotate(0deg)"
+          }
+        ]
+      },
+      {
+        "target": "#leaf-left",
+        "keyframes": [
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-16deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          }
+        ]
+      },
+      {
+        "target": "#leaf-right",
+        "keyframes": [
+          {
+            "transform": "rotate(12deg)"
+          },
+          {
+            "transform": "rotate(16deg)"
+          },
+          {
+            "transform": "rotate(12deg)"
+          }
+        ]
+      },
+      {
+        "target": ".d-z",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "translate(0px,0px) scale(0.8)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translate(6px,-10px) scale(1)",
+            "offset": 0.5
+          },
+          {
+            "opacity": 0,
+            "transform": "translate(12px,-20px) scale(1.1)"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mam-wave",
+    "tier": 2,
+    "kind": "mascot",
+    "screens": [
+      "S01",
+      "S02"
+    ],
+    "trigger": "enter:first-visit",
+    "durationToken": "celebrationLong",
+    "easingToken": "idle",
+    "loop": false,
+    "demo": "mam",
+    "mood": "happy",
+    "reducedMotion": "Mầm giơ tay chào ở tư thế tĩnh.",
+    "tracks": [
+      {
+        "target": "#arm-right",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(-24deg)",
+            "offset": 0.2
+          },
+          {
+            "transform": "rotate(6deg)",
+            "offset": 0.4
+          },
+          {
+            "transform": "rotate(-20deg)",
+            "offset": 0.6
+          },
+          {
+            "transform": "rotate(4deg)",
+            "offset": 0.8
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mam-sleep",
+    "tier": 2,
+    "kind": "mascot",
+    "screens": [
+      "S45"
+    ],
+    "trigger": "confirmed:bedtime-marked",
+    "durationToken": "celebrationLong",
+    "easingToken": "gentle",
+    "loop": false,
+    "demo": "mam",
+    "mood": "tired",
+    "reducedMotion": "Mầm nhắm mắt đứng yên; chữ “Chúc bạn nghỉ ngon”.",
+    "tracks": [
+      {
+        "target": "svg",
+        "keyframes": [
+          {
+            "transform": "translateY(0px) rotate(0deg)"
+          },
+          {
+            "transform": "translateY(3px) rotate(-3deg)"
+          }
+        ]
+      },
+      {
+        "target": ".d-z",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "translate(0px,0px) scale(0.8)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translate(6px,-10px) scale(1)",
+            "offset": 0.5
+          },
+          {
+            "opacity": 0,
+            "transform": "translate(12px,-20px) scale(1.1)"
+          }
+        ],
+        "iterations": 2,
+        "delayMs": 300,
+        "durationToken": "countUp"
+      }
+    ]
+  },
+  {
+    "id": "exercise-xoay-vai",
+    "tier": 1,
+    "kind": "exercise",
+    "screens": [
+      "S18",
+      "S19",
+      "S82"
+    ],
+    "trigger": "visible:exercise-demo",
+    "durationToken": "demoLoop",
+    "easingToken": "idle",
+    "loop": true,
+    "demo": "rig",
+    "prop": "mat",
+    "reducedMotion": "Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ.",
+    "tracks": [
+      {
+        "target": "#arm-f",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(-360deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#arm-b",
+        "keyframes": [
+          {
+            "transform": "rotate(-180deg)"
+          },
+          {
+            "transform": "rotate(-540deg)"
+          }
+        ],
+        "easingToken": "linear"
+      }
+    ]
+  },
+  {
+    "id": "exercise-squat",
+    "tier": 1,
+    "kind": "exercise",
+    "screens": [
+      "S18",
+      "S19",
+      "S82"
+    ],
+    "trigger": "visible:exercise-demo",
+    "durationToken": "repCycle",
+    "easingToken": "idle",
+    "loop": true,
+    "demo": "rig",
+    "prop": "mat",
+    "reducedMotion": "Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ.",
+    "tracks": [
+      {
+        "target": "#hips",
+        "keyframes": [
+          {
+            "transform": "translate(0px, 0px) rotate(0deg)"
+          },
+          {
+            "transform": "translate(-1.8px, 3.4px) rotate(0deg)"
+          },
+          {
+            "transform": "translate(-6px, 11.5px) rotate(0deg)"
+          },
+          {
+            "transform": "translate(-10.2px, 19.6px) rotate(0deg)"
+          },
+          {
+            "transform": "translate(-12px, 23px) rotate(0deg)"
+          },
+          {
+            "transform": "translate(-10.2px, 19.6px) rotate(0deg)"
+          },
+          {
+            "transform": "translate(-6px, 11.5px) rotate(0deg)"
+          },
+          {
+            "transform": "translate(-1.8px, 3.4px) rotate(0deg)"
+          },
+          {
+            "transform": "translate(0px, 0px) rotate(0deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#thigh-f",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(-20.7deg)"
+          },
+          {
+            "transform": "rotate(-42.3deg)"
+          },
+          {
+            "transform": "rotate(-60.4deg)"
+          },
+          {
+            "transform": "rotate(-67.9deg)"
+          },
+          {
+            "transform": "rotate(-60.4deg)"
+          },
+          {
+            "transform": "rotate(-42.3deg)"
+          },
+          {
+            "transform": "rotate(-20.7deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#shin-f",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(40.6deg)"
+          },
+          {
+            "transform": "rotate(75deg)"
+          },
+          {
+            "transform": "rotate(97.1deg)"
+          },
+          {
+            "transform": "rotate(104.4deg)"
+          },
+          {
+            "transform": "rotate(97.1deg)"
+          },
+          {
+            "transform": "rotate(75deg)"
+          },
+          {
+            "transform": "rotate(40.6deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#foot-f",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(-19.9deg)"
+          },
+          {
+            "transform": "rotate(-32.7deg)"
+          },
+          {
+            "transform": "rotate(-36.8deg)"
+          },
+          {
+            "transform": "rotate(-36.5deg)"
+          },
+          {
+            "transform": "rotate(-36.8deg)"
+          },
+          {
+            "transform": "rotate(-32.7deg)"
+          },
+          {
+            "transform": "rotate(-19.9deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#thigh-b",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(-20.7deg)"
+          },
+          {
+            "transform": "rotate(-42.3deg)"
+          },
+          {
+            "transform": "rotate(-60.4deg)"
+          },
+          {
+            "transform": "rotate(-67.9deg)"
+          },
+          {
+            "transform": "rotate(-60.4deg)"
+          },
+          {
+            "transform": "rotate(-42.3deg)"
+          },
+          {
+            "transform": "rotate(-20.7deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#shin-b",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(40.6deg)"
+          },
+          {
+            "transform": "rotate(75deg)"
+          },
+          {
+            "transform": "rotate(97.1deg)"
+          },
+          {
+            "transform": "rotate(104.4deg)"
+          },
+          {
+            "transform": "rotate(97.1deg)"
+          },
+          {
+            "transform": "rotate(75deg)"
+          },
+          {
+            "transform": "rotate(40.6deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#foot-b",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(-19.9deg)"
+          },
+          {
+            "transform": "rotate(-32.7deg)"
+          },
+          {
+            "transform": "rotate(-36.8deg)"
+          },
+          {
+            "transform": "rotate(-36.5deg)"
+          },
+          {
+            "transform": "rotate(-36.8deg)"
+          },
+          {
+            "transform": "rotate(-32.7deg)"
+          },
+          {
+            "transform": "rotate(-19.9deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#torso",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(4.7deg)"
+          },
+          {
+            "transform": "rotate(16deg)"
+          },
+          {
+            "transform": "rotate(27.3deg)"
+          },
+          {
+            "transform": "rotate(32deg)"
+          },
+          {
+            "transform": "rotate(27.3deg)"
+          },
+          {
+            "transform": "rotate(16deg)"
+          },
+          {
+            "transform": "rotate(4.7deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#head",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(-1.8deg)"
+          },
+          {
+            "transform": "rotate(-6deg)"
+          },
+          {
+            "transform": "rotate(-10.2deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-10.2deg)"
+          },
+          {
+            "transform": "rotate(-6deg)"
+          },
+          {
+            "transform": "rotate(-1.8deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#arm-f",
+        "keyframes": [
+          {
+            "transform": "rotate(-40deg)"
+          },
+          {
+            "transform": "rotate(-40deg)"
+          },
+          {
+            "transform": "rotate(-40deg)"
+          },
+          {
+            "transform": "rotate(-40deg)"
+          },
+          {
+            "transform": "rotate(-40deg)"
+          },
+          {
+            "transform": "rotate(-40deg)"
+          },
+          {
+            "transform": "rotate(-40deg)"
+          },
+          {
+            "transform": "rotate(-40deg)"
+          },
+          {
+            "transform": "rotate(-40deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#forearm-f",
+        "keyframes": [
+          {
+            "transform": "rotate(-105deg)"
+          },
+          {
+            "transform": "rotate(-105deg)"
+          },
+          {
+            "transform": "rotate(-105deg)"
+          },
+          {
+            "transform": "rotate(-105deg)"
+          },
+          {
+            "transform": "rotate(-105deg)"
+          },
+          {
+            "transform": "rotate(-105deg)"
+          },
+          {
+            "transform": "rotate(-105deg)"
+          },
+          {
+            "transform": "rotate(-105deg)"
+          },
+          {
+            "transform": "rotate(-105deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#arm-b",
+        "keyframes": [
+          {
+            "transform": "rotate(-36deg)"
+          },
+          {
+            "transform": "rotate(-36deg)"
+          },
+          {
+            "transform": "rotate(-36deg)"
+          },
+          {
+            "transform": "rotate(-36deg)"
+          },
+          {
+            "transform": "rotate(-36deg)"
+          },
+          {
+            "transform": "rotate(-36deg)"
+          },
+          {
+            "transform": "rotate(-36deg)"
+          },
+          {
+            "transform": "rotate(-36deg)"
+          },
+          {
+            "transform": "rotate(-36deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#forearm-b",
+        "keyframes": [
+          {
+            "transform": "rotate(-108deg)"
+          },
+          {
+            "transform": "rotate(-108deg)"
+          },
+          {
+            "transform": "rotate(-108deg)"
+          },
+          {
+            "transform": "rotate(-108deg)"
+          },
+          {
+            "transform": "rotate(-108deg)"
+          },
+          {
+            "transform": "rotate(-108deg)"
+          },
+          {
+            "transform": "rotate(-108deg)"
+          },
+          {
+            "transform": "rotate(-108deg)"
+          },
+          {
+            "transform": "rotate(-108deg)"
+          }
+        ],
+        "easingToken": "linear"
+      }
+    ]
+  },
+  {
+    "id": "exercise-chong-day-tua-ban",
+    "tier": 1,
+    "kind": "exercise",
+    "screens": [
+      "S18",
+      "S19",
+      "S82"
+    ],
+    "trigger": "visible:exercise-demo",
+    "durationToken": "repCycle",
+    "easingToken": "idle",
+    "loop": true,
+    "demo": "rig",
+    "prop": "bench",
+    "reducedMotion": "Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ.",
+    "tracks": [
+      {
+        "target": "#rig",
+        "keyframes": [
+          {
+            "transform": "rotate(37.5deg)"
+          },
+          {
+            "transform": "rotate(39.1deg)"
+          },
+          {
+            "transform": "rotate(42.8deg)"
+          },
+          {
+            "transform": "rotate(46.5deg)"
+          },
+          {
+            "transform": "rotate(48deg)"
+          },
+          {
+            "transform": "rotate(46.5deg)"
+          },
+          {
+            "transform": "rotate(42.8deg)"
+          },
+          {
+            "transform": "rotate(39.1deg)"
+          },
+          {
+            "transform": "rotate(37.5deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#head",
+        "keyframes": [
+          {
+            "transform": "rotate(-9.4deg)"
+          },
+          {
+            "transform": "rotate(-9.8deg)"
+          },
+          {
+            "transform": "rotate(-10.7deg)"
+          },
+          {
+            "transform": "rotate(-11.6deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-11.6deg)"
+          },
+          {
+            "transform": "rotate(-10.7deg)"
+          },
+          {
+            "transform": "rotate(-9.8deg)"
+          },
+          {
+            "transform": "rotate(-9.4deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#arm-f",
+        "keyframes": [
+          {
+            "transform": "rotate(-74.2deg)"
+          },
+          {
+            "transform": "rotate(-80.3deg)"
+          },
+          {
+            "transform": "rotate(-88.6deg)"
+          },
+          {
+            "transform": "rotate(6.3deg)"
+          },
+          {
+            "transform": "rotate(12.8deg)"
+          },
+          {
+            "transform": "rotate(6.3deg)"
+          },
+          {
+            "transform": "rotate(-88.6deg)"
+          },
+          {
+            "transform": "rotate(-80.3deg)"
+          },
+          {
+            "transform": "rotate(-74.2deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#forearm-f",
+        "keyframes": [
+          {
+            "transform": "rotate(42.7deg)"
+          },
+          {
+            "transform": "rotate(57.9deg)"
+          },
+          {
+            "transform": "rotate(84.1deg)"
+          },
+          {
+            "transform": "rotate(-103.3deg)"
+          },
+          {
+            "transform": "rotate(-109.9deg)"
+          },
+          {
+            "transform": "rotate(-103.3deg)"
+          },
+          {
+            "transform": "rotate(84.1deg)"
+          },
+          {
+            "transform": "rotate(57.9deg)"
+          },
+          {
+            "transform": "rotate(42.7deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#arm-b",
+        "keyframes": [
+          {
+            "transform": "rotate(-74.2deg)"
+          },
+          {
+            "transform": "rotate(-80.3deg)"
+          },
+          {
+            "transform": "rotate(-88.6deg)"
+          },
+          {
+            "transform": "rotate(6.3deg)"
+          },
+          {
+            "transform": "rotate(12.8deg)"
+          },
+          {
+            "transform": "rotate(6.3deg)"
+          },
+          {
+            "transform": "rotate(-88.6deg)"
+          },
+          {
+            "transform": "rotate(-80.3deg)"
+          },
+          {
+            "transform": "rotate(-74.2deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#forearm-b",
+        "keyframes": [
+          {
+            "transform": "rotate(42.7deg)"
+          },
+          {
+            "transform": "rotate(57.9deg)"
+          },
+          {
+            "transform": "rotate(84.1deg)"
+          },
+          {
+            "transform": "rotate(-103.3deg)"
+          },
+          {
+            "transform": "rotate(-109.9deg)"
+          },
+          {
+            "transform": "rotate(-103.3deg)"
+          },
+          {
+            "transform": "rotate(84.1deg)"
+          },
+          {
+            "transform": "rotate(57.9deg)"
+          },
+          {
+            "transform": "rotate(42.7deg)"
+          }
+        ],
+        "easingToken": "linear"
+      }
+    ]
+  },
+  {
+    "id": "exercise-chung-chan-lui",
+    "tier": 1,
+    "kind": "exercise",
+    "screens": [
+      "S18",
+      "S19",
+      "S82"
+    ],
+    "trigger": "visible:exercise-demo",
+    "durationToken": "repCycle",
+    "easingToken": "idle",
+    "loop": true,
+    "demo": "rig",
+    "prop": "mat",
+    "reducedMotion": "Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ.",
+    "tracks": [
+      {
+        "target": "#hips",
+        "keyframes": [
+          {
+            "transform": "translate(0px, 0px) rotate(0deg)"
+          },
+          {
+            "transform": "translate(-0.9px, 3.2px) rotate(0deg)"
+          },
+          {
+            "transform": "translate(-3px, 11px) rotate(0deg)"
+          },
+          {
+            "transform": "translate(-5.1px, 18.8px) rotate(0deg)"
+          },
+          {
+            "transform": "translate(-6px, 22px) rotate(0deg)"
+          },
+          {
+            "transform": "translate(-5.1px, 18.8px) rotate(0deg)"
+          },
+          {
+            "transform": "translate(-3px, 11px) rotate(0deg)"
+          },
+          {
+            "transform": "translate(-0.9px, 3.2px) rotate(0deg)"
+          },
+          {
+            "transform": "translate(0px, 0px) rotate(0deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#thigh-f",
+        "keyframes": [
+          {
+            "transform": "rotate(-4.2deg)"
+          },
+          {
+            "transform": "rotate(-23.2deg)"
+          },
+          {
+            "transform": "rotate(-42.5deg)"
+          },
+          {
+            "transform": "rotate(-57.7deg)"
+          },
+          {
+            "transform": "rotate(-63.8deg)"
+          },
+          {
+            "transform": "rotate(-57.7deg)"
+          },
+          {
+            "transform": "rotate(-42.5deg)"
+          },
+          {
+            "transform": "rotate(-23.2deg)"
+          },
+          {
+            "transform": "rotate(-4.2deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#shin-f",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(38.4deg)"
+          },
+          {
+            "transform": "rotate(72.7deg)"
+          },
+          {
+            "transform": "rotate(95.6deg)"
+          },
+          {
+            "transform": "rotate(103.6deg)"
+          },
+          {
+            "transform": "rotate(95.6deg)"
+          },
+          {
+            "transform": "rotate(72.7deg)"
+          },
+          {
+            "transform": "rotate(38.4deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#foot-f",
+        "keyframes": [
+          {
+            "transform": "rotate(4.2deg)"
+          },
+          {
+            "transform": "rotate(-15.2deg)"
+          },
+          {
+            "transform": "rotate(-30.2deg)"
+          },
+          {
+            "transform": "rotate(-38deg)"
+          },
+          {
+            "transform": "rotate(-39.8deg)"
+          },
+          {
+            "transform": "rotate(-38deg)"
+          },
+          {
+            "transform": "rotate(-30.2deg)"
+          },
+          {
+            "transform": "rotate(-15.2deg)"
+          },
+          {
+            "transform": "rotate(4.2deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#thigh-b",
+        "keyframes": [
+          {
+            "transform": "rotate(4.2deg)"
+          },
+          {
+            "transform": "rotate(-13.2deg)"
+          },
+          {
+            "transform": "rotate(-11.3deg)"
+          },
+          {
+            "transform": "rotate(5.8deg)"
+          },
+          {
+            "transform": "rotate(14.4deg)"
+          },
+          {
+            "transform": "rotate(5.8deg)"
+          },
+          {
+            "transform": "rotate(-11.3deg)"
+          },
+          {
+            "transform": "rotate(-13.2deg)"
+          },
+          {
+            "transform": "rotate(4.2deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#shin-b",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(49.4deg)"
+          },
+          {
+            "transform": "rotate(82.5deg)"
+          },
+          {
+            "transform": "rotate(86.4deg)"
+          },
+          {
+            "transform": "rotate(82.7deg)"
+          },
+          {
+            "transform": "rotate(86.4deg)"
+          },
+          {
+            "transform": "rotate(82.5deg)"
+          },
+          {
+            "transform": "rotate(49.4deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#foot-b",
+        "keyframes": [
+          {
+            "transform": "rotate(-4.2deg)"
+          },
+          {
+            "transform": "rotate(-30deg)"
+          },
+          {
+            "transform": "rotate(-50.2deg)"
+          },
+          {
+            "transform": "rotate(-56.3deg)"
+          },
+          {
+            "transform": "rotate(-55.1deg)"
+          },
+          {
+            "transform": "rotate(-56.3deg)"
+          },
+          {
+            "transform": "rotate(-50.2deg)"
+          },
+          {
+            "transform": "rotate(-30deg)"
+          },
+          {
+            "transform": "rotate(-4.2deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#torso",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(0.9deg)"
+          },
+          {
+            "transform": "rotate(3deg)"
+          },
+          {
+            "transform": "rotate(5.1deg)"
+          },
+          {
+            "transform": "rotate(6deg)"
+          },
+          {
+            "transform": "rotate(5.1deg)"
+          },
+          {
+            "transform": "rotate(3deg)"
+          },
+          {
+            "transform": "rotate(0.9deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#arm-f",
+        "keyframes": [
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#forearm-f",
+        "keyframes": [
+          {
+            "transform": "rotate(-18deg)"
+          },
+          {
+            "transform": "rotate(-18deg)"
+          },
+          {
+            "transform": "rotate(-18deg)"
+          },
+          {
+            "transform": "rotate(-18deg)"
+          },
+          {
+            "transform": "rotate(-18deg)"
+          },
+          {
+            "transform": "rotate(-18deg)"
+          },
+          {
+            "transform": "rotate(-18deg)"
+          },
+          {
+            "transform": "rotate(-18deg)"
+          },
+          {
+            "transform": "rotate(-18deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#arm-b",
+        "keyframes": [
+          {
+            "transform": "rotate(8deg)"
+          },
+          {
+            "transform": "rotate(8deg)"
+          },
+          {
+            "transform": "rotate(8deg)"
+          },
+          {
+            "transform": "rotate(8deg)"
+          },
+          {
+            "transform": "rotate(8deg)"
+          },
+          {
+            "transform": "rotate(8deg)"
+          },
+          {
+            "transform": "rotate(8deg)"
+          },
+          {
+            "transform": "rotate(8deg)"
+          },
+          {
+            "transform": "rotate(8deg)"
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": "#forearm-b",
+        "keyframes": [
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          },
+          {
+            "transform": "rotate(-12deg)"
+          }
+        ],
+        "easingToken": "linear"
+      }
+    ]
+  },
+  {
+    "id": "exercise-plank-tua-goi",
+    "tier": 1,
+    "kind": "exercise",
+    "screens": [
+      "S18",
+      "S19",
+      "S82"
+    ],
+    "trigger": "visible:exercise-demo",
+    "durationToken": "holdCycle",
+    "easingToken": "idle",
+    "loop": true,
+    "demo": "rig",
+    "prop": "mat",
+    "reducedMotion": "Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ.",
+    "tracks": [
+      {
+        "target": "#hips",
+        "keyframes": [
+          {
+            "transform": "translate(11.9px, 45.2px) rotate(74.4deg)"
+          },
+          {
+            "transform": "translate(11.9px, 45.2px) rotate(74.4deg)"
+          },
+          {
+            "transform": "translate(11.9px, 45.2px) rotate(74.4deg)"
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "target": "#thigh-f",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "target": "#shin-f",
+        "keyframes": [
+          {
+            "transform": "rotate(15.6deg)"
+          },
+          {
+            "transform": "rotate(15.6deg)"
+          },
+          {
+            "transform": "rotate(15.6deg)"
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "target": "#foot-f",
+        "keyframes": [
+          {
+            "transform": "rotate(90deg)"
+          },
+          {
+            "transform": "rotate(90deg)"
+          },
+          {
+            "transform": "rotate(90deg)"
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "target": "#thigh-b",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "target": "#shin-b",
+        "keyframes": [
+          {
+            "transform": "rotate(15.6deg)"
+          },
+          {
+            "transform": "rotate(15.6deg)"
+          },
+          {
+            "transform": "rotate(15.6deg)"
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "target": "#foot-b",
+        "keyframes": [
+          {
+            "transform": "rotate(90deg)"
+          },
+          {
+            "transform": "rotate(90deg)"
+          },
+          {
+            "transform": "rotate(90deg)"
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "target": "#torso",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)"
+          },
+          {
+            "transform": "rotate(-1.2deg)"
+          },
+          {
+            "transform": "rotate(0deg)"
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "target": "#head",
+        "keyframes": [
+          {
+            "transform": "rotate(-8deg)"
+          },
+          {
+            "transform": "rotate(-8deg)"
+          },
+          {
+            "transform": "rotate(-8deg)"
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "target": "#arm-f",
+        "keyframes": [
+          {
+            "transform": "rotate(-74.4deg)"
+          },
+          {
+            "transform": "rotate(-73.2deg)"
+          },
+          {
+            "transform": "rotate(-74.4deg)"
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "target": "#forearm-f",
+        "keyframes": [
+          {
+            "transform": "rotate(-90deg)"
+          },
+          {
+            "transform": "rotate(-90deg)"
+          },
+          {
+            "transform": "rotate(-90deg)"
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "target": "#arm-b",
+        "keyframes": [
+          {
+            "transform": "rotate(-74.4deg)"
+          },
+          {
+            "transform": "rotate(-73.2deg)"
+          },
+          {
+            "transform": "rotate(-74.4deg)"
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "target": "#forearm-b",
+        "keyframes": [
+          {
+            "transform": "rotate(-90deg)"
+          },
+          {
+            "transform": "rotate(-90deg)"
+          },
+          {
+            "transform": "rotate(-90deg)"
+          }
+        ],
+        "easingToken": "idle"
+      }
+    ]
+  },
+  {
+    "id": "exercise-tha-long-vai",
+    "tier": 1,
+    "kind": "exercise",
+    "screens": [
+      "S18",
+      "S19",
+      "S82"
+    ],
+    "trigger": "visible:exercise-demo",
+    "durationToken": "holdCycle",
+    "easingToken": "idle",
+    "loop": true,
+    "demo": "rig",
+    "prop": "mat",
+    "reducedMotion": "Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ.",
+    "tracks": [
+      {
+        "target": "#torso",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)",
+            "offset": 0
+          },
+          {
+            "transform": "rotate(-4deg)",
+            "offset": 0.45
+          },
+          {
+            "transform": "rotate(-4deg)",
+            "offset": 0.55
+          },
+          {
+            "transform": "rotate(0deg)",
+            "offset": 1
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "target": "#head",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)",
+            "offset": 0
+          },
+          {
+            "transform": "rotate(-6deg)",
+            "offset": 0.45
+          },
+          {
+            "transform": "rotate(-6deg)",
+            "offset": 0.55
+          },
+          {
+            "transform": "rotate(0deg)",
+            "offset": 1
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "target": "#arm-f",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)",
+            "offset": 0
+          },
+          {
+            "transform": "rotate(-170deg)",
+            "offset": 0.45
+          },
+          {
+            "transform": "rotate(-170deg)",
+            "offset": 0.55
+          },
+          {
+            "transform": "rotate(0deg)",
+            "offset": 1
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "target": "#forearm-f",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)",
+            "offset": 0
+          },
+          {
+            "transform": "rotate(-6deg)",
+            "offset": 0.45
+          },
+          {
+            "transform": "rotate(-6deg)",
+            "offset": 0.55
+          },
+          {
+            "transform": "rotate(0deg)",
+            "offset": 1
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "target": "#arm-b",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)",
+            "offset": 0
+          },
+          {
+            "transform": "rotate(-166deg)",
+            "offset": 0.45
+          },
+          {
+            "transform": "rotate(-166deg)",
+            "offset": 0.55
+          },
+          {
+            "transform": "rotate(0deg)",
+            "offset": 1
+          }
+        ],
+        "easingToken": "idle"
+      },
+      {
+        "target": "#forearm-b",
+        "keyframes": [
+          {
+            "transform": "rotate(0deg)",
+            "offset": 0
+          },
+          {
+            "transform": "rotate(-6deg)",
+            "offset": 0.45
+          },
+          {
+            "transform": "rotate(-6deg)",
+            "offset": 0.55
+          },
+          {
+            "transform": "rotate(0deg)",
+            "offset": 1
+          }
+        ],
+        "easingToken": "idle"
+      }
+    ]
+  },
+  {
+    "id": "xp-float",
+    "tier": 1,
+    "kind": "reward",
+    "screens": [
+      "S09",
+      "S20",
+      "S33"
+    ],
+    "trigger": "confirmed:xp-awarded",
+    "durationToken": "countUp",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "reward",
+    "label": "+10 XP",
+    "reducedMotion": "“+10 XP” hiện tĩnh trong thanh thông báo.",
+    "tracks": [
+      {
+        "target": ".d-chip",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "translateY(0px)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translateY(-12px)",
+            "offset": 0.3
+          },
+          {
+            "opacity": 0,
+            "transform": "translateY(-24px)"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "coin-fly",
+    "tier": 2,
+    "kind": "reward",
+    "screens": [
+      "S09",
+      "S20"
+    ],
+    "trigger": "confirmed:coin-awarded",
+    "durationToken": "celebration",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "coins",
+    "value": 255,
+    "reducedMotion": "Số xu mới hiện ngay trên chip xu.",
+    "tracks": [
+      {
+        "target": ".coin",
+        "keyframes": [
+          {
+            "opacity": 1,
+            "transform": "translate(0px,0px) scale(1)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translate(120px,-64px) scale(0.8)",
+            "offset": 0.8
+          },
+          {
+            "opacity": 0,
+            "transform": "translate(128px,-70px) scale(0.6)"
+          }
+        ],
+        "staggerMs": 60
+      },
+      {
+        "type": "count",
+        "target": ".d-coinchip b",
+        "from": 250,
+        "to": 255,
+        "delayMs": 450,
+        "durationToken": "feedback"
+      }
+    ]
+  },
+  {
+    "id": "reject-revert",
+    "tier": 1,
+    "kind": "feedback",
+    "screens": [
+      "S09"
+    ],
+    "trigger": "state:failed",
+    "durationToken": "feedback",
+    "easingToken": "exit",
+    "loop": false,
+    "demo": "revert",
+    "reducedMotion": "Ô nước trở về trống ngay; lời nhắn lỗi và nút Thử lại hiện bên cạnh.",
+    "tracks": [
+      {
+        "target": ".undo .level",
+        "keyframes": [
+          {
+            "transform": "scaleY(1)"
+          },
+          {
+            "transform": "scaleY(0)"
+          }
+        ]
+      },
+      {
+        "target": ".msg",
+        "keyframes": [
+          {
+            "opacity": 0
+          },
+          {
+            "opacity": 1
+          }
+        ],
+        "easingToken": "enter",
+        "delayMs": 120
+      }
+    ]
+  },
+  {
+    "id": "hidden-quest-reveal",
+    "tier": 2,
+    "kind": "transition",
+    "screens": [
+      "S10"
+    ],
+    "trigger": "state:hidden-quest-unlocked",
+    "durationToken": "transition",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "hidden",
+    "reducedMotion": "Nội dung nhiệm vụ ẩn đổi ngay sang tên nhiệm vụ.",
+    "tracks": [
+      {
+        "target": ".front",
+        "keyframes": [
+          {
+            "opacity": 1,
+            "transform": "rotateX(0deg)"
+          },
+          {
+            "opacity": 0,
+            "transform": "rotateX(90deg)"
+          }
+        ],
+        "easingToken": "exit"
+      },
+      {
+        "target": ".back",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "rotateX(-90deg)"
+          },
+          {
+            "opacity": 1,
+            "transform": "rotateX(0deg)"
+          }
+        ],
+        "delayMs": 160
+      }
+    ]
+  },
+  {
+    "id": "end-of-day-sky",
+    "tier": 2,
+    "kind": "ambient",
+    "screens": [
+      "S45"
+    ],
+    "trigger": "enter:screen",
+    "durationToken": "celebrationLong",
+    "easingToken": "gentle",
+    "loop": false,
+    "demo": "sky",
+    "reducedMotion": "Nền đêm và trăng đứng yên.",
+    "tracks": [
+      {
+        "target": ".dusk",
+        "keyframes": [
+          {
+            "opacity": 1
+          },
+          {
+            "opacity": 0
+          }
+        ]
+      },
+      {
+        "target": ".moon",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "translateY(40px)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translateY(0px)"
+          }
+        ],
+        "delayMs": 300,
+        "durationToken": "countUp"
+      },
+      {
+        "target": ".star",
+        "keyframes": [
+          {
+            "opacity": 0
+          },
+          {
+            "opacity": 1
+          },
+          {
+            "opacity": 0.5
+          },
+          {
+            "opacity": 1
+          }
+        ],
+        "staggerMs": 200,
+        "delayMs": 800,
+        "durationToken": "countUp"
+      }
+    ]
+  },
+  {
+    "id": "welcome-sprout",
+    "tier": 2,
+    "kind": "mascot",
+    "screens": [
+      "S01"
+    ],
+    "trigger": "enter:first-visit",
+    "durationToken": "celebration",
+    "easingToken": "pop",
+    "loop": false,
+    "demo": "mam",
+    "mood": "happy",
+    "reducedMotion": "Mầm và hai lá hiện sẵn, đứng yên.",
+    "tracks": [
+      {
+        "target": "svg",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "translateY(8px)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translateY(0px)"
+          }
+        ],
+        "easingToken": "enter",
+        "durationToken": "transition"
+      },
+      {
+        "target": "#leaf-left",
+        "keyframes": [
+          {
+            "transform": "scale(0)"
+          },
+          {
+            "transform": "scale(1)"
+          }
+        ],
+        "delayMs": 240
+      },
+      {
+        "target": "#leaf-right",
+        "keyframes": [
+          {
+            "transform": "scale(0)"
+          },
+          {
+            "transform": "scale(1)"
+          }
+        ],
+        "delayMs": 360
+      }
+    ]
+  },
+  {
+    "id": "onboarding-step",
+    "tier": 1,
+    "kind": "transition",
+    "screens": [
+      "S05",
+      "S06",
+      "S07"
+    ],
+    "trigger": "tap:continue",
+    "durationToken": "transition",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "steps",
+    "reducedMotion": "Bước mới hiện ngay; trình đọc màn hình đọc tiêu đề bước.",
+    "tracks": [
+      {
+        "target": ".fill",
+        "keyframes": [
+          {
+            "transform": "scaleX(0.33)"
+          },
+          {
+            "transform": "scaleX(0.67)"
+          }
+        ]
+      },
+      {
+        "target": ".content",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "translateX(8px)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translateX(0px)"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "archetype-lift",
+    "tier": 2,
+    "kind": "micro",
+    "screens": [
+      "S07"
+    ],
+    "trigger": "tap:select",
+    "durationToken": "feedback",
+    "easingToken": "pop",
+    "loop": false,
+    "demo": "arch",
+    "reducedMotion": "Viền xanh và dấu chọn hiện ngay.",
+    "tracks": [
+      {
+        "target": ".d-arch",
+        "keyframes": [
+          {
+            "transform": "scale(1)",
+            "borderColor": "#DCE3EE"
+          },
+          {
+            "transform": "scale(1.02)",
+            "borderColor": "#2458D3",
+            "offset": 0.5
+          },
+          {
+            "transform": "scale(1)",
+            "borderColor": "#2458D3"
+          }
+        ]
+      },
+      {
+        "target": ".tick",
+        "keyframes": [
+          {
+            "transform": "scale(0)"
+          },
+          {
+            "transform": "scale(1)"
+          }
+        ],
+        "delayMs": 80
+      }
+    ]
+  },
+  {
+    "id": "meal-swap",
+    "tier": 1,
+    "kind": "transition",
+    "screens": [
+      "S14",
+      "S15"
+    ],
+    "trigger": "confirmed:swap-applied",
+    "durationToken": "transition",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "swap",
+    "reducedMotion": "Món mới thay món cũ ngay; số kcal cập nhật bằng chữ.",
+    "tracks": [
+      {
+        "target": ".old",
+        "keyframes": [
+          {
+            "opacity": 1,
+            "transform": "translateX(0px)"
+          },
+          {
+            "opacity": 0,
+            "transform": "translateX(-16px)"
+          }
+        ],
+        "easingToken": "exit"
+      },
+      {
+        "target": ".new",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "translateX(16px)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translateX(0px)"
+          }
+        ],
+        "delayMs": 120
+      }
+    ]
+  },
+  {
+    "id": "focus-ring",
+    "tier": 1,
+    "kind": "feedback",
+    "screens": [
+      "S19"
+    ],
+    "trigger": "state:session-running",
+    "durationToken": "feedback",
+    "easingToken": "linear",
+    "loop": false,
+    "demo": "ring",
+    "value": 0.42,
+    "label": "08:42",
+    "reducedMotion": "Vòng tiến độ nhảy theo từng giây, không nội suy; đồng hồ vẫn chạy.",
+    "tracks": [
+      {
+        "target": ".prog",
+        "keyframes": [
+          {
+            "strokeDashoffset": 0.62
+          },
+          {
+            "strokeDashoffset": 0.58
+          }
+        ],
+        "durationToken": "demoLoop"
+      }
+    ]
+  },
+  {
+    "id": "focus-demo",
+    "tier": 1,
+    "kind": "ambient",
+    "screens": [
+      "S18",
+      "S19"
+    ],
+    "trigger": "state:session-running",
+    "durationToken": "demoLoop",
+    "easingToken": "idle",
+    "loop": true,
+    "demo": "pose",
+    "reducedMotion": "Ảnh tư thế đứng yên, kèm mô tả từng bước bằng chữ.",
+    "tracks": [
+      {
+        "target": ".a",
+        "keyframes": [
+          {
+            "opacity": 1
+          },
+          {
+            "opacity": 1,
+            "offset": 0.4
+          },
+          {
+            "opacity": 0,
+            "offset": 0.5
+          },
+          {
+            "opacity": 0,
+            "offset": 0.9
+          },
+          {
+            "opacity": 1
+          }
+        ]
+      },
+      {
+        "target": ".b",
+        "keyframes": [
+          {
+            "opacity": 0
+          },
+          {
+            "opacity": 0,
+            "offset": 0.4
+          },
+          {
+            "opacity": 1,
+            "offset": 0.5
+          },
+          {
+            "opacity": 1,
+            "offset": 0.9
+          },
+          {
+            "opacity": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "focus-breathe",
+    "tier": 2,
+    "kind": "ambient",
+    "screens": [
+      "S19"
+    ],
+    "trigger": "state:breathing-exercise",
+    "durationToken": "breathCycle",
+    "easingToken": "idle",
+    "loop": true,
+    "demo": "breathe",
+    "reducedMotion": "Vòng tròn đứng yên; chữ “Hít vào 4 giây · Thở ra 4 giây” đổi theo nhịp.",
+    "tracks": [
+      {
+        "target": ".circle",
+        "keyframes": [
+          {
+            "transform": "scale(0.7)"
+          },
+          {
+            "transform": "scale(1)",
+            "offset": 0.5
+          },
+          {
+            "transform": "scale(0.7)"
+          }
+        ]
+      },
+      {
+        "target": ".in",
+        "keyframes": [
+          {
+            "opacity": 1
+          },
+          {
+            "opacity": 1,
+            "offset": 0.45
+          },
+          {
+            "opacity": 0,
+            "offset": 0.5
+          },
+          {
+            "opacity": 0,
+            "offset": 0.95
+          },
+          {
+            "opacity": 1
+          }
+        ],
+        "easingToken": "linear"
+      },
+      {
+        "target": ".out",
+        "keyframes": [
+          {
+            "opacity": 0
+          },
+          {
+            "opacity": 0,
+            "offset": 0.45
+          },
+          {
+            "opacity": 1,
+            "offset": 0.5
+          },
+          {
+            "opacity": 1,
+            "offset": 0.95
+          },
+          {
+            "opacity": 0
+          }
+        ],
+        "easingToken": "linear"
+      }
+    ]
+  },
+  {
+    "id": "focus-pause",
+    "tier": 1,
+    "kind": "transition",
+    "screens": [
+      "S19",
+      "S41"
+    ],
+    "trigger": "tap:pause",
+    "durationToken": "transition",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "timer",
+    "reducedMotion": "Nhãn “Tạm dừng” hiện ngay; đồng hồ đứng yên.",
+    "tracks": [
+      {
+        "target": "b",
+        "keyframes": [
+          {
+            "opacity": 1
+          },
+          {
+            "opacity": 0.5
+          }
+        ]
+      },
+      {
+        "target": ".run",
+        "keyframes": [
+          {
+            "opacity": 1
+          },
+          {
+            "opacity": 0
+          }
+        ]
+      },
+      {
+        "target": ".pause",
+        "keyframes": [
+          {
+            "opacity": 0
+          },
+          {
+            "opacity": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "workout-complete",
+    "tier": 1,
+    "kind": "celebration",
+    "screens": [
+      "S20"
+    ],
+    "trigger": "confirmed:workout-saved",
+    "durationToken": "celebrationLong",
+    "easingToken": "pop",
+    "loop": false,
+    "demo": "ring",
+    "value": 1,
+    "label": "15:00",
+    "reducedMotion": "Vòng đầy và lời “Buổi tập đã được ghi nhận” hiện tĩnh.",
+    "tracks": [
+      {
+        "target": ".prog",
+        "keyframes": [
+          {
+            "strokeDashoffset": 0.1
+          },
+          {
+            "strokeDashoffset": 0
+          }
+        ],
+        "durationToken": "celebration",
+        "easingToken": "enter"
+      },
+      {
+        "target": ".d-ring",
+        "keyframes": [
+          {
+            "transform": "scale(1)"
+          },
+          {
+            "transform": "scale(1.06)",
+            "offset": 0.5
+          },
+          {
+            "transform": "scale(1)"
+          }
+        ],
+        "durationToken": "celebration",
+        "delayMs": 300
+      },
+      {
+        "type": "particles",
+        "count": 16,
+        "distance": 90,
+        "delayMs": 300,
+        "durationToken": "countUp"
+      }
+    ]
+  },
+  {
+    "id": "streak-flame",
+    "tier": 1,
+    "kind": "ambient",
+    "screens": [
+      "S09",
+      "S21"
+    ],
+    "trigger": "state:streak-3-plus",
+    "durationToken": "flameLoop",
+    "easingToken": "idle",
+    "loop": true,
+    "demo": "flame",
+    "reducedMotion": "Biểu tượng lửa đứng yên, luôn kèm số ngày.",
+    "tracks": [
+      {
+        "target": "path",
+        "keyframes": [
+          {
+            "transform": "scaleY(1) skewX(0deg)"
+          },
+          {
+            "transform": "scaleY(1.06) skewX(-2deg)",
+            "offset": 0.33
+          },
+          {
+            "transform": "scaleY(0.97) skewX(2deg)",
+            "offset": 0.66
+          },
+          {
+            "transform": "scaleY(1) skewX(0deg)"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "streak-reset-soft",
+    "tier": 2,
+    "kind": "transition",
+    "screens": [
+      "S21"
+    ],
+    "trigger": "enter:streak-reset",
+    "durationToken": "transition",
+    "easingToken": "gentle",
+    "loop": false,
+    "demo": "reset",
+    "reducedMotion": "Kỷ lục và lời mời bắt đầu lại hiện ngay.",
+    "tracks": [
+      {
+        "target": ".best",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "translateY(8px)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translateY(0px)"
+          }
+        ]
+      },
+      {
+        "target": ".cta",
+        "keyframes": [
+          {
+            "opacity": 0
+          },
+          {
+            "opacity": 1
+          }
+        ],
+        "delayMs": 200
+      }
+    ]
+  },
+  {
+    "id": "purchase-unlock",
+    "tier": 1,
+    "kind": "reward",
+    "screens": [
+      "S40"
+    ],
+    "trigger": "confirmed:purchase",
+    "durationToken": "celebration",
+    "easingToken": "pop",
+    "loop": false,
+    "demo": "unlock",
+    "reducedMotion": "Nhãn “Đã sở hữu” và số xu còn lại hiện ngay.",
+    "tracks": [
+      {
+        "target": ".item",
+        "keyframes": [
+          {
+            "transform": "scale(0.96)"
+          },
+          {
+            "transform": "scale(1.03)",
+            "offset": 0.6
+          },
+          {
+            "transform": "scale(1)"
+          }
+        ]
+      },
+      {
+        "target": ".sheen",
+        "keyframes": [
+          {
+            "transform": "translateX(-120%) skewX(-20deg)"
+          },
+          {
+            "transform": "translateX(420%) skewX(-20deg)"
+          }
+        ],
+        "delayMs": 150,
+        "durationToken": "countUp",
+        "easingToken": "enter"
+      },
+      {
+        "target": ".stamp",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "scale(1.4) rotate(-8deg)"
+          },
+          {
+            "opacity": 1,
+            "transform": "scale(1) rotate(-8deg)"
+          }
+        ],
+        "delayMs": 350
+      },
+      {
+        "type": "count",
+        "target": ".d-coinchip b",
+        "from": 250,
+        "to": 170,
+        "delayMs": 150,
+        "durationToken": "countUp",
+        "easingToken": "enter"
+      }
+    ]
+  },
+  {
+    "id": "theme-apply",
+    "tier": 2,
+    "kind": "transition",
+    "screens": [
+      "S24",
+      "S40"
+    ],
+    "trigger": "confirmed:equip",
+    "durationToken": "transition",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "theme",
+    "reducedMotion": "Giao diện đổi sang màu chủ đề mới ngay.",
+    "tracks": [
+      {
+        "target": ".new",
+        "keyframes": [
+          {
+            "opacity": 0
+          },
+          {
+            "opacity": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "nudge-sent",
+    "tier": 1,
+    "kind": "feedback",
+    "screens": [
+      "S27",
+      "S29"
+    ],
+    "trigger": "confirmed:nudge-sent",
+    "durationToken": "countUp",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "plane",
+    "reducedMotion": "Nút đổi thành “Đã gửi lời nhắc”; không có pháo giấy hay bay lượn.",
+    "tracks": [
+      {
+        "target": ".plane",
+        "keyframes": [
+          {
+            "opacity": 1,
+            "transform": "translate(0px,0px) rotate(0deg)"
+          },
+          {
+            "opacity": 0,
+            "transform": "translate(70px,-60px) rotate(-12deg)"
+          }
+        ]
+      },
+      {
+        "target": ".sent",
+        "keyframes": [
+          {
+            "opacity": 0
+          },
+          {
+            "opacity": 1
+          }
+        ],
+        "delayMs": 200,
+        "durationToken": "feedback"
+      }
+    ]
+  },
+  {
+    "id": "rank-roll",
+    "tier": 2,
+    "kind": "feedback",
+    "screens": [
+      "S28"
+    ],
+    "trigger": "state:leaderboard-refreshed",
+    "durationToken": "countUp",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "rank",
+    "reducedMotion": "Tỉ lệ mới hiện ngay; hàng không đổi chỗ khi đang được chạm.",
+    "tracks": [
+      {
+        "type": "count",
+        "target": ".pct",
+        "from": 75,
+        "to": 79
+      }
+    ]
+  },
+  {
+    "id": "unread-dot",
+    "tier": 2,
+    "kind": "micro",
+    "screens": [
+      "S09",
+      "S30"
+    ],
+    "trigger": "state:unread-arrived",
+    "durationToken": "feedback",
+    "easingToken": "pop",
+    "loop": false,
+    "demo": "bell",
+    "reducedMotion": "Chấm chưa đọc hiện ngay; nhãn trợ năng “Có thư mới”.",
+    "tracks": [
+      {
+        "target": ".dot",
+        "keyframes": [
+          {
+            "transform": "scale(0)"
+          },
+          {
+            "transform": "scale(1)"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "journal-saved",
+    "tier": 1,
+    "kind": "feedback",
+    "screens": [
+      "S32",
+      "S33"
+    ],
+    "trigger": "confirmed:journal-saved",
+    "durationToken": "transition",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "page",
+    "reducedMotion": "Chữ “Đã lưu” hiện ngay; nội dung vừa viết vẫn giữ nguyên.",
+    "tracks": [
+      {
+        "target": ".sheet",
+        "keyframes": [
+          {
+            "opacity": 1,
+            "transform": "scale(1) rotate(0deg)"
+          },
+          {
+            "opacity": 0.6,
+            "transform": "scale(0.7) rotate(-6deg)"
+          }
+        ]
+      },
+      {
+        "target": ".leaf",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "translate(0px,0px) rotate(0deg)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translate(30px,-30px) rotate(40deg)",
+            "offset": 0.5
+          },
+          {
+            "opacity": 0,
+            "transform": "translate(60px,-10px) rotate(80deg)"
+          }
+        ],
+        "delayMs": 200,
+        "durationToken": "countUp"
+      },
+      {
+        "target": ".saved",
+        "keyframes": [
+          {
+            "opacity": 0
+          },
+          {
+            "opacity": 1
+          }
+        ],
+        "delayMs": 320
+      }
+    ]
+  },
+  {
+    "id": "quote-reveal",
+    "tier": 2,
+    "kind": "transition",
+    "screens": [
+      "S33"
+    ],
+    "trigger": "enter:screen",
+    "durationToken": "transition",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "quote",
+    "reducedMotion": "Câu trích dẫn hiện đầy đủ ngay.",
+    "tracks": [
+      {
+        "target": "span",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "translateY(8px)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translateY(0px)"
+          }
+        ],
+        "staggerMs": 120
+      }
+    ]
+  },
+  {
+    "id": "ticket-granted",
+    "tier": 1,
+    "kind": "reward",
+    "screens": [
+      "S77"
+    ],
+    "trigger": "confirmed:ticket-granted",
+    "durationToken": "celebration",
+    "easingToken": "pop",
+    "loop": false,
+    "demo": "ticket",
+    "reducedMotion": "Thẻ vé và nhãn “+1 vé” hiện tĩnh.",
+    "tracks": [
+      {
+        "target": ".d-ticket",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "translateX(60px) rotate(6deg)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translateX(0px) rotate(0deg)"
+          }
+        ]
+      },
+      {
+        "target": "b",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "scale(1.4)"
+          },
+          {
+            "opacity": 1,
+            "transform": "scale(1)"
+          }
+        ],
+        "delayMs": 250
+      }
+    ]
+  },
+  {
+    "id": "ticket-freeze",
+    "tier": 1,
+    "kind": "feedback",
+    "screens": [
+      "S21",
+      "S34"
+    ],
+    "trigger": "confirmed:ticket-used",
+    "durationToken": "countUp",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "week",
+    "reducedMotion": "Ngày được giữ hiện bông tuyết và chữ “Đã dùng vé”.",
+    "tracks": [
+      {
+        "target": ".frost",
+        "keyframes": [
+          {
+            "backgroundColor": "#FFFFFF",
+            "borderColor": "#DCE3EE"
+          },
+          {
+            "backgroundColor": "#E3F6F9",
+            "borderColor": "#0E7490"
+          }
+        ]
+      },
+      {
+        "target": ".ice",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "scale(0) rotate(-45deg)"
+          },
+          {
+            "opacity": 1,
+            "transform": "scale(1) rotate(0deg)"
+          }
+        ],
+        "delayMs": 150,
+        "easingToken": "pop",
+        "durationToken": "celebration"
+      }
+    ]
+  },
+  {
+    "id": "level-up",
+    "tier": 1,
+    "kind": "celebration",
+    "screens": [
+      "S65"
+    ],
+    "trigger": "confirmed:level-up",
+    "durationToken": "celebrationLong",
+    "easingToken": "pop",
+    "loop": false,
+    "demo": "level",
+    "value": 5,
+    "label": "Người kiên trì",
+    "reducedMotion": "Thẻ “Cấp 5 · Người kiên trì” hiện tĩnh, không tia sáng hay hạt.",
+    "tracks": [
+      {
+        "target": ".rays",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "rotate(0deg) scale(0.6)"
+          },
+          {
+            "opacity": 1,
+            "transform": "rotate(90deg) scale(1)",
+            "offset": 0.4
+          },
+          {
+            "opacity": 0,
+            "transform": "rotate(180deg) scale(1)"
+          }
+        ],
+        "easingToken": "enter"
+      },
+      {
+        "target": ".badge",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "scale(0.6)"
+          },
+          {
+            "opacity": 1,
+            "transform": "scale(1.06)",
+            "offset": 0.6
+          },
+          {
+            "opacity": 1,
+            "transform": "scale(1)"
+          }
+        ],
+        "durationToken": "celebration"
+      },
+      {
+        "type": "count",
+        "target": ".badge",
+        "from": 4,
+        "to": 5,
+        "delayMs": 200,
+        "durationToken": "celebration"
+      },
+      {
+        "target": "b",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "translateY(8px)"
+          },
+          {
+            "opacity": 1,
+            "transform": "translateY(0px)"
+          }
+        ],
+        "delayMs": 450,
+        "durationToken": "transition",
+        "easingToken": "enter"
+      },
+      {
+        "type": "particles",
+        "count": 24,
+        "distance": 100,
+        "delayMs": 150,
+        "durationToken": "celebrationLong"
+      }
+    ]
+  },
+  {
+    "id": "streak-milestone",
+    "tier": 1,
+    "kind": "celebration",
+    "screens": [
+      "S66"
+    ],
+    "trigger": "confirmed:streak-milestone",
+    "durationToken": "celebrationLong",
+    "easingToken": "pop",
+    "loop": false,
+    "demo": "milestone",
+    "value": 7,
+    "reducedMotion": "Huy hiệu “7 ngày giữ nhịp” hiện tĩnh.",
+    "tracks": [
+      {
+        "target": ".d-flame",
+        "keyframes": [
+          {
+            "opacity": 1,
+            "transform": "scale(1)"
+          },
+          {
+            "opacity": 1,
+            "transform": "scale(1.3)",
+            "offset": 0.3
+          },
+          {
+            "opacity": 0,
+            "transform": "scale(0.4)"
+          }
+        ],
+        "durationToken": "transition",
+        "easingToken": "enter"
+      },
+      {
+        "target": ".badge",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "scale(0.6)"
+          },
+          {
+            "opacity": 1,
+            "transform": "scale(1.06)",
+            "offset": 0.7
+          },
+          {
+            "opacity": 1,
+            "transform": "scale(1)"
+          }
+        ],
+        "delayMs": 250,
+        "durationToken": "celebration"
+      },
+      {
+        "target": ".ribbon",
+        "keyframes": [
+          {
+            "transform": "scaleX(0)"
+          },
+          {
+            "transform": "scaleX(1)"
+          }
+        ],
+        "delayMs": 600,
+        "durationToken": "transition",
+        "easingToken": "enter"
+      },
+      {
+        "type": "particles",
+        "count": 20,
+        "distance": 90,
+        "delayMs": 300,
+        "durationToken": "celebrationLong",
+        "colors": [
+          "#C2410C",
+          "#D8F58A",
+          "#B45309"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mam-evolve",
+    "tier": 1,
+    "kind": "celebration",
+    "screens": [
+      "S69"
+    ],
+    "trigger": "confirmed:stage-up",
+    "durationToken": "celebrationLong",
+    "easingToken": "pop",
+    "loop": false,
+    "demo": "evolve",
+    "fromStage": "hatchling",
+    "stage": "juvenile",
+    "reducedMotion": "Hiện ngay Mầm ở giai đoạn mới cùng tên “Chồi non”.",
+    "tracks": [
+      {
+        "target": ".glow",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "scale(0.4)"
+          },
+          {
+            "opacity": 0.9,
+            "transform": "scale(1.2)",
+            "offset": 0.5
+          },
+          {
+            "opacity": 0,
+            "transform": "scale(1.4)"
+          }
+        ],
+        "easingToken": "enter"
+      },
+      {
+        "target": ".from",
+        "keyframes": [
+          {
+            "opacity": 1,
+            "transform": "scale(1)"
+          },
+          {
+            "opacity": 1,
+            "transform": "scale(1.06)",
+            "offset": 0.4
+          },
+          {
+            "opacity": 0,
+            "transform": "scale(0.96)"
+          }
+        ],
+        "durationToken": "celebration"
+      },
+      {
+        "target": ".to",
+        "keyframes": [
+          {
+            "opacity": 0,
+            "transform": "scale(0.96)"
+          },
+          {
+            "opacity": 1,
+            "transform": "scale(1.06)",
+            "offset": 0.6
+          },
+          {
+            "opacity": 1,
+            "transform": "scale(1)"
+          }
+        ],
+        "delayMs": 350,
+        "durationToken": "celebration"
+      },
+      {
+        "type": "particles",
+        "count": 24,
+        "distance": 100,
+        "delayMs": 400,
+        "durationToken": "celebrationLong"
+      }
+    ]
+  },
+  {
+    "id": "stage-path",
+    "tier": 2,
+    "kind": "transition",
+    "screens": [
+      "S68"
+    ],
+    "trigger": "enter:screen",
+    "durationToken": "transition",
+    "easingToken": "enter",
+    "loop": false,
+    "demo": "path",
+    "reducedMotion": "Đường giai đoạn vẽ sẵn tới giai đoạn hiện tại.",
+    "tracks": [
+      {
+        "target": ".fill",
+        "keyframes": [
+          {
+            "transform": "scaleX(0)"
+          },
+          {
+            "transform": "scaleX(0.25)"
+          }
+        ]
+      },
+      {
+        "target": ".cur",
+        "keyframes": [
+          {
+            "transform": "scale(1)"
+          },
+          {
+            "transform": "scale(1.25)"
+          },
+          {
+            "transform": "scale(1)"
+          }
+        ],
+        "delayMs": 320,
+        "durationToken": "celebration",
+        "easingToken": "pop"
+      }
+    ]
+  }
+]
