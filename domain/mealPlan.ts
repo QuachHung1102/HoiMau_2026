@@ -64,21 +64,24 @@ export function rankMeals(
       !meal.tags.some(tag => opts.excludedTags.includes(tag)),
   );
   const kcalGap = (meal: MealCandidate) => Math.abs(meal.kcal - target.kcal);
+  // Slot targets are fractional floats, so sort keys are compared at 9 decimals: exact ties
+  // stay ties and `id` decides them, not the last bit.
+  const key = (value: number) => Math.round(value * 1e9);
+  const distance = (meal: MealCandidate) => key(macroDistance(meal, target));
   const byId = (a: MealCandidate, b: MealCandidate) =>
     a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   for (const tolerance of TOLERANCES) {
+    // + 1e-9: a meal exactly on the edge is inside (F-04); kcal values have at most one decimal,
+    // so nothing really outside comes that close to an edge.
     const inside = pool.filter(
-      meal => kcalGap(meal) <= tolerance * target.kcal,
+      meal => kcalGap(meal) <= tolerance * target.kcal + 1e-9,
     );
     if (inside.length > 0) {
-      inside.sort(
-        (a, b) =>
-          macroDistance(a, target) - macroDistance(b, target) || byId(a, b),
-      );
+      inside.sort((a, b) => distance(a) - distance(b) || byId(a, b));
       return { ranked: inside, tolerance, macroWarning: false };
     }
   }
-  pool.sort((a, b) => kcalGap(a) - kcalGap(b) || byId(a, b));
+  pool.sort((a, b) => key(kcalGap(a)) - key(kcalGap(b)) || byId(a, b));
   return { ranked: pool, tolerance: null, macroWarning: true };
 }
 

@@ -211,6 +211,53 @@ test('rankMeals: the result does not depend on the input order', () => {
   );
 });
 
+// Real slot targets are fractional floats (1400 × 0.35 = 489.99999999999994), so the three cases
+// below are decided by the last bit unless rankMeals absorbs that noise. Exact values (integer
+// arithmetic) are in the fix-round scan.
+const only = (meals: MealCandidate[], dayKcal: number) => {
+  const target = slotTarget(
+    { kcal: dayKcal, proteinG: 140, carbsG: 387, fatG: 78 },
+    'LUNCH',
+  );
+  const result = rankMeals(meals, target, 'LUNCH', {
+    excludeIds: [],
+    excludedTags: [],
+  });
+  return { ...result, ranked: result.ranked.map(m => m.id) };
+};
+
+test('rankMeals: a meal exactly on a tolerance edge of a fractional target is inside', () => {
+  // 637 = 1400 × 0.35 × 1.30 exactly; in floats the gap is 147.00000000000006 against 146.99999999999997
+  assert.deepEqual(only([meal('edge', 'LUNCH', 637, 40, 60, 20)], 1400), {
+    ranked: ['edge'],
+    tolerance: 0.3,
+    macroWarning: false,
+  });
+});
+
+test('rankMeals: equal exact distances are tied by id, not by float noise', () => {
+  // fat 29.3 and 25.3 mirror the 27.3 target; the float distances are …186 and …166
+  const mirrored = [
+    meal('A', 'LUNCH', 984, 46, 132.5, 29.3),
+    meal('B', 'LUNCH', 984, 46, 132.5, 25.3),
+  ];
+  assert.deepEqual(only(mirrored, 2811).ranked, ['A', 'B']);
+  assert.deepEqual(only(mirrored.reverse(), 2811).ranked, ['A', 'B']);
+});
+
+test('rankMeals: equal exact kcal gaps in the fallback are tied by id, not by float noise', () => {
+  // both 355 kcal from the 455 target; the float gaps are 355.00000000000006 and 354.99999999999994
+  const far = [
+    meal('A', 'LUNCH', 810, 35, 52.5, 14),
+    meal('B', 'LUNCH', 100, 35, 52.5, 14),
+  ];
+  assert.deepEqual(only(far, 1300), {
+    ranked: ['A', 'B'],
+    tolerance: null,
+    macroWarning: true,
+  });
+});
+
 test('rankMeals: empty input → empty result', () => {
   assert.deepEqual(rank('LUNCH', [], [], []), {
     ranked: [],
