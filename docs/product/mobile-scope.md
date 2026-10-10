@@ -1,4 +1,4 @@
-# Phạm vi mobile và quyết định cần chốt
+# Phạm vi mobile và sổ quyết định
 
 ## Cơ sở lập kế hoạch
 
@@ -12,7 +12,7 @@ Giữ các nhóm tính năng trong đặc tả. Bản nội bộ đầu tiên t�
 |---|---|---|
 | Next.js client, CSS | React Native và StyleSheet hiện có | Chạy trên nền tảng được cam kết |
 | IndexedDB | Kho bền vững tương thích React Native, chọn khi xây offline | Không mất thao tác khi restart |
-| Web Push/VAPID | Push native và hộp thư trong app | Từ chối quyền vẫn có thông báo trong app |
+| Web Push/VAPID | Chỉ hộp thư trong app, không push từ xa (D-03) | Từ chối quyền vẫn có thông báo trong app |
 | Tab visibility | Vòng đời foreground/background | Hẹn giờ không tăng sai khi quay lại |
 | Wake Lock, Escape, ARIA | Giữ màn hình nếu hỗ trợ, Back/Thoát và accessibility native | Thoát có xác nhận, trình đọc màn hình dùng được |
 | prefers-reduced-motion | Tùy chọn giảm chuyển động của hệ điều hành | Tắt hiệu ứng không mất nội dung |
