@@ -151,11 +151,29 @@ test('calorieWindow is the rounded ±10 % band', () => {
   assert.deepEqual(calorieWindow(1200), { min: 1080, max: 1320, target: 1200 });
 });
 
-test('isCaloriesInRange: within 10 % of the target, both ends included', () => {
+test('isCaloriesInRange: inside the calorieWindow band, both ends included', () => {
   assert.equal(isCaloriesInRange(1800, 2000), true);
   assert.equal(isCaloriesInRange(2200, 2000), true);
   assert.equal(isCaloriesInRange(2000, 2000), true);
   assert.equal(isCaloriesInRange(1799, 2000), false);
   assert.equal(isCaloriesInRange(2201, 2000), false);
   assert.equal(isCaloriesInRange(0, 2000), false);
+});
+
+test('isCaloriesInRange uses the rounded band, not the exact 10 % (target 1235)', () => {
+  // band 1112–1359; the exact 10 % would stop at 1358.5
+  assert.equal(isCaloriesInRange(1359, 1235), true);
+  assert.equal(isCaloriesInRange(1360, 1235), false);
+  assert.equal(isCaloriesInRange(1112, 1235), true);
+  assert.equal(isCaloriesInRange(1111, 1235), false);
+});
+
+test('isCaloriesInRange never disagrees with calorieWindow (targets 1200–4000)', () => {
+  for (let target = 1200; target <= 4000; target += 1) {
+    const { min, max } = calorieWindow(target);
+    assert.equal(isCaloriesInRange(min, target), true, `min of ${target}`);
+    assert.equal(isCaloriesInRange(max, target), true, `max of ${target}`);
+    assert.equal(isCaloriesInRange(min - 1, target), false, `below ${target}`);
+    assert.equal(isCaloriesInRange(max + 1, target), false, `above ${target}`);
+  }
 });

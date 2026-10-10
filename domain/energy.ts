@@ -108,10 +108,11 @@ export function calorieWindow(calorieTarget: number): {
   };
 }
 
-/** |caloriesIn − calorieTarget| ≤ 10 % of the target; ×10 keeps integer inputs exact. */
+/** Inside the calorieWindow band, ends included: one source for the shown band and the quest latch. */
 export function isCaloriesInRange(
   caloriesIn: number,
   calorieTarget: number,
 ): boolean {
-  return Math.abs(caloriesIn - calorieTarget) * 10 <= calorieTarget;
+  const { min, max } = calorieWindow(calorieTarget);
+  return caloriesIn >= min && caloriesIn <= max;
 }
