@@ -1,0 +1,6 @@
+server/.pgdata*
+server/node_modules
+android
+ios
+design
+coverage
