@@ -89,3 +89,9 @@ yarn-error.log
 /.claude/
 /.cursor/
 /.codex/
+
+# Backend local state (server/)
+server/.pgdata/
+server/.pgdata-dev/
+server/.outbox/
+server/.env

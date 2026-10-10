@@ -2,7 +2,7 @@
 
 ## Môi trường
 
-`package.json` yêu cầu Node `>= 22.11.0`. Dùng npm với `package-lock.json`; `npm ci` cài theo lockfile. Phiên bản React/React Native lấy từ `package.json`; không nâng cấp trong thay đổi thư mục.
+`package.json` yêu cầu Node `>= 24.8` (backend chạy TypeScript trực tiếp bằng Node). Dùng npm với `package-lock.json`; `npm ci` cài theo lockfile. Phiên bản React/React Native lấy từ `package.json`; không nâng cấp trong thay đổi thư mục.
 
 Android cần JDK, Android SDK và emulator hoặc thiết bị. Phiên bản SDK/NDK/Kotlin ở `android/build.gradle`; Gradle wrapper ở `android/gradle/wrapper/gradle-wrapper.properties`. Kiểm tra môi trường theo cấu hình thực tế trước build.
 
@@ -21,6 +21,48 @@ sdkmanager "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.1.12297006" "cm
 - Chạy emulator: `& "$env:LOCALAPPDATA\Android\Sdk\emulator\emulator.exe" -avd Medium_Phone_API_36.1`.
 
 iOS cần macOS với Xcode, Ruby/Bundler và CocoaPods. Môi trường Windows không kiểm chứng được build iOS.
+
+## Ba code base
+
+Repo có ba code base dùng chung một cây thư mục; mỗi code base có công cụ kiểm tra riêng.
+
+| Thư mục | Nội dung | Công cụ kiểm tra |
+|---|---|---|
+| `src/` | App React Native | Jest (`npm test`), `tsc` gốc, ESLint |
+| `domain/` | Logic thuần TypeScript dùng chung cho app và server (không phụ thuộc gói ngoài) | `node --test` (`npm run domain:test`, ngưỡng phủ 90 %), `tsc` gốc, ESLint |
+| `server/` | Backend Node 24 + PostgreSQL (có `package.json` riêng) | `node --test` (`npm run server:test`), `tsc` riêng của server, ESLint |
+
+Jest bỏ qua `server/`, `domain/`, `tools/`, `design/`, `android/`, `ios/`; `tsc` gốc bỏ qua `server/`, `tools/`, `design/` và các tệp `domain/**/*.test.ts`. `npm run lint` kiểm tra `src/`, `domain/`, `server/`, `__tests__/`, `tools/`.
+
+Lệnh gốc của repo:
+
+```sh
+npm run domain:test          # test và ngưỡng phủ của domain/
+npm run domain:bundle-check  # bundle domain/ bằng Metro (cần scripts/domain-bundle-entry.js)
+npm run server:install       # cài dependency của server/ (npm ci)
+npm run server:typecheck     # tsc của server/
+npm run server:test          # test của server/ trên PostgreSQL thật
+npm run server:dev           # chạy API dev (cổng 8787) trên cơ sở dữ liệu dev
+npm run server:perf          # kiểm tra hiệu năng
+npm run db:verify            # cổng 1: kiểm lược đồ SQL
+npm run db:api-check         # cổng 2: tấn công qua API bằng vai trò app thật
+npm run db:mutation-check    # cổng 3: kiểm chứng bằng đột biến
+npm run db:cleanup           # dọn tiến trình PostgreSQL mồ côi của dự án
+npm run content:count        # đếm nội dung seed
+```
+
+Các lệnh `server:*`, `db:*`, `content:count` và `domain:*` chỉ chạy được khi `server/`, `domain/` và `scripts/domain-bundle-entry.js` đã có trong repo.
+
+### PostgreSQL và cổng mạng
+
+- **Không bao giờ kết nối dịch vụ PostgreSQL hệ thống / cổng 5432.** Máy phát triển có dịch vụ `postgresql-x64-18` riêng; dự án không có thông tin đăng nhập của nó và không được dừng, cấu hình lại hay chạm vào nó.
+- Cơ sở dữ liệu dự án là PostgreSQL thật chạy qua gói `embedded-postgres`: cổng **54329** cho test, cổng **54330** cho dev. API dev dùng cổng 8787.
+- Thư mục dữ liệu (`server/.pgdata/`, `server/.pgdata-dev/`) phải có đường dẫn chỉ gồm ký tự ASCII và đã được Git bỏ qua, cùng `server/.outbox/` và `server/.env`.
+- Nếu một lần chạy bị buộc dừng, tiến trình PostgreSQL có thể bị bỏ lại và lần khởi động sau lỗi: chạy `npm run db:cleanup`.
+
+### Không có thiết bị Android
+
+Máy phát triển không có thiết bị thật và emulator không chạy được (chưa bật ảo hóa phần cứng trong BIOS). Vì vậy giao diện được kiểm bằng Jest (render và tương tác), `tsc`, ESLint và ảnh chụp từ bộ xem trước trình duyệt; build native (`gradlew.bat assembleDebug`) và bundle Metro chỉ chạy ở các mốc kiểm tra. Không tuyên bố hành vi trên thiết bị khi chưa chạy trên thiết bị; các mục cần kiểm tra trên máy thật được gom thành một danh sách để chạy khi có thiết bị.
 
 ## Cài đặt và chạy
 

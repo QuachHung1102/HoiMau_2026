@@ -7,13 +7,24 @@
     "ios": "react-native run-ios",
     "preview": "vite --config tools/preview/vite.config.mjs",
     "preview:shot": "node tools/preview/shot.mjs",
-    "lint": "eslint .",
+    "lint": "eslint --no-error-on-unmatched-pattern src domain server __tests__ tools",
     "start": "react-native start",
-    "test": "jest"
+    "test": "jest",
+    "domain:test": "node --test --experimental-test-coverage --test-coverage-include=domain/**/*.ts --test-coverage-exclude=domain/**/*.test.ts --test-coverage-exclude=domain/contract/** --test-coverage-lines=90 --test-coverage-branches=90 --test-coverage-functions=90 \"domain/**/*.test.ts\"",
+    "domain:bundle-check": "react-native bundle --platform android --dev false --entry-file scripts/domain-bundle-entry.js --bundle-output node_modules/.cache/hoi-mau/domain.bundle",
+    "server:install": "npm --prefix server ci",
+    "server:typecheck": "npm --prefix server run typecheck",
+    "server:test": "npm --prefix server test",
+    "server:dev": "npm --prefix server run dev",
+    "server:perf": "npm --prefix server run perf",
+    "db:verify": "npm --prefix server run db:verify",
+    "db:api-check": "npm --prefix server run db:api-check",
+    "db:mutation-check": "npm --prefix server run db:mutation-check",
+    "db:cleanup": "npm --prefix server run db:cleanup",
+    "content:count": "npm --prefix server run content:count"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "3.1.1",
-    "@react-native/new-app-screen": "0.87.1",
     "@react-navigation/bottom-tabs": "7.20.0",
     "@react-navigation/native": "7.5.0",
     "@react-navigation/native-stack": "7.20.0",
@@ -38,6 +49,7 @@
     "@react-native/jest-preset": "0.87.1",
     "@react-native/metro-config": "0.87.1",
     "@react-native/typescript-config": "0.87.1",
+    "@testing-library/react-native": "13.3.3",
     "@types/jest": "^29.5.13",
     "@types/react": "^19.2.0",
     "@types/react-dom": "19.2.3",
@@ -53,6 +65,6 @@
     "vite": "8.3.4"
   },
   "engines": {
-    "node": ">= 22.11.0"
+    "node": ">= 24.8"
   }
 }
