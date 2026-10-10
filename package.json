@@ -5,6 +5,8 @@
   "scripts": {
     "android": "react-native run-android",
     "ios": "react-native run-ios",
+    "preview": "vite --config tools/preview/vite.config.mjs",
+    "preview:shot": "node tools/preview/shot.mjs",
     "lint": "eslint .",
     "start": "react-native start",
     "test": "jest"
@@ -38,12 +40,17 @@
     "@react-native/typescript-config": "0.87.1",
     "@types/jest": "^29.5.13",
     "@types/react": "^19.2.0",
+    "@types/react-dom": "19.2.3",
     "@types/react-test-renderer": "^19.1.0",
     "eslint": "^8.19.0",
     "jest": "^29.6.3",
+    "playwright-core": "1.64.0",
     "prettier": "2.8.8",
+    "react-dom": "19.2.3",
+    "react-native-web": "0.21.4",
     "react-test-renderer": "19.2.3",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vite": "8.3.4"
   },
   "engines": {
     "node": ">= 22.11.0"

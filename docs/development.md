@@ -64,6 +64,17 @@ Jest: module native cần mock trong `jest.setup.js` (AsyncStorage dùng mock ch
 
 AsyncStorage 3.x: `import AsyncStorage from '@react-native-async-storage/async-storage'` vẫn dùng `getItem`/`setItem`; có thêm `createAsyncStorage(tên)`. Build in ra cảnh báo "ksp-2.2.0-2.0.2 is too old for kotlin-2.2.10" từ AsyncStorage; build vẫn thành công.
 
+## Xem trước màn hình trên trình duyệt (chỉ để dev)
+
+Máy không có emulator, nên có harness render component React Native trong Chromium bằng `react-native-web` (Vite) để xem layout, nội dung, state. Đây là công cụ QA cục bộ: không vào bundle app, không import từ `src/`. Không chứng minh hành vi native: safe-area inset luôn 0, font hệ thống thay cho font bundle, `react-native-keychain` là stub trong bộ nhớ, đổ bóng/ripple/đo chữ khác Android.
+
+```sh
+npm run preview                           # dev server; mở ?screen=<tên>, thiếu tên thì liệt kê các màn hình
+npm run preview:shot -- <tên> [out.png]   # PNG 390x844 @2x, mặc định .superpowers/preview/<tên>.png
+```
+
+Thêm màn hình: một dòng trong `tools/preview/registry.tsx` (`'tên': () => <Component />`, bọc provider và fixture trong hàm đó). Ảnh chụp dùng Chromium trong cache Playwright (`%LOCALAPPDATA%\ms-playwright`), hoặc `PREVIEW_BROWSER=<đường dẫn exe>`, hoặc Chrome/Edge cài sẵn. Typecheck riêng cho harness: `npx tsc -p tools/preview`.
+
 ## Quy ước
 
 - Đọc [phạm vi](product/mobile-scope.md) và [kiến trúc](architecture.md) trước khi thêm feature.
