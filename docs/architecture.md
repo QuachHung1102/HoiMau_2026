@@ -2,7 +2,13 @@
 
 ## Hiện trạng
 
-`index.js` đăng ký component từ `src/app/App.tsx`; component vẫn hiển thị màn hình mẫu. `__tests__/App.test.tsx` kiểm tra render. Chưa có router, API client, lưu trữ bền vững hoặc backend trong repo.
+`index.js` đăng ký component từ `src/app/App.tsx`; component vẫn hiển thị màn hình mẫu và chưa có router, API client hay lưu trữ bền vững. Đã có: logic nghiệp vụ thuần trong `domain/` (chạy bằng Node và Jest), bộ nền giao diện trong `src/shared/` (token, font, chuyển động, thành phần cơ bản) và bản xem trước trên trình duyệt `tools/preview/` (react-native-web, chỉ để kiểm tra bố cục). Bảng dưới liệt kê từng phần đã triển khai và cách kiểm chứng.
+
+## Trạng thái triển khai
+
+| Khu vực | Màn hình / thành phần | Task | Kiểm chứng |
+| --- | --- | --- | --- |
+| Giao diện nền | Token màu/chữ/khoảng cách, ba bảng màu, font Be Vietnam Pro và Inter, token chuyển động, `useReducedMotion`, `AppText`, `Screen`, `Touchable`, `Button`, `Icon`, `Card`, `ListRow` | 10 | Jest (có test chống lệch `DESIGN.md` và `design/motion/tokens.json`), `tsc`, ảnh chụp `kit-primitives` và `kit-primitives-forest` trong bản xem trước; chưa chạy trên thiết bị |
 
 ## Cấu trúc phát triển
 
