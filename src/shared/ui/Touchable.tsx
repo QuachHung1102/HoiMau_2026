@@ -1,0 +1,76 @@
+import { useRef, useState, type ReactNode } from 'react';
+import {
+  Animated,
+  Pressable,
+  type AccessibilityRole,
+  type GestureResponderEvent,
+  type LayoutChangeEvent,
+  type PressableProps,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
+import { motion } from '../motion/motion';
+import { useReducedMotion } from '../motion/useReducedMotion';
+import { sizes } from '../theme/tokens';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+type Props = Omit<PressableProps, 'style' | 'children' | 'accessibilityRole' | 'role'> & {
+  accessibilityRole: AccessibilityRole;
+  style?: StyleProp<ViewStyle>;
+  children?: ReactNode;
+};
+
+/** The only press primitive: enforced role, 48 dp hit area, press feedback. */
+export function Touchable({
+  accessibilityRole,
+  accessibilityState,
+  disabled,
+  onPress,
+  onPressIn,
+  onPressOut,
+  onLayout,
+  style,
+  children,
+  ...rest
+}: Props) {
+  const reduced = useReducedMotion();
+  const scale = useRef(new Animated.Value(motion.scale.rest)).current;
+  const [box, setBox] = useState<{ width: number; height: number }>({ width: sizes.minTouch, height: sizes.minTouch });
+
+  const animateTo = (toValue: number) => {
+    if (reduced) return;
+    // motion: press-scale
+    Animated.timing(scale, { toValue, duration: motion.durationsMs.press, useNativeDriver: true }).start();
+  };
+  const handleLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setBox(prev => (prev.width === width && prev.height === height ? prev : { width, height }));
+    onLayout?.(e);
+  };
+  const vertical = Math.max(0, (sizes.minTouch - box.height) / 2);
+  const horizontal = Math.max(0, (sizes.minTouch - box.width) / 2);
+
+  return (
+    <AnimatedPressable
+      {...rest}
+      accessibilityRole={accessibilityRole}
+      accessibilityState={{ ...accessibilityState, disabled: disabled ?? accessibilityState?.disabled }}
+      disabled={disabled}
+      hitSlop={{ top: vertical, bottom: vertical, left: horizontal, right: horizontal }}
+      onLayout={handleLayout}
+      onPress={disabled ? undefined : (onPress as ((e: GestureResponderEvent) => void) | undefined)}
+      onPressIn={e => {
+        animateTo(motion.scale.pressed);
+        onPressIn?.(e);
+      }}
+      onPressOut={e => {
+        animateTo(motion.scale.rest);
+        onPressOut?.(e);
+      }}
+      style={[style, { transform: [{ scale }] }]}
+    >
+      {children}
+    </AnimatedPressable>
+  );
+}

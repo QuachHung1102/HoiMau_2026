@@ -1,6 +1,6 @@
 {
   "extends": "../../tsconfig.json",
-  "compilerOptions": { "lib": ["es2022", "dom"], "noEmit": true },
-  "include": ["./*.ts", "./*.tsx", "./stubs", "../../src"],
+  "compilerOptions": { "lib": ["es2022", "dom"], "types": ["jest", "vite/client"], "noEmit": true },
+  "include": ["./*.ts", "./*.tsx", "./entries", "./stubs", "../../src"],
   "exclude": ["**/node_modules"]
 }

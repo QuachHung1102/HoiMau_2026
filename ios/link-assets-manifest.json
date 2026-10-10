@@ -1,0 +1,33 @@
+{
+  "migIndex": 1,
+  "data": [
+    {
+      "path": "src/assets/fonts/BeVietnamPro_700Bold.ttf",
+      "sha1": "c5a49e284168c75857a138a3cc127c3138f168ee"
+    },
+    {
+      "path": "src/assets/fonts/Inter_400Regular.ttf",
+      "sha1": "7a3fa76705ad586f6410a1b5b0059dd17db20c26"
+    },
+    {
+      "path": "src/assets/fonts/Inter_500Medium.ttf",
+      "sha1": "a961cb10310cf86b23bfbe21a637614d1046d795"
+    },
+    {
+      "path": "src/assets/fonts/Inter_600SemiBold.ttf",
+      "sha1": "863e1483cb0cad642b80fc840072596afd5ff144"
+    },
+    {
+      "path": "src/assets/fonts/Inter_700Bold.ttf",
+      "sha1": "5a912e0600350ef7bb9c7c2e6c585815bb30ca16"
+    },
+    {
+      "path": "src/assets/fonts/OFL-BeVietnamPro.txt",
+      "sha1": "3b1504b50f4fd2cf0cf5048cac19a92209cfc714"
+    },
+    {
+      "path": "src/assets/fonts/OFL-Inter.txt",
+      "sha1": "cdd01b7e68db81d663f1c3820b6f7c40028900dd"
+    }
+  ]
+}
