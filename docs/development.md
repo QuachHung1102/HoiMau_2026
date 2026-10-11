@@ -89,7 +89,20 @@ cd ..
 npm run ios
 ```
 
-Sửa `src/app/App.tsx` để thay đổi màn hình hiện tại. Khi thêm dependency native, đọc yêu cầu cài đặt của dependency và build lại app.
+Thêm màn hình bằng cách đăng ký trong `src/app/screens.tsx` (xem [kiến trúc](architecture.md#vỏ-ứng-dụng)). Khi thêm dependency native, đọc yêu cầu cài đặt của dependency và build lại app.
+
+### Chạy app với API dev
+
+App chỉ có một địa chỉ API: `API_BASE_URL = 'http://localhost:8787/api/v1'` trong `src/shared/api/config.ts`. Trên thiết bị hoặc emulator Android, `localhost` là chính thiết bị đó, nên phải chuyển cổng về máy phát triển:
+
+```sh
+npm run server:dev                # terminal 1: PostgreSQL dev (cổng 54330) và API ở cổng 8787
+adb reverse tcp:8787 tcp:8787     # làm lại sau mỗi lần cắm lại thiết bị hoặc khởi động lại emulator
+npm start                         # terminal 2: Metro
+npm run android                   # terminal 3
+```
+
+Nếu `adb` chưa có trong PATH, dùng `adb.exe` trong thư mục `platform-tools` của Android SDK. Nếu app báo "Không kết nối được mạng" ngay khi mở, kiểm tra `adb reverse --list` và mở `http://localhost:8787/api/v1/healthz` trên máy phát triển. Quy trình này chưa được chạy trên máy hiện tại vì không có thiết bị (xem mục "Không có thiết bị Android").
 
 ## Kiểm tra thay đổi
 
@@ -108,14 +121,30 @@ AsyncStorage 3.x: `import AsyncStorage from '@react-native-async-storage/async-s
 
 ## Xem trước màn hình trên trình duyệt (chỉ để dev)
 
-Máy không có emulator, nên có harness render component React Native trong Chromium bằng `react-native-web` (Vite) để xem layout, nội dung, state. Đây là công cụ QA cục bộ: không vào bundle app, không import từ `src/`. Không chứng minh hành vi native: safe-area inset luôn 0, font hệ thống thay cho font bundle, `react-native-keychain` là stub trong bộ nhớ, đổ bóng/ripple/đo chữ khác Android.
+Máy không có emulator, nên có harness render component React Native trong Chromium bằng `react-native-web` (Vite) để xem layout, nội dung, state. Đây là công cụ QA cục bộ: không vào bundle app và `src/` không import nó. Không chứng minh hành vi native: safe-area inset luôn 0, font hệ thống thay cho font bundle, `react-native-keychain` là stub trong bộ nhớ, đổ bóng/ripple/đo chữ khác Android.
 
 ```sh
 npm run preview                           # dev server; mở ?screen=<tên>, thiếu tên thì liệt kê các màn hình
 npm run preview:shot -- <tên> [out.png]   # PNG 390x844 @2x, mặc định .superpowers/preview/<tên>.png
 ```
 
-Thêm màn hình: một dòng trong `tools/preview/registry.tsx` (`'tên': () => <Component />`, bọc provider và fixture trong hàm đó). Ảnh chụp dùng Chromium trong cache Playwright (`%LOCALAPPDATA%\ms-playwright`), hoặc `PREVIEW_BROWSER=<đường dẫn exe>`, hoặc Chrome/Edge cài sẵn. Typecheck riêng cho harness: `npx tsc -p tools/preview`.
+Thêm màn hình: mỗi tính năng có một tệp `tools/preview/entries/<tính năng>.tsx` xuất `entries` (`'tên': () => withApp(...)`); `registry.tsx` tự gom các tệp đó nên không cần sửa. `withApp(node, tùy chọn)` trong `tools/preview/harness.tsx` bọc các provider của app và nhận:
+
+- `theme`, `motion`: bảng màu và chế độ chuyển động.
+- `queries`: dữ liệu mẫu nạp sẵn vào cache truy vấn.
+- `fetchStub`: trả lời thay cho mạng; không có thì mọi yêu cầu mạng đều lỗi.
+- `session`: `{ userId }` là đã đăng nhập (token giả nằm trong keychain stub), `null` hoặc bỏ trống là chưa đăng nhập.
+- `route`: `{ name, params }` mở điều hướng thật của app tại route đó (có thanh tab và cổng phiên); khi đó `node` có thể là `null`. Route chỉ hiện khi `session` và dữ liệu `['me']` nạp sẵn khớp với nhóm của nó.
+
+Tệp trong `entries/` phải import được dưới Jest: không tạo `QueryClient`, timer hay `NavigationContainer` ở cấp module. Ví dụ với các màn của vỏ ứng dụng:
+
+```sh
+npm run preview:shot -- s01-welcome   # màn Chào mừng
+npm run preview:shot -- s39-loading   # đang tải khi mở app
+npm run preview:shot -- s39-error     # lỗi tải khi mở app
+```
+
+Ảnh chụp dùng Chromium trong cache Playwright (`%LOCALAPPDATA%\ms-playwright`), hoặc `PREVIEW_BROWSER=<đường dẫn exe>`, hoặc Chrome/Edge cài sẵn. Typecheck riêng cho harness: `npx tsc -p tools/preview`.
 
 ## Quy ước
 

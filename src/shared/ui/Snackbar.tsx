@@ -170,7 +170,14 @@ export function useSnackbar(): SnackbarApi {
 const DEFAULT_DURATION_MS = 4000;
 
 /** Holds the single app-wide snackbar: `show` replaces whatever is on screen. */
-export function SnackbarProvider({ children }: { children: ReactNode }) {
+export function SnackbarProvider({
+  children,
+  bottomOffset = 0,
+}: {
+  children: ReactNode;
+  /** Extra dp to float above something that sits on the bottom edge, e.g. the tab bar while a tab root shows. */
+  bottomOffset?: number;
+}) {
   const insets = useSafeAreaInsets();
   const [current, setCurrent] = useState<(SnackbarOptions & { id: number }) | null>(null);
   const nextId = useRef(0);
@@ -184,7 +191,7 @@ export function SnackbarProvider({ children }: { children: ReactNode }) {
     <SnackbarContext.Provider value={api}>
       {children}
       {current ? (
-        <View pointerEvents="box-none" style={[styles.host, { paddingBottom: insets.bottom + 16 }]}>
+        <View pointerEvents="box-none" style={[styles.host, { paddingBottom: insets.bottom + 16 + bottomOffset }]}>
           <Snackbar key={current.id} {...current} durationMs={current.durationMs ?? DEFAULT_DURATION_MS} onDismiss={dismissThis} />
         </View>
       ) : null}
