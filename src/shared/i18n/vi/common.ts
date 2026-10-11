@@ -18,3 +18,15 @@ export const errorText = {
   SESSION_INVALID: 'Phiên đăng nhập đã hết hạn',
   INTERNAL: 'Hệ thống đang gặp sự cố. Bạn thử lại sau ít phút nhé.',
 } as const;
+
+// Form controls and feedback surfaces (Task 11).
+export const loading = 'Đang tải';
+export const loadFailedTitle = 'Chưa tải được dữ liệu';
+export const fieldInvalid = (label: string, error: string) =>
+  `${label}, lỗi: ${error}`;
+export const showPassword = 'Hiện mật khẩu';
+export const hidePassword = 'Ẩn mật khẩu';
+export const select = 'Chọn';
+export const search = 'Tìm kiếm';
+export const noResults = 'Không có kết quả phù hợp';
+export const secondsLeft = (seconds: number) => `Còn ${seconds} giây`;
