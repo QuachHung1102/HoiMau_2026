@@ -38,24 +38,39 @@ function timezones(pool: Pool): Promise<string[]> {
   return zones;
 }
 
+/** A health check is an answer about now: one that takes longer than this is "no". */
+const HEALTH_TIMEOUT_MS = 2000;
+class HealthTimeout extends Error {}
+
 const meta: Route[] = [
   {
     method: 'GET',
     path: '/healthz',
     auth: 'anon',
-    // No request transaction: with the database down this still answers 200, `ok: false`.
+    // No request transaction: with the database down, silent, or with no pooled client free,
+    // this still answers 200 with `ok: false`, within HEALTH_TIMEOUT_MS.
     direct: async ({ pool, log }) => {
-      const db = await withRole(pool, 'app_anon', null, c =>
+      const check = withRole(pool, 'app_anon', null, c =>
         c.query('SELECT app.now()'),
       ).then(
-        () => true,
-        (e: unknown) => {
-          log.line({ level: 'error', evt: 'health', ...describeError(e) });
-          return false;
-        },
+        () => null,
+        (e: unknown) => e,
       );
+      let timer: NodeJS.Timeout | undefined;
+      const late = new Promise<Error>(resolve => {
+        timer = setTimeout(resolve, HEALTH_TIMEOUT_MS, new HealthTimeout());
+      });
+      const failure = await Promise.race([check, late]);
+      clearTimeout(timer);
+      if (failure !== null) {
+        log.line({ level: 'error', evt: 'health', ...describeError(failure) });
+      }
       // jobs: filled once the scheduler records its runs
-      const body: Health = { ok: db, db, jobs: [] };
+      const body: Health = {
+        ok: failure === null,
+        db: failure === null,
+        jobs: [],
+      };
       return { status: 200, body };
     },
   },

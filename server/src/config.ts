@@ -1,4 +1,10 @@
-export type Config = { databaseUrl: string; journalKey: Buffer; port: number };
+export type Config = {
+  databaseUrl: string;
+  journalKey: Buffer;
+  /** The interface to listen on. Default 127.0.0.1: reachable from this machine only. */
+  host: string;
+  port: number;
+};
 
 type Env = Record<string, string | undefined>;
 
@@ -35,12 +41,18 @@ export function loadConfig(env: Env = process.env): Config {
     problems.push('PORT is not a port number');
   }
 
+  // loopback unless told otherwise: an API reachable from the network is a decision, not a default
+  const host = env.HOST || '127.0.0.1';
+  if (!/^[0-9A-Za-z.:-]+$/.test(host)) {
+    problems.push('HOST is not an address or a host name');
+  }
+
   if (problems.length > 0) {
     throw new Error(
       `Server configuration: ${problems.join('; ')}. See server/.env.example.`,
     );
   }
-  return { databaseUrl, journalKey, port };
+  return { databaseUrl, journalKey, host, port };
 }
 
 function isPostgresUrl(value: string): boolean {

@@ -133,8 +133,12 @@ test('log.ledger emits {evt, kind, userId, amount, reason, refId}, one JSON obje
   });
 });
 
-test('describeError keeps identifiers of a database error and drops its message and detail', () => {
+test('describeError: class, code, catalog names and frames; never a message, a detail or a line of them', () => {
   const value = 'someone@example.com';
+  const lf = String.fromCharCode(10);
+  const frameOf = (described: Record<string, unknown>) =>
+    String(described.stack).split(lf);
+
   const pgError = Object.assign(
     new Error(`invalid input syntax for type uuid: "${value}"`),
     {
@@ -143,29 +147,98 @@ test('describeError keeps identifiers of a database error and drops its message 
       detail: `Failing row contains (${value}).`,
       where: `unnamed portal parameter $1 = '${value}'`,
       routine: 'string_to_uuid',
+      table: 'users',
+      constraint: 'users_display_name_check',
     },
   );
   const described = describeError(pgError);
-  assert.equal(described.sqlstate, '22P02');
-  assert.equal(described.routine, 'string_to_uuid');
-  assert.ok(!JSON.stringify(described).includes(value));
-  assert.match(String(described.stack), /errors\.test\.ts/);
-
-  // the message of a plain RAISE EXCEPTION is text of our own SQL: kept
-  const raised = Object.assign(
-    new Error('auth_login: key and token hash must be 32 bytes each'),
+  assert.deepEqual(
+    { ...described, stack: undefined },
     {
-      severity: 'ERROR',
-      code: 'P0001',
+      error: 'Error',
+      code: '22P02',
+      schema: undefined,
+      table: 'users',
+      column: undefined,
+      constraint: 'users_display_name_check',
+      routine: 'string_to_uuid',
+      stack: undefined,
     },
   );
-  assert.equal(describeError(raised).message, raised.message);
-  // any other error: its stack
-  assert.match(
-    String(describeError(new TypeError('x is not a function')).stack),
-    /^TypeError: x is not a function/,
+  assert.ok(!JSON.stringify(described).includes(value));
+  assert.ok(frameOf(described)[0].includes('errors.test.ts'));
+
+  // the message of our own RAISE EXCEPTION is dropped like any other: a later one may quote input
+  const raised = Object.assign(new Error(`auth: no account for ${value}`), {
+    severity: 'ERROR',
+    code: 'P0001',
+  });
+  assert.equal(describeError(raised).message, undefined);
+  assert.ok(!JSON.stringify(describeError(raised)).includes(value));
+
+  // errors of JavaScript itself quote their input too
+  const cases: [string, () => unknown][] = [
+    ['RangeError', () => new Intl.DateTimeFormat('en', { timeZone: value })],
+    ['SyntaxError', () => BigInt(value)],
+    ['SyntaxError', () => JSON.parse(`{"email": ${value}`)],
+    ['TypeError', () => (undefined as unknown as { x: { y: 1 } }).x.y],
+    [
+      'Error',
+      () => {
+        // a message of several lines, the later ones dressed up as frames
+        throw new Error(
+          `mail${lf}    at ${value} (${value}:1:1)${lf}    at ${value}`,
+        );
+      },
+    ],
+    [
+      'Error',
+      () => {
+        // a message put in after the stack was made
+        const late = new Error('x');
+        late.message = value;
+        throw late;
+      },
+    ],
+    [
+      'Error',
+      () => {
+        // a code that is no code
+        throw Object.assign(new Error(value), { code: `E ${value}` });
+      },
+    ],
+  ];
+  for (const [name, fail] of cases) {
+    let thrown: unknown;
+    try {
+      fail();
+    } catch (e) {
+      thrown = e;
+    }
+    assert.ok(thrown instanceof Error, name);
+    const kept = describeError(thrown);
+    assert.equal(kept.error, name);
+    assert.equal(kept.message, undefined);
+    assert.ok(
+      !JSON.stringify(kept).includes(value),
+      `${name}: ${JSON.stringify(kept)}`,
+    );
+    assert.ok(
+      frameOf(kept).every(row => row === '' || row.startsWith('    at ')),
+      name,
+    );
+  }
+  // where it happened is still there
+  const here = describeError(new TypeError('x is not a function'));
+  assert.ok(frameOf(here)[0].includes('errors.test.ts'));
+  // an errno keeps its name
+  assert.equal(
+    describeError(Object.assign(new Error('connect'), { code: 'ECONNREFUSED' }))
+      .code,
+    'ECONNREFUSED',
   );
   assert.deepEqual(describeError('text'), { error: 'string' });
+  assert.deepEqual(describeError(undefined), { error: 'undefined' });
 });
 
 test('bearerTokenHash: exactly "Bearer <43 base64url characters>"', () => {

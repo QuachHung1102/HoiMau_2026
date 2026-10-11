@@ -1,7 +1,10 @@
 // The in-process limiter on its own, then through HTTP: AR-21 limits per account and per client
 // address, the limits of a route, and that the test app runs without them unless asked.
 import assert from 'node:assert/strict';
+import { request } from 'node:http';
+import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { duplexPair } from 'node:stream';
 import { after, before, test } from 'node:test';
 import { newUser, startTestApp } from '../test/http.ts';
 import type { CallResult, TestApp } from '../test/http.ts';
@@ -10,7 +13,15 @@ import type { TestDb } from '../test/testdb.ts';
 import { createApp } from './app.ts';
 import type { Route } from './app.ts';
 import { createLogger } from './log.ts';
-import { HOUR_MS, MINUTE_MS, createRateLimiter } from './rateLimit.ts';
+import {
+  HOUR_MS,
+  MINUTE_MS,
+  UNAUTHORIZED_PER_MINUTE,
+  addressKey,
+  clientAddress,
+  createRateLimiter,
+} from './rateLimit.ts';
+import { newToken } from './session.ts';
 
 test('fixed window: the limit holds until the window that began at the first hit is over', () => {
   let now = 1_000_000;
@@ -224,4 +235,165 @@ test('createApp limits unless told otherwise: the switch is for tests, the defau
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
   }
+});
+
+test('full() counts nothing: it only says whether the window of a key has reached its limit', () => {
+  let now = 0;
+  const limiter = createRateLimiter(() => now);
+  assert.equal(limiter.full('a', 2, MINUTE_MS), 0);
+  assert.equal(limiter.size(), 0); // asking leaves no window behind
+  limiter.hit('a', 2, MINUTE_MS);
+  assert.equal(limiter.full('a', 2, MINUTE_MS), 0);
+  limiter.hit('a', 2, MINUTE_MS);
+  assert.equal(limiter.full('a', 2, MINUTE_MS), 60);
+  assert.equal(limiter.full('a', 2, MINUTE_MS), 60); // and again: nothing was counted
+  assert.equal(limiter.full('b', 2, MINUTE_MS), 0);
+  now = MINUTE_MS - 500;
+  assert.equal(limiter.full('a', 2, MINUTE_MS), 1);
+  now = MINUTE_MS;
+  assert.equal(limiter.full('a', 2, MINUTE_MS), 0);
+});
+
+test('an address is counted as IPv4, or as its IPv6 /64', () => {
+  // IPv4, also when the socket reports it mapped into IPv6
+  for (const [remote, address] of [
+    ['203.0.113.7', '203.0.113.7'],
+    ['::ffff:203.0.113.7', '203.0.113.7'],
+    ['::FFFF:203.0.113.7', '203.0.113.7'],
+    ['2001:DB8::1', '2001:db8::1'],
+    ['fe80::1%eth0', 'fe80::1'],
+    [undefined, ''],
+  ] as const) {
+    assert.equal(clientAddress(remote), address);
+  }
+  assert.equal(addressKey('203.0.113.7'), '203.0.113.7');
+  assert.notEqual(addressKey('203.0.113.7'), addressKey('203.0.113.8'));
+
+  // every spelling of an address in one /64 is one key
+  const sameNetwork = [
+    '2001:db8:1:2::1',
+    '2001:db8:1:2:ffff:ffff:ffff:ffff',
+    '2001:0db8:0001:0002:0000:0000:0000:0001',
+    '2001:db8:1:2:a:b:c:d',
+    '2001:db8:1:2::192.0.2.1',
+  ];
+  assert.deepEqual(
+    [...new Set(sameNetwork.map(addressKey))],
+    ['2001:db8:1:2::/64'],
+  );
+  for (const [address, key] of [
+    ['2001:db8:1:3::1', '2001:db8:1:3::/64'], // the neighbouring /64
+    ['2001:db8::1', '2001:db8:0:0::/64'],
+    ['::1', '0:0:0:0::/64'],
+    ['::', '0:0:0:0::/64'],
+    ['fe80::1', 'fe80:0:0:0::/64'],
+    ['2001:db8:1::', '2001:db8:1:0::/64'],
+    ['1:2:3:4:5:6:7::', '1:2:3:4::/64'],
+    ['::2:3:4:5:6:7:8', '0:2:3:4::/64'],
+  ]) {
+    assert.equal(addressKey(address), key, address);
+  }
+});
+
+test('60 refused sessions from one address in a minute, then 429 before the database is asked anything', async () => {
+  const app = await limitedApp();
+  const { token } = await newUser(db);
+  const guess = () => app.call('GET', '/probe/read', { token: newToken() });
+  // a mix of what costs a lookup (unknown token) and what does not (no header, garbage)
+  assert.deepEqual(await statuses(40, guess), { 401: 40 });
+  assert.deepEqual(await statuses(10, () => app.call('GET', '/probe/read')), {
+    401: 10,
+  });
+  assert.deepEqual(
+    await statuses(10, () => app.call('GET', '/probe/read', { token: 'x' })),
+    { 401: 10 },
+  );
+  assert.equal(UNAUTHORIZED_PER_MINUTE, 60);
+
+  let acquired = 0;
+  const count = () => acquired++;
+  db.app.on('acquire', count);
+  try {
+    assertLimited(await guess(), 60);
+    assert.deepEqual(await statuses(20, guess), { 429: 20 });
+    // the price of the limit: from that address a real session waits too
+    assertLimited(await app.call('GET', '/probe/read', { token }), 60);
+    assert.equal(acquired, 0); // not one pooled client was taken for those 22 requests
+  } finally {
+    db.app.off('acquire', count);
+  }
+  // routes that need no session are not part of it
+  assert.equal((await app.call('GET', '/probe/open')).status, 204);
+  assert.equal((await app.call('POST', '/probe/open')).status, 204);
+
+  // another address is not affected (the whole of 127/8 is this machine)
+  const { port } = app.server.address() as AddressInfo;
+  const other = await new Promise<number | string>(resolve => {
+    const req = request(
+      {
+        host: '127.0.0.1',
+        port,
+        localAddress: '127.0.0.2',
+        path: '/api/v1/probe/read',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      res => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      },
+    );
+    req.on('error', e => resolve((e as NodeJS.ErrnoException).code ?? 'error'));
+    req.end();
+  });
+  assert.equal(other, 204);
+});
+
+test('without limits (the default test app) refused sessions are not counted', async () => {
+  const app = await startTestApp(db, { routes: probes });
+  apps.push(app);
+  assert.deepEqual(
+    await statuses(70, () =>
+      app.call('GET', '/probe/read', { token: newToken() }),
+    ),
+    { 401: 70 },
+  );
+});
+
+/** One request over a connection that claims to come from `remoteAddress`; the status of the answer. */
+function statusFrom(
+  server: Server,
+  remoteAddress: string,
+  requestLine: string,
+): Promise<number> {
+  const [client, socket] = duplexPair();
+  Object.assign(socket, { remoteAddress });
+  server.emit('connection', socket);
+  return new Promise(resolve => {
+    let received = '';
+    client.on('data', chunk => (received += chunk));
+    client.on('end', () => resolve(Number(received.split(' ')[1])));
+    client.write(
+      [requestLine, 'host: x', 'connection: close', '', ''].join(
+        String.fromCharCode(13, 10),
+      ),
+    );
+  });
+}
+
+test('through the server: IPv6 clients of one /64 share a window, a mapped IPv4 address is that IPv4 address', async () => {
+  const app = await limitedApp();
+  const authLike = (from: string) =>
+    statusFrom(app.server, from, 'POST /api/v1/probe/auth-like HTTP/1.1');
+  // the route allows 3 a minute per address
+  assert.equal(await authLike('2001:db8:1:2::1'), 204);
+  assert.equal(await authLike('2001:db8:1:2::2'), 204);
+  assert.equal(await authLike('2001:db8:1:2:aaaa:bbbb:cccc:dddd'), 204);
+  assert.equal(await authLike('2001:db8:1:2::4'), 429);
+  assert.equal(await authLike('2001:db8:1:3::1'), 204); // the next /64
+
+  assert.equal(await authLike('198.51.100.7'), 204);
+  assert.equal(await authLike('::ffff:198.51.100.7'), 204);
+  assert.equal(await authLike('::FFFF:198.51.100.7'), 204);
+  assert.equal(await authLike('198.51.100.7'), 429);
+  assert.equal(await authLike('198.51.100.8'), 204); // IPv4 is counted address by address
 });

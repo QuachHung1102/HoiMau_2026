@@ -4,7 +4,7 @@
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { loadConfig } from '../src/config.ts';
-import { loadEnvFile, onShutdown, serve } from '../src/main.ts';
+import { guardProcess, loadEnvFile, serve } from '../src/main.ts';
 import { migrate } from '../src/migrate.ts';
 import { APP_CONN, DEV, SUPERUSER, startCluster } from './cluster.ts';
 
@@ -69,11 +69,12 @@ try {
   const config = loadConfig({
     JOURNAL_KEY: process.env.JOURNAL_KEY || DEV_JOURNAL_KEY,
     PORT: process.env.PORT,
+    HOST,
     // always the cluster started above, whatever the environment names
     DATABASE_URL: `postgres://${APP_CONN.user}:${APP_CONN.password}@${HOST}:${DEV.port}/${DATABASE}`,
   });
-  const api = await serve(config, HOST);
-  onShutdown(async () => {
+  const api = await serve(config);
+  guardProcess(async () => {
     try {
       await api.stop();
     } finally {

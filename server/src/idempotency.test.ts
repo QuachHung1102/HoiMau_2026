@@ -1,7 +1,7 @@
 // Idempotent writes through HTTP on the real database: one execution per (user, key), replay of
 // the stored 2xx answer, and nobody but the owner of a key ever sees what is stored under it.
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { after, before, test } from 'node:test';
 import {
   asAnon,
@@ -9,13 +9,22 @@ import {
   expectPgError,
   setTestClock,
 } from '../test/helpers.ts';
-import { newUser, startTestApp } from '../test/http.ts';
+import { TEST_JOURNAL_KEY, newUser, startTestApp } from '../test/http.ts';
 import type { TestApp } from '../test/http.ts';
 import { createTestDb } from '../test/testdb.ts';
 import type { TestDb } from '../test/testdb.ts';
 import type { Route } from './app.ts';
 import { AppError, errorResponse } from './errors.ts';
-import { idempotencyKey, requestHash } from './idempotency.ts';
+import {
+  MAX_STORED_BYTES,
+  idempotencyKey,
+  requestHash,
+  requestHashKey,
+} from './idempotency.ts';
+
+/** The request hash as the test app computes it. */
+const hashOf = (method: string, url: string, body: unknown) =>
+  requestHash(requestHashKey(TEST_JOURNAL_KEY), method, url, body);
 
 /** How often the probe handler ran, per label. */
 const runs = new Map<string, number>();
@@ -73,6 +82,33 @@ const probes: Route[] = [
     auth: 'user',
     idempotent: true,
     handler: async () => ({ status: 200, body: {} }),
+  },
+  // one path under two methods
+  ...(['POST', 'PATCH'] as const).map(
+    (method): Route => ({
+      method,
+      path: '/probe/dual',
+      auth: 'session',
+      idempotent: true,
+      handler: async ctx => {
+        const { label } = ctx.body as ProbeBody;
+        runs.set(label, ran(label) + 1);
+        return { status: 200, body: { method } };
+      },
+    }),
+  ),
+  {
+    // an answer of the size the body asks for
+    method: 'POST',
+    path: '/probe/big',
+    auth: 'session',
+    idempotent: true,
+    handler: async ctx => {
+      const { label, value } = ctx.body as ProbeBody;
+      runs.set(label, ran(label) + 1);
+      await ctx.db.query('SELECT probe_hit($1)', [label]);
+      return { status: 200, body: { pad: 'x'.repeat(Number(value)) } };
+    },
   },
 ];
 
@@ -192,20 +228,28 @@ test('the same key with another body, path or query: 409 IDEMPOTENCY_KEY_REUSED,
   assert.equal((await act(token, key, { label, value: 1 })).body.run, 1);
 });
 
-test('no key, or a key that is not a UUID: 400 IDEMPOTENCY_KEY_REQUIRED, nothing runs', async () => {
+test('no key: 400 IDEMPOTENCY_KEY_REQUIRED; a key that is not a UUID: 422 naming the header; nothing runs', async () => {
   const { token } = await newUser(db);
   const label = randomUUID();
+  for (const key of [undefined, '']) {
+    const result = await act(token, key, { label });
+    assert.equal(result.status, 400, String(key));
+    assert.equal(result.body.error.code, 'IDEMPOTENCY_KEY_REQUIRED');
+  }
   for (const key of [
-    undefined,
-    '',
     'abc',
     `${randomUUID()}x`,
     randomUUID().replaceAll('-', ''),
     `{${randomUUID()}}`,
+    `${randomUUID()}, ${randomUUID()}`,
   ]) {
     const result = await act(token, key, { label });
-    assert.equal(result.status, 400, String(key));
-    assert.equal(result.body.error.code, 'IDEMPOTENCY_KEY_REQUIRED');
+    assert.equal(result.status, 422, key);
+    assert.deepEqual(result.body.error, {
+      code: 'VALIDATION_FAILED',
+      message: 'validation failed',
+      details: { fields: [{ field: 'Idempotency-Key', rule: 'format' }] },
+    });
   }
   assert.equal(ran(label), 0);
   assert.equal(idempotencyKey(['a', 'b']), null);
@@ -213,7 +257,7 @@ test('no key, or a key that is not a UUID: 400 IDEMPOTENCY_KEY_REQUIRED, nothing
   assert.equal((await act('garbage', undefined, { label })).status, 401);
 });
 
-test('an answer that is not 2xx is not stored: the retry runs again, and then it is stored', async () => {
+test('an answer that is not 2xx is not remembered: the key is free again, then the 2xx is stored', async () => {
   const { token } = await newUser(db);
   const key = randomUUID();
   const label = randomUUID();
@@ -224,10 +268,7 @@ test('an answer that is not 2xx is not stored: the retry runs again, and then it
   assert.equal(refused.body.error.code, 'DAY_CLOSED');
   assert.equal(ran(label), 1);
   assert.equal(await hits(label), 1); // returned, so committed
-  assert.deepEqual(
-    (await stored(key)).map(row => [row.status, row.response]),
-    [[null, null]],
-  );
+  assert.deepEqual(await stored(key), []); // and the key went back
 
   const retried = await act(token, key, { label });
   assert.equal(retried.status, 201);
@@ -235,6 +276,129 @@ test('an answer that is not 2xx is not stored: the retry runs again, and then it
   const replayed = await act(token, key, { label });
   assert.deepEqual(replayed.body, retried.body);
   assert.equal(ran(label), 2);
+});
+
+test('after an error, returned or thrown alike, the same key may carry a corrected request', async () => {
+  const { token } = await newUser(db);
+  for (const failOnce of [returnErrorOnce, throwOnce]) {
+    const key = randomUUID();
+    const label = randomUUID();
+    failOnce.add(label);
+    assert.equal(
+      (await act(token, key, { label, value: 'wrong' })).status,
+      409,
+    );
+
+    const corrected = await act(token, key, { label, value: 'fixed' });
+    assert.equal(corrected.status, 201);
+    assert.equal(corrected.body.value, 'fixed');
+    assert.equal(ran(label), 2);
+    // from the 2xx on the key is taken: the first body is now another request
+    const first = await act(token, key, { label, value: 'wrong' });
+    assert.equal(first.status, 409);
+    assert.equal(first.body.error.code, 'IDEMPOTENCY_KEY_REUSED');
+    assert.equal(ran(label), 2);
+  }
+});
+
+test('the method is part of the request: the same key, path and body under another method is another request', async () => {
+  const { token } = await newUser(db);
+  const key = randomUUID();
+  const body = { label: randomUUID() };
+  const posted = await app.call('POST', '/probe/dual', { token, key, body });
+  assert.deepEqual(posted.body, { method: 'POST' });
+  const patched = await app.call('PATCH', '/probe/dual', { token, key, body });
+  assert.equal(patched.status, 409);
+  assert.equal(patched.body.error.code, 'IDEMPOTENCY_KEY_REUSED');
+  assert.equal(ran(body.label), 1);
+});
+
+test('the stored request hash is keyed: not the plain hash of the request, the same after a restart', async () => {
+  const { token } = await newUser(db);
+  const key = randomUUID();
+  const body = { label: randomUUID(), value: 'correct horse battery staple' };
+  const first = await act(token, key, body);
+  assert.equal(first.status, 201);
+
+  const { rows } = await db.admin.query(
+    'SELECT request_hash FROM idempotency_keys WHERE key = $1',
+    [key],
+  );
+  const storedHash: Buffer = rows[0].request_hash;
+  const url = '/api/v1/probe/act/a';
+  assert.deepEqual(storedHash, hashOf('POST', url, body));
+  // what anyone who reads the table could compute for a guessed body, without the key
+  const canonical = `{"label":${JSON.stringify(
+    body.label,
+  )},"value":${JSON.stringify(body.value)}}`;
+  const plain = createHash('sha256')
+    .update(JSON.stringify(['POST', url]))
+    .update(canonical)
+    .digest();
+  assert.notDeepEqual(storedHash, plain);
+  // nor is the journal key itself the key of the hash
+  assert.notDeepEqual(
+    storedHash,
+    requestHash(TEST_JOURNAL_KEY, 'POST', url, body),
+  );
+
+  // a new server process with the same journal key recognises the request
+  const restarted = await startTestApp(db, { routes: probes });
+  // with another journal key no stored hash matches any more: the key reads as reused
+  const rekeyed = await startTestApp(db, {
+    routes: probes,
+    journalKey: Buffer.alloc(32, 2),
+  });
+  try {
+    const replay = await restarted.call('POST', '/probe/act/a', {
+      token,
+      key,
+      body,
+    });
+    assert.equal(replay.status, 201);
+    assert.deepEqual(replay.body, first.body);
+    const other = await rekeyed.call('POST', '/probe/act/a', {
+      token,
+      key,
+      body,
+    });
+    assert.equal(other.status, 409);
+    assert.equal(other.body.error.code, 'IDEMPOTENCY_KEY_REUSED');
+    assert.equal(ran(body.label), 1);
+  } finally {
+    await restarted.close();
+    await rekeyed.close();
+  }
+});
+
+test('an answer over 256 KiB on an idempotent route is a bug of the route: rolled back, 500, never "answered but not stored"', async () => {
+  const { token } = await newUser(db);
+  const big = (key: string, label: string, value: number) =>
+    app.call('POST', '/probe/big', { token, key, body: { label, value } });
+  const overhead = Buffer.byteLength(JSON.stringify({ pad: '' }));
+
+  // exactly at the cap: stored and replayed
+  const fits = { key: randomUUID(), label: randomUUID() };
+  const atCap = await big(fits.key, fits.label, MAX_STORED_BYTES - overhead);
+  assert.equal(atCap.status, 200);
+  assert.equal(
+    (await big(fits.key, fits.label, MAX_STORED_BYTES - overhead)).status,
+    200,
+  );
+  assert.equal(ran(fits.label), 1);
+
+  // one byte more
+  const over = { key: randomUUID(), label: randomUUID() };
+  const tooBig = await big(
+    over.key,
+    over.label,
+    MAX_STORED_BYTES - overhead + 1,
+  );
+  assert.equal(tooBig.status, 500);
+  assert.equal(tooBig.body.error.code, 'INTERNAL');
+  assert.equal(await hits(over.label), 0); // what the handler wrote is gone
+  assert.deepEqual(await stored(over.key), []);
+  assert.equal(app.logs.at(-1)?.level, 'error');
 });
 
 test('a request that throws leaves no key behind', async () => {
@@ -276,7 +440,7 @@ test('retries at once of a request that was refused before: still one execution'
   assert.equal((await act(token, key, { label })).status, 409);
   assert.equal(ran(label), 1);
 
-  // the key row exists and holds no answer: only its lock makes the retries take turns
+  // the key is free again: the retries meet in the claim, and one of them runs
   const results = await Promise.all(
     Array.from({ length: 10 }, () => act(token, key, { label })),
   );
@@ -388,7 +552,7 @@ test('no request role reads the table; the functions are for app_auth and name t
       table,
     );
   }
-  const hash = requestHash('POST', '/api/v1/probe/act/a', body);
+  const hash = hashOf('POST', '/api/v1/probe/act/a', body);
   await expectPgError(
     asAnon(db.app, c =>
       c.query('SELECT * FROM idempotency_begin($1, $2)', [key, hash]),
@@ -447,13 +611,40 @@ test('no request role reads the table; the functions are for app_auth and name t
     }),
     { code: 'P0001', messagePrefix: 'idempotency_begin: needs a user' },
   );
+  const noOpenKey = {
+    code: 'P0001',
+    messagePrefix: 'idempotency_store: the caller holds no open key',
+  };
   await expectPgError(
     asUser(db.app, alice.userId, c =>
       c.query("SELECT idempotency_store($1, 200, '{}')", [randomUUID()]),
     ),
+    noOpenKey,
+  );
+  // a stored answer is never replaced, and never given back
+  await expectPgError(
+    asUser(db.app, alice.userId, c =>
+      c.query("SELECT idempotency_store($1, 200, '{}')", [key]),
+    ),
+    noOpenKey,
+  );
+  await asUser(db.app, alice.userId, c =>
+    c.query('SELECT idempotency_release($1)', [key]),
+  );
+  assert.deepEqual(
+    (await stored(key)).map(row => [row.status, row.response]),
+    [[201, hers.body]],
+  );
+  await expectPgError(
+    asAnon(db.app, c => c.query('SELECT idempotency_release($1)', [key])),
     {
-      code: 'P0001',
-      messagePrefix: 'idempotency_store: the caller holds no open key',
+      code: '42501',
+      messagePrefix: 'permission denied for function idempotency_release',
     },
   );
+  // and giving back is for the caller's own open key only: Bob's call leaves hers alone
+  await asUser(db.app, bob.userId, c =>
+    c.query('SELECT idempotency_release($1)', [key]),
+  );
+  assert.equal((await stored(key)).length, 1);
 });
