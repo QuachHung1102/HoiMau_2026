@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ComponentRef, type ReactNode, type Ref } from 'react';
 import { Animated, Easing, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 import * as vi from '../i18n/vi/common';
 import { motion } from '../motion/motion';
@@ -67,15 +67,20 @@ export function FieldFrame({ label, error, helper, focused = false, children }: 
   );
 }
 
+/** What a ref to a TextField holds: the underlying input (focus, blur, clear). */
+export type TextFieldInput = ComponentRef<typeof TextInput>;
+
 type Props = Omit<TextInputProps, 'style' | 'accessibilityLabel' | 'secureTextEntry' | 'placeholderTextColor'> & {
   label: string;
   error?: string;
   helper?: string;
   /** Password field with a show / hide toggle. */
   secure?: boolean;
+  /** The underlying input, e.g. to move focus to the first invalid field. */
+  ref?: Ref<TextFieldInput>;
 };
 
-export function TextField({ label, error, helper, secure = false, onFocus, onBlur, ...rest }: Props) {
+export function TextField({ label, error, helper, secure = false, onFocus, onBlur, ref, ...rest }: Props) {
   const palette = useTheme();
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(true);
@@ -86,6 +91,7 @@ export function TextField({ label, error, helper, secure = false, onFocus, onBlu
           // A revealed password must not be capitalised, corrected or learned by the keyboard; callers can override.
           {...(secure ? { autoCapitalize: 'none', autoCorrect: false, spellCheck: false } : null)}
           {...rest}
+          ref={ref}
           // React Native has no `invalid` accessibility state on both platforms, so the error is part of the label.
           accessibilityLabel={error ? vi.fieldInvalid(label, error) : label}
           accessibilityHint={error ? undefined : helper}

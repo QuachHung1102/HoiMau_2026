@@ -1,8 +1,9 @@
 import { fireEvent, render } from '@testing-library/react-native';
+import { createRef } from 'react';
 import { StyleSheet } from 'react-native';
 import { MotionPreferenceProvider } from '../motion/useReducedMotion';
 import { colors } from '../theme/tokens';
-import { TextField } from './TextField';
+import { TextField, type TextFieldInput } from './TextField';
 
 const wrap = (node: React.ReactElement) => <MotionPreferenceProvider value="REDUCED">{node}</MotionPreferenceProvider>;
 // the animated border colour is read back as rgba()
@@ -89,4 +90,15 @@ test('helper text is also the input hint, until an error replaces it', () => {
   view.rerender(wrap(<TextField label="Mật khẩu" helper="Ít nhất 8 ký tự" error="Quá ngắn." value="" onChangeText={() => undefined} />));
   expect(view.getByLabelText('Mật khẩu, lỗi: Quá ngắn.').props.accessibilityHint).toBeUndefined();
   view.unmount();
+});
+
+test('a ref reaches the input, so a screen can move focus to the first invalid field', () => {
+  const ref = createRef<TextFieldInput>();
+  const view = render(wrap(<TextField ref={ref} label="Email" value="" onChangeText={() => undefined} />));
+  expect(ref.current).not.toBeNull();
+  const focus = jest.spyOn(ref.current as TextFieldInput, 'focus');
+  ref.current?.focus();
+  expect(focus).toHaveBeenCalledTimes(1);
+  view.unmount();
+  expect(ref.current).toBeNull();
 });
