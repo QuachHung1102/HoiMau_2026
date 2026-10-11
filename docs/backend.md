@@ -126,7 +126,7 @@ Lược đồ nằm ở `server/sql/NN-*.sql`. Không có migration của ORM, k
 2. mọi seeder trong `server/src/seed/*.ts` (`export async function seed(db)`), theo thứ tự tên; thư mục chưa có hoặc rỗng thì bỏ qua;
 3. các file còn lại: `8N-*.sql` rồi `90-verify.sql`.
 
-Seeder chạy ở giữa vì dòng mồi nhử tham chiếu nội dung do seeder tạo ra (vật phẩm, bài tập, món ăn…); và `90-verify.sql` chạy cuối nên **mọi lần migrate đều kết thúc bằng phép tự kiểm**. Một bước hỏng thì transaction của bước đó được hoàn lại và lỗi nêu tên file (kể cả khi chính lệnh hoàn lại cũng hỏng). `migrate` từ chối chạy nếu có file SQL nào xếp sau `90-*.sql`: thứ chạy sau phép tự kiểm là thứ không ai kiểm. Bộ test dựng cơ sở dữ liệu mẫu bằng chính hàm này.
+Seeder chạy ở giữa vì dòng mồi nhử tham chiếu nội dung do seeder tạo ra (vật phẩm, bài tập, món ăn…); và `90-verify.sql` chạy cuối nên **mọi lần migrate đều kết thúc bằng phép tự kiểm**. Một bước hỏng thì transaction của bước đó được hoàn lại và lỗi nêu tên file (kể cả khi chính lệnh hoàn lại cũng hỏng). `migrate` từ chối chạy, trước khi áp dụng bất kỳ bước nào, nếu thư mục **không có** file `90-*.sql` hoặc có file SQL xếp sau nó: lược đồ không được tự kiểm ở cuối là lược đồ không ai kiểm. (Chỉ thư mục mẫu của test mới được bỏ qua bằng `{ withoutSelfCheck: true }`.) Bộ test dựng cơ sở dữ liệu mẫu bằng chính hàm này.
 
 ### Schema `app`
 
@@ -137,7 +137,7 @@ Seeder chạy ở giữa vì dòng mồi nhử tham chiếu nội dung do seeder
 | `app.logical_date(timestamptz, text)` | Nhãn ngày logic theo múi giờ: ngày bắt đầu lúc 03:00 giờ địa phương. Khớp với `logicalDateOf` của `domain/` (có test đối chiếu) **với tên múi giờ IANA dạng `Khu_vực/Thành_phố`**. Cách viết khác thì hai bên hiểu khác nhau: `'+07:00'` là UTC+7 với `Intl` nhưng là UTC−7 với PostgreSQL (dấu kiểu POSIX), còn `ICT` hay `UTC+7` chỉ PostgreSQL nhận. Cột lưu múi giờ của người dùng chỉ được chứa tên IANA mà cả hai bên đều biết. |
 | `app.week_start(date)` | Thứ Hai của tuần chứa ngày đó. Khớp với `weekStartOf`. |
 
-Ba vai trò `app_anon`, `app_auth`, `app_job` gọi được bốn hàm này, và chỉ ba vai trò đó. Hàm trong `app` có tên bắt đầu bằng `_` là hàm nội bộ: không vai trò nào được cấp `EXECUTE`. Mọi hàm trong `app` đều phải đăng ký (xem dưới), kể cả hàm nội bộ.
+Ba vai trò `app_anon`, `app_auth`, `app_job` gọi được bốn hàm này, và chỉ ba vai trò đó. Hàm có tên bắt đầu bằng `_`, ở bất kỳ schema nào, là hàm nội bộ: không vai trò nào được cấp `EXECUTE`. Mọi hàm trong `app` đều phải đăng ký (xem dưới), kể cả hàm nội bộ.
 
 SQL không gọi `now()` trực tiếp mà gọi `app.now()`, nhờ đó test dời được thời gian (`setTestClock`). Bảng `meta.test_clock` chỉ chủ sở hữu ghi được, và `90-verify.sql` báo lỗi khi bảng có dòng: đồng hồ test không bao giờ được tồn tại ngoài một lượt test.
 
@@ -159,12 +159,12 @@ SELECT meta.expect_function('auth_login(text, bytea, bytea)', '{app_anon}');
 | `internal` | bật, không policy | không gì cả | chỉ hàm `SECURITY DEFINER` | `NULL` |
 | `content` | không cần | chỉ `SELECT` | chủ sở hữu lược đồ (seeder) | `NULL` |
 
-- `expect_table(tên, lớp, quyền mức bảng của app_auth, các cột được UPDATE, owner_column)`. `owner_column` là cột chứa id người sở hữu dòng (`user_id`, hoặc `id` với bảng `users`). Khai báo trái với lớp (ví dụ `own_read` kèm `INSERT`, hay `own_rw` kèm `TRUNCATE`) bị từ chối ngay lúc đăng ký. **Chỉ `app_auth` được cấp quyền trên bảng**: mọi quyền cấp cho bất kỳ vai trò nào khác, kể cả `PUBLIC` hay một vai trò ngoài bộ `app_*`, là vi phạm.
+- `expect_table(tên, lớp, quyền mức bảng của app_auth, các cột được UPDATE, owner_column)`. `owner_column` là cột chứa id người sở hữu dòng (`user_id`, hoặc `id` với bảng `users`). Ba hàm `expect_*` chỉ ghi lại khai báo; chính `90-verify.sql` xét từng dòng của sổ, bất kể dòng đó được ghi bằng cách nào. Khai báo trái với lớp (ví dụ `own_read` kèm `INSERT`, `own_rw` kèm `TRUNCATE`, hay một lớp không tồn tại) làm cổng 1 đỏ ngay ở lần migrate đó, kể cả khi catalog "khớp" với khai báo. **Chỉ `app_auth` được cấp quyền trên bảng**: mọi quyền cấp cho bất kỳ vai trò nào khác, kể cả `PUBLIC` hay một vai trò ngoài bộ `app_*`, là vi phạm.
 - `expect_policy(bảng, policy, lệnh, using, check)`. Hai biểu thức phải là **đúng nguyên văn** chuỗi `pg_get_expr` in ra, ví dụ `(app.current_user_id() = user_id)`; không dùng thì truyền `NULL`. Mọi policy phải là `PERMISSIVE` (mặc định) và viết **`TO app_auth`**: policy `RESTRICTIVE` hay policy cho vai trò khác (kể cả bỏ `TO`, tức `PUBLIC`) bị cổng 1 từ chối. So khớp bằng `=`, không bao giờ bằng `LIKE`: `USING (owner() OR true)` vẫn *chứa* `owner()` mà mở toang cửa.
-- `expect_function(chữ ký, vai trò)`. Chữ ký viết như trong `GRANT EXECUTE ON FUNCTION`, kèm tên schema nếu hàm không ở `public` (`app.now()`); hàm phải tồn tại lúc đăng ký. `vai trò` là **đúng** tập được cấp `EXECUTE` (`PUBLIC` tính là một). **Mọi hàm trong `public`, `app` và `meta` đều phải đăng ký.** Hàm nội bộ (`app._*`, mọi hàm trong `meta`) và hàm không ai được gọi (hàm trigger) đăng ký với tập rỗng `'{}'`; đăng ký một hàm nội bộ kèm vai trò bị từ chối.
-- View chỉ được phép khi tạo `WITH (security_invoker = true)` (và phải đăng ký như bảng lớp `content`): view thường đọc bảng bằng quyền của chủ view nên đi vòng qua RLS. Materialized view bị cấm hẳn. Sequence không được cấp cho vai trò nào.
+- `expect_function(chữ ký, vai trò)`. Chữ ký viết như trong `GRANT EXECUTE ON FUNCTION`, kèm tên schema nếu hàm không ở `public` (`app.now()`); hàm phải tồn tại lúc đăng ký. `vai trò` là **đúng** tập được cấp `EXECUTE`, và chỉ được gồm `app_anon`, `app_auth`, `app_job` (đăng ký `PUBLIC`, `app_conn` hay vai trò khác bị từ chối). **Mọi hàm trong `public`, `app` và `meta` đều phải đăng ký.** Hàm nội bộ (tên bắt đầu bằng `_` ở bất kỳ schema nào, và mọi hàm trong `meta`) cùng hàm không ai được gọi (hàm trigger) đăng ký với tập rỗng `'{}'`; đăng ký một hàm nội bộ kèm vai trò bị từ chối.
+- View chỉ được phép khi tạo `WITH (security_invoker = true)` (và phải đăng ký như bảng lớp `content`): view thường đọc bảng bằng quyền của chủ view nên đi vòng qua RLS. Materialized view và foreign table bị cấm hẳn. Sequence không được cấp cho vai trò nào.
 - `02-meta.sql` xóa sạch sổ đăng ký ở đầu mỗi lần migrate rồi các file sau đăng ký lại: sổ luôn là đúng những gì các file hiện tại khai báo, không sót dòng của thứ đã bị đổi tên hay gỡ bỏ. Vì vậy luôn migrate trọn bộ; chạy riêng lẻ `02-meta.sql` làm trống sổ.
-- Extension có hàm (ví dụ `pgcrypto`) không được cài vào `public`, `app` hay `meta`: mọi hàm ở đó đều phải đăng ký. Cài nó vào schema riêng.
+- **Không dùng extension có hàm** (ví dụ `pgcrypto`). Cổng 1 xét mọi schema không thuộc PostgreSQL, nên đặt extension vào schema riêng cũng không thoát: từng hàm của nó sẽ phải đăng ký và bị gỡ khỏi `PUBLIC`. Dùng hàm có sẵn của PostgreSQL: `sha256()`, `gen_random_uuid()`. Thật sự cần một extension thì đó là một thay đổi có chủ ý của `90-verify.sql`, kèm ca đột biến.
 
 ## Ba cổng kiểm
 
@@ -183,10 +183,10 @@ Cổng 1 không biết một request thật làm được gì; cổng 2 không b
 `90-verify.sql` ném exception nêu tên đối tượng cho từng vi phạm. Nó mô tả trạng thái **còn nguyên** và so bằng dấu bằng; mọi thứ không nằm trong mô tả là vi phạm, bất kể ai nắm giữ. Quyền được đọc thẳng từ ACL trong catalog (`aclexplode`), không hỏi `has_*_privilege` cho một danh sách vai trò: quyền cấp cho một vai trò không ai nghĩ tới vẫn là quyền.
 
 1. **Vai trò.** `app_conn` là `LOGIN NOINHERIT`; không vai trò `app_*` nào khác đăng nhập được; không vai trò `app_*` nào là superuser, `BYPASSRLS`, `CREATEROLE`, `CREATEDB`, `REPLICATION`. Quan hệ thành viên có dính tới một vai trò `app_*` (ở cả hai chiều) chỉ gồm đúng ba dòng: `app_conn` trong `app_anon`, `app_auth`, `app_job` với `INHERIT FALSE, SET TRUE`, không `ADMIN`. Không vai trò `app_*` nào là thành viên của vai trò khác (kể cả `pg_read_all_data`), và không vai trò ngoài nào là thành viên của một vai trò `app_*`.
-2. **Thiết lập lưu sẵn.** `pg_db_role_setting` không có dòng nào áp dụng cho một vai trò `app_*` trong cơ sở dữ liệu này (`ALTER ROLE … SET`, `ALTER DATABASE … SET`, `ALTER ROLE ALL SET`).
+2. **Thiết lập lưu sẵn và quyền trên tham số.** `pg_db_role_setting` không có dòng nào áp dụng cho một vai trò `app_*` trong cơ sở dữ liệu này (`ALTER ROLE … SET`, `ALTER DATABASE … SET`, `ALTER ROLE ALL SET`). `pg_parameter_acl` không cấp tham số cấu hình nào cho một vai trò `app_*` hay `PUBLIC` (`GRANT SET ON PARAMETER …`).
 3. **Sở hữu.** Không cơ sở dữ liệu, schema, bảng, view, sequence hay hàm nào thuộc sở hữu của một vai trò `app_*`: chủ sở hữu không cần GRANT và không chịu policy.
-4. **Sổ đăng ký khớp catalog.** Mọi bảng và view trong `public` đều đã đăng ký; mọi bảng đã đăng ký đều tồn tại; cột `owner_column` và các cột `UPDATE` đã đăng ký đều tồn tại. Mọi hàm trong `public`, `app`, `meta` đều đã đăng ký; mọi hàm đã đăng ký đều tồn tại; hàm nội bộ (`app._*`, `meta.*`) đăng ký với tập vai trò rỗng.
-5. **View.** View phải là `security_invoker`; không có materialized view.
+4. **Sổ đăng ký tự nó hợp lệ, và khớp catalog.** Mỗi dòng đăng ký bảng có lớp thuộc bốn lớp và đúng những gì lớp cho phép (`own_read`, `content`: chỉ `{SELECT}`; `internal`: không gì; `own_rw`: chỉ trong `SELECT`, `INSERT`, `UPDATE`, `DELETE`; `owner_column` có với `own_*`, rỗng với hai lớp kia); mỗi dòng đăng ký hàm chỉ nêu `app_anon`, `app_auth`, `app_job`. Mọi bảng và view trong `public` đều đã đăng ký; mọi bảng đã đăng ký đều tồn tại; cột `owner_column` và các cột `UPDATE` đã đăng ký đều tồn tại. Mọi hàm trong `public`, `app`, `meta` đều đã đăng ký; mọi hàm đã đăng ký đều tồn tại; hàm nội bộ (tên bắt đầu bằng `_` ở bất kỳ schema nào, và `meta.*`) đăng ký với tập vai trò rỗng.
+5. **View.** View phải là `security_invoker`; không có materialized view, không có foreign table.
 6. **RLS** bật với các lớp `own_read`, `own_rw`, `internal`.
 7. **Quyền, đọc từ ACL, bằng đúng tập mong đợi** (`WITH GRANT OPTION` cũng là sai lệch):
    - cơ sở dữ liệu: chỉ mặc định `CONNECT` và `TEMPORARY` cho `PUBLIC` (không ai có `CREATE`);
@@ -196,18 +196,75 @@ Cổng 1 không biết một request thật làm được gì; cổng 2 không b
    - sequence: không cấp cho ai;
    - hàm: `EXECUTE` cho đúng tập vai trò đã đăng ký.
 8. **Policy** trên mỗi bảng là đúng các policy đã đăng ký: `PERMISSIVE`, `TO app_auth`, cùng lệnh, biểu thức `USING` và `WITH CHECK` bằng nguyên văn; bảng `internal` không có policy nào.
-9. **`search_path` của hàm `SECURITY DEFINER`** phải bằng đúng một trong hai giá trị: `public, pg_temp` hoặc `pg_catalog, pg_temp`. Không đặt, đặt `public` (thiếu `pg_temp` ở cuối), hay `pg_temp, public` đều bị từ chối: mọi vai trò đều tạo được bảng tạm, và bảng tạm trùng tên sẽ che bảng thật trong thân hàm đặc quyền.
+9. **Thiết lập của hàm `SECURITY DEFINER`** phải là đúng một `SET search_path` với một trong hai giá trị `public, pg_temp` hoặc `pg_catalog, pg_temp`, **và không có `SET` nào khác** (một `SET session_replication_role = replica` đi kèm sẽ tắt trigger trong thân hàm). Không đặt, đặt `public` (thiếu `pg_temp` ở cuối), hay `pg_temp, public` đều bị từ chối: mọi vai trò đều tạo được bảng tạm, và bảng tạm trùng tên sẽ che bảng thật trong thân hàm đặc quyền.
 10. `meta.test_clock` rỗng.
 
 Giới hạn cần biết: phép so ACL coi mọi quyền ngoài mô tả là vi phạm, nên một vai trò vận hành (sao lưu, đọc báo cáo) được cấp quyền trực tiếp trên bảng sẽ làm cổng 1 đỏ; quyền `CONNECT` cấp riêng cho `app_conn` trên cơ sở dữ liệu cũng vậy, và một vai trò quản trị không phải superuser tạo ra các vai trò `app_*` sẽ tự có quan hệ thành viên `ADMIN` với chúng. Muốn có những thứ đó thì sửa mô tả trong `90-verify.sql` cùng một ca đột biến tương ứng, không nới phép so.
 
 `server/checks/verify.test.ts` chạy ba việc trên lược đồ thật (áp dụng lại toàn bộ file SQL trên một cơ sở dữ liệu đã có lược đồ và xác nhận catalog không đổi một dòng nào; chạy `90-verify.sql`; xác nhận nó báo lỗi khi `meta.test_clock` có dòng), rồi dựng một lược đồ mẫu có đủ bốn lớp và phá lần lượt từng hàng rào, mỗi lần đòi đúng SQLSTATE `P0001` và đúng phần đầu thông báo nêu tên thứ bị phá. **Thêm hay siết một phép kiểm trong `90-verify.sql` thì thêm ca đột biến của nó vào file test này trong cùng thay đổi.** Cổng 3 (từ Task 16) lặp lại phép chứng minh đó trên toàn bộ bảng và hàm thật.
 
+## Cách đăng ký bảng, policy, hàm
+
+Mẫu dưới đây đi qua cổng 1 nguyên văn (đã chạy thử). Tên bảng và hàm chỉ để minh họa.
+
+```sql
+-- Bảng own_rw: client đọc dòng của mình và chỉ sửa được hai cột.
+CREATE TABLE IF NOT EXISTS profiles (
+  user_id uuid PRIMARY KEY,
+  display_name text NOT NULL,
+  timezone text NOT NULL,
+  level_seen int NOT NULL DEFAULT 1
+);
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS own_select ON profiles;
+CREATE POLICY own_select ON profiles FOR SELECT TO app_auth
+  USING (app.current_user_id() = user_id);
+DROP POLICY IF EXISTS own_update ON profiles;
+CREATE POLICY own_update ON profiles FOR UPDATE TO app_auth
+  USING (app.current_user_id() = user_id) WITH CHECK (app.current_user_id() = user_id);
+
+REVOKE ALL ON profiles FROM PUBLIC, app_anon, app_auth, app_job;
+GRANT SELECT ON profiles TO app_auth;                          -- mức bảng: chỉ SELECT
+GRANT UPDATE (display_name, timezone) ON profiles TO app_auth; -- UPDATE chỉ theo cột
+
+SELECT meta.expect_table('profiles', 'own_rw', '{SELECT}', '{display_name,timezone}', 'user_id');
+SELECT meta.expect_policy('profiles', 'own_select', 'SELECT', '(app.current_user_id() = user_id)', NULL);
+SELECT meta.expect_policy('profiles', 'own_update', 'UPDATE',
+  '(app.current_user_id() = user_id)', '(app.current_user_id() = user_id)');
+
+-- Hàm nội bộ nhận user id tường minh: không ai được gọi.
+CREATE OR REPLACE FUNCTION app._mark_level_seen(p_user uuid, p_level int) RETURNS void
+LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp
+AS $$ UPDATE profiles SET level_seen = p_level WHERE user_id = p_user $$;
+REVOKE ALL ON FUNCTION app._mark_level_seen(uuid, int) FROM PUBLIC, app_anon, app_auth, app_job;
+SELECT meta.expect_function('app._mark_level_seen(uuid, int)', '{}');
+
+-- Hàm client gọi: nhận ý định, lấy id từ app.current_user_id().
+CREATE OR REPLACE FUNCTION profile_mark_level_seen(p_level int) RETURNS void
+LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp
+AS $$ SELECT app._mark_level_seen(app.current_user_id(), p_level) $$;
+REVOKE ALL ON FUNCTION profile_mark_level_seen(int) FROM PUBLIC, app_anon, app_auth, app_job;
+GRANT EXECUTE ON FUNCTION profile_mark_level_seen(int) TO app_auth;
+SELECT meta.expect_function('profile_mark_level_seen(int)', '{app_auth}');
+```
+
+Quy tắc dùng, mỗi dòng là một điều cổng 1 sẽ bắt:
+
+- **`own_rw` cho sửa một phần**: `GRANT SELECT` ở mức bảng, `GRANT UPDATE (cột…)` theo cột, và **không** `GRANT UPDATE` ở mức bảng. Đăng ký quyền mức bảng (`'{SELECT}'`) và danh sách cột (`'{display_name,timezone}'`) riêng nhau.
+- **Policy** viết `… TO app_auth` (bỏ `TO` là `PUBLIC`, bị từ chối), để mặc định `PERMISSIVE`, và đăng ký biểu thức bằng **đúng nguyên văn** `pg_get_expr` in ra: có ngoặc ngoài, tên hàm kèm schema, ví dụ `(app.current_user_id() = user_id)`. Lấy nguyên văn bằng `SELECT pg_get_expr(polqual, polrelid), pg_get_expr(polwithcheck, polrelid) FROM pg_policy WHERE polname = '…'`. Làm cho chạy lại được bằng `DROP POLICY IF EXISTS` rồi `CREATE POLICY`.
+- **Hàm `SECURITY DEFINER`**: đúng `SET search_path = public, pg_temp` và không `SET` nào khác; `REVOKE ALL … FROM PUBLIC` (cùng các vai trò `app_*`, để file tự đủ khi chạy lại); rồi `GRANT EXECUTE` cho **đúng** các vai trò sẽ đăng ký.
+- **Hàm nội bộ và hàm trigger**: tên bắt đầu bằng `_` (hàm nhận user id tường minh luôn thuộc loại này), không `GRANT EXECUTE` cho ai, đăng ký với `'{}'`.
+- **View**: `CREATE VIEW … WITH (security_invoker = true)`, đăng ký như bảng lớp `content`. Không materialized view, không foreign table.
+- **Khóa chính**: `uuid` (`gen_random_uuid()`) hoặc cột `GENERATED … AS IDENTITY`. Không dùng `serial`: nó đòi `GRANT USAGE` trên sequence, mà sequence không được cấp cho ai.
+- **`app_anon` và `app_job` không bao giờ được cấp quyền trên bảng.** Việc của request chưa đăng nhập và của job đi qua hàm `SECURITY DEFINER` cấp `EXECUTE` cho đúng vai trò đó.
+- Đăng ký sai (lớp lạ, `own_rw` kèm `TRUNCATE`, hàm kèm `PUBLIC`) không báo lỗi ở dòng đăng ký mà ở `90-verify.sql` cuối lần migrate, với thông báo bắt đầu bằng `registry:` và nêu tên bảng hoặc hàm.
+
 ## Thêm một file SQL
 
 1. Tạo `server/sql/NN-<mảng>.sql` với số nhỏ hơn 80, viết sao cho chạy lặp lại được. Mỗi file thuộc về một nhiệm vụ.
 2. Bảng do superuser sở hữu. Bật RLS theo lớp, tạo policy `… TO app_auth`, rồi `GRANT` cho `app_auth` đúng những gì lớp cho phép, và không cấp gì cho vai trò khác. Dùng GRANT theo cột khi client chỉ được sửa một phần (`GRANT UPDATE (cột) …`).
-3. Việc đặc quyền là hàm `SECURITY DEFINER` có đúng `SET search_path = public, pg_temp` (`pg_temp` luôn đứng cuối; gọi hàm trong `app` thì ghi rõ `app.`), nhận *ý định* của người dùng chứ không nhận số tiền hay user id; id lấy từ `app.current_user_id()`. Hàm nhận user id tường minh đặt trong `app` với tên bắt đầu bằng `_` và không cấp `EXECUTE` cho ai. `SECURITY DEFINER` không chịu RLS: điều kiện policy đang lọc hộ phải viết lại trong thân hàm. Đọc thời gian bằng `app.now()`.
+3. Việc đặc quyền là hàm `SECURITY DEFINER` có đúng `SET search_path = public, pg_temp` (`pg_temp` luôn đứng cuối; gọi hàm trong `app` thì ghi rõ `app.`), nhận *ý định* của người dùng chứ không nhận số tiền hay user id; id lấy từ `app.current_user_id()`. Hàm nhận user id tường minh đặt trong `app` với tên bắt đầu bằng `_` và không cấp `EXECUTE` cho ai (quy tắc "tên bắt đầu bằng `_` = không ai được gọi" áp dụng ở mọi schema). `SECURITY DEFINER` không chịu RLS: điều kiện policy đang lọc hộ phải viết lại trong thân hàm. Đọc thời gian bằng `app.now()`.
 4. **Đăng ký** mọi bảng, policy và hàm bằng `meta.expect_*` ngay trong file đó, kể cả hàm trong `app`. Hàm không vai trò nào được gọi (hàm `app._*`, hàm trigger) vẫn phải đăng ký, với tập vai trò rỗng `'{}'`.
 5. **Mồi nhử**: thêm `8N-decoy-<mảng>.sql` cho người dùng mồi nhử ít nhất một dòng trong mỗi bảng dữ liệu người dùng mới. Phép kiểm "A không đọc được dữ liệu của B" luôn đạt nếu B không có dòng nào để tìm. Dòng mồi nhử là vĩnh viễn và **không bao giờ được dọn**. File mồi nhử chạy sau seeder nên tham chiếu được nội dung đã seed.
 6. **Ca tấn công**: thêm `server/checks/attacks/<mảng>.ts` cho cổng 2.

@@ -178,7 +178,7 @@ const FIXTURE = `
 const MEMBERSHIP =
   'role membership must be only app_conn in app_anon, app_auth, app_job WITH INHERIT FALSE, SET TRUE; found: ';
 const SEARCH_PATH =
-  'SECURITY DEFINER function must SET search_path to "public, pg_temp" or "pg_catalog, pg_temp": ';
+  'SECURITY DEFINER function must carry exactly SET search_path = public, pg_temp (or pg_catalog, pg_temp) and no other setting: ';
 const SCHEMA_USAGE = '{app_anon:USAGE,app_auth:USAGE,app_job:USAGE}';
 const APP_HELPER = '{app_anon:EXECUTE,app_auth:EXECUTE,app_job:EXECUTE}';
 const LEAKY_VIEW = `CREATE VIEW fx_leak AS SELECT * FROM fx_own_read;
@@ -193,6 +193,8 @@ const mutations = (database: string): [sql: string, raises: string][] => [
   ['ALTER ROLE app_auth BYPASSRLS', 'role app_auth is SUPERUSER, BYPASSRLS'],
   ['ALTER ROLE app_job SUPERUSER', 'role app_job is SUPERUSER, BYPASSRLS'],
   ['ALTER ROLE app_anon CREATEROLE', 'role app_anon is SUPERUSER, BYPASSRLS'],
+  ['ALTER ROLE app_anon CREATEDB', 'role app_anon is SUPERUSER, BYPASSRLS'],
+  ['ALTER ROLE app_auth REPLICATION', 'role app_auth is SUPERUSER, BYPASSRLS'],
   ['ALTER ROLE app_anon LOGIN', 'role app_anon can log in: only app_conn may'],
   [
     'GRANT app_auth TO app_conn WITH INHERIT TRUE',
@@ -285,6 +287,18 @@ const mutations = (database: string): [sql: string, raises: string][] => [
     'table fx_unregistered is not registered (meta.expect_table)',
   ],
   ['DROP TABLE fx_internal', 'registered table does not exist: fx_internal'],
+  [
+    'ALTER VIEW fx_view OWNER TO app_auth',
+    'view fx_view is owned by app role app_auth',
+  ],
+  [
+    `CREATE FOREIGN DATA WRAPPER fx_wrapper;
+     CREATE SERVER fx_server FOREIGN DATA WRAPPER fx_wrapper;
+     CREATE FOREIGN TABLE fx_remote (id int) SERVER fx_server;
+     GRANT SELECT ON fx_remote TO app_auth;
+     SELECT meta.expect_table('fx_remote', 'content', '{SELECT}', '{}', NULL)`,
+    'foreign table fx_remote is not allowed',
+  ],
   // views read as their owner unless security_invoker; materialized views store rows
   [LEAKY_VIEW, 'view fx_leak must be WITH (security_invoker = true)'],
   [
@@ -457,31 +471,32 @@ const mutations = (database: string): [sql: string, raises: string][] => [
   // (6) search_path of SECURITY DEFINER functions: one of the allowed values, by equality
   [
     'ALTER FUNCTION fx_fn(text) RESET search_path',
-    `${SEARCH_PATH}fx_fn(text) (search_path not set)`,
+    `${SEARCH_PATH}fx_fn(text) {}`,
   ],
   [
     'ALTER FUNCTION fx_fn(text) SET search_path = public',
-    `${SEARCH_PATH}fx_fn(text) (search_path=public)`,
+    `${SEARCH_PATH}fx_fn(text) {search_path=public}`,
   ],
   [
     'ALTER FUNCTION fx_fn(text) SET search_path = pg_temp, public',
-    `${SEARCH_PATH}fx_fn(text) (search_path=pg_temp, public)`,
+    `${SEARCH_PATH}fx_fn(text) {"search_path=pg_temp, public"}`,
   ],
   [
     "ALTER FUNCTION fx_fn(text) SET search_path = 'public, pg_temp'",
-    `${SEARCH_PATH}fx_fn(text) (search_path="public, pg_temp")`,
+    `${SEARCH_PATH}fx_fn(text) {"search_path=\\"public, pg_temp\\""}`,
   ],
   [
     'ALTER FUNCTION fx_fn(text) SET search_path = app, public, pg_temp',
-    `${SEARCH_PATH}fx_fn(text) (search_path=app, public, pg_temp)`,
+    `${SEARCH_PATH}fx_fn(text) {"search_path=app, public, pg_temp"}`,
   ],
-  [
-    'ALTER FUNCTION app.now() RESET search_path',
-    `${SEARCH_PATH}app.now() (search_path not set)`,
-  ],
+  ['ALTER FUNCTION app.now() RESET search_path', `${SEARCH_PATH}app.now() {}`],
   [
     'ALTER FUNCTION app._fx_helper(uuid) SECURITY DEFINER',
-    `${SEARCH_PATH}app._fx_helper(uuid) (search_path not set)`,
+    `${SEARCH_PATH}app._fx_helper(uuid) {}`,
+  ],
+  [
+    'ALTER FUNCTION fx_fn(text) SET session_replication_role = replica',
+    `${SEARCH_PATH}fx_fn(text) {"search_path=public, pg_temp",session_replication_role=replica}`,
   ],
   // (7) every function of ours is registered, and EXECUTE is granted to exactly the registered roles
   [
@@ -561,6 +576,80 @@ const mutations = (database: string): [sql: string, raises: string][] => [
      GRANT EXECUTE ON FUNCTION meta.expect_function(text, text[]) TO app_auth`,
     'internal function must be registered with no role: meta.expect_function(text,text[]) {app_auth}',
   ],
+  [
+    `CREATE FUNCTION public._fx_h(p_user uuid) RETURNS int LANGUAGE sql AS 'SELECT 1';
+     GRANT EXECUTE ON FUNCTION _fx_h(uuid) TO app_auth;
+     SELECT meta.expect_function('_fx_h(uuid)', '{app_auth}')`,
+    'internal function must be registered with no role: _fx_h(uuid) {app_auth}',
+  ],
+  // the default ACL of a function (proacl is null) opens it to PUBLIC
+  [
+    `ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO PUBLIC;
+     CREATE FUNCTION fx_open() RETURNS int LANGUAGE sql AS 'SELECT 1';
+     SELECT meta.expect_function('fx_open()', '{}')`,
+    'function fx_open(): grants are {PUBLIC:EXECUTE}, expected {}',
+  ],
+  // the registry itself is not trusted: a row that contradicts its class is refused, however
+  // it got there, even when the catalog agrees with it
+  [
+    "UPDATE meta.expected_tables SET class = 'bogus' WHERE name = 'fx_content'",
+    'registry: table fx_content (bogus): unknown class',
+  ],
+  [
+    `GRANT TRUNCATE ON fx_own_rw TO app_auth;
+     UPDATE meta.expected_tables SET auth_privileges = '{SELECT,INSERT,TRUNCATE}' WHERE name = 'fx_own_rw'`,
+    'registry: table fx_own_rw (own_rw): app_auth may hold only SELECT, INSERT, UPDATE, DELETE',
+  ],
+  ...['REFERENCES', 'TRIGGER', 'select'].map((privilege): [string, string] => [
+    `SELECT meta.expect_table('fx_own_rw', 'own_rw', '{SELECT,INSERT,${privilege}}', '{a}', 'user_id')`,
+    'registry: table fx_own_rw (own_rw): app_auth may hold only SELECT, INSERT, UPDATE, DELETE',
+  ]),
+  [
+    `GRANT INSERT ON fx_own_read TO app_auth;
+     SELECT meta.expect_table('fx_own_read', 'own_read', '{SELECT,INSERT}', '{}', 'user_id')`,
+    'registry: table fx_own_read (own_read): app_auth holds exactly {SELECT} and no column grant',
+  ],
+  [
+    `GRANT UPDATE (code) ON fx_content TO app_auth;
+     SELECT meta.expect_table('fx_content', 'content', '{SELECT}', '{code}', NULL)`,
+    'registry: table fx_content (content): app_auth holds exactly {SELECT} and no column grant',
+  ],
+  [
+    `GRANT SELECT ON fx_internal TO app_auth;
+     SELECT meta.expect_table('fx_internal', 'internal', '{SELECT}', '{}', NULL)`,
+    'registry: table fx_internal (internal): app_auth holds nothing',
+  ],
+  [
+    "UPDATE meta.expected_tables SET owner_column = NULL WHERE name = 'fx_own_read'",
+    'registry: table fx_own_read (own_read): owner_column is required for own_read and own_rw',
+  ],
+  [
+    "SELECT meta.expect_table('fx_content', 'content', '{SELECT}', '{}', 'code')",
+    'registry: table fx_content (content): owner_column is required for own_read and own_rw',
+  ],
+  [
+    `GRANT EXECUTE ON FUNCTION fx_fn(text) TO PUBLIC;
+     SELECT meta.expect_function('fx_fn(text)', '{app_auth,app_anon,PUBLIC}')`,
+    'registry: function fx_fn(text): only app_anon, app_auth, app_job can be registered, not {app_auth,app_anon,PUBLIC}',
+  ],
+  [
+    `GRANT EXECUTE ON FUNCTION fx_fn(text) TO app_conn;
+     SELECT meta.expect_function('fx_fn(text)', '{app_auth,app_anon,app_conn}')`,
+    'registry: function fx_fn(text): only app_anon, app_auth, app_job can be registered, not {app_auth,app_anon,app_conn}',
+  ],
+  // privileges on configuration parameters
+  [
+    'GRANT SET ON PARAMETER session_replication_role TO app_auth',
+    'a configuration parameter is granted to an app role or to PUBLIC: session_replication_role to app_auth',
+  ],
+  [
+    'GRANT SET ON PARAMETER session_replication_role TO PUBLIC',
+    'a configuration parameter is granted to an app role or to PUBLIC: session_replication_role to PUBLIC',
+  ],
+  [
+    'GRANT ALTER SYSTEM ON PARAMETER log_statement TO app_conn',
+    'a configuration parameter is granted to an app role or to PUBLIC: log_statement to app_conn',
+  ],
   // (9) test clock
   [
     'INSERT INTO meta.test_clock (now) VALUES (now())',
@@ -597,45 +686,8 @@ test('90-verify.sql raises for each broken fence and names the object', async t 
   }
 });
 
-test('the registry refuses a malformed declaration', async () => {
+test('the registry refuses a declaration for something that does not exist', async () => {
   const declare = (sql: string) => fixture.admin.query(`SELECT ${sql}`);
-  const refused = (messagePrefix: string) => ({ code: '23514', messagePrefix });
-  await expectPgError(
-    declare(
-      "meta.expect_table('x', 'own_read', '{SELECT,INSERT}', '{}', 'user_id')",
-    ),
-    refused('meta.expect_table(x, own_read): app_auth holds exactly {SELECT}'),
-  );
-  await expectPgError(
-    declare("meta.expect_table('x', 'content', '{SELECT}', '{a}', NULL)"),
-    refused('meta.expect_table(x, content): app_auth holds exactly {SELECT}'),
-  );
-  await expectPgError(
-    declare("meta.expect_table('x', 'own_read', '{SELECT}', '{}', NULL)"),
-    refused('meta.expect_table(x, own_read): owner_column is required'),
-  );
-  await expectPgError(
-    declare("meta.expect_table('x', 'content', '{SELECT}', '{}', 'user_id')"),
-    refused('meta.expect_table(x, content): owner_column is required'),
-  );
-  await expectPgError(
-    declare("meta.expect_table('x', 'internal', '{SELECT}', '{}', NULL)"),
-    refused('meta.expect_table(x, internal): app_auth holds nothing'),
-  );
-  for (const privilege of ['TRUNCATE', 'REFERENCES', 'TRIGGER', 'select']) {
-    await expectPgError(
-      declare(
-        `meta.expect_table('x', 'own_rw', '{SELECT,${privilege}}', '{}', 'user_id')`,
-      ),
-      refused(
-        'meta.expect_table(x, own_rw): app_auth may hold only SELECT, INSERT, UPDATE, DELETE',
-      ),
-    );
-  }
-  await expectPgError(
-    declare("meta.expect_table('x', 'public', '{SELECT}', '{}', NULL)"),
-    refused('meta.expect_table(x, public): unknown class'),
-  );
   await expectPgError(
     declare("meta.expect_policy('fx_absent', 'p', 'SELECT', 'true', NULL)"),
     { code: '23503', messagePrefix: 'insert or update on table' },
@@ -647,14 +699,20 @@ test('the registry refuses a malformed declaration', async () => {
 });
 
 test('a migration rebuilds the registry from the SQL files and ends with the self-check', async () => {
-  const client = await fixture.admin.connect();
+  // A migration rewrites the registry for good, so this runs on a database of its own: the
+  // fixture database stays usable by any test added to this file.
+  const disowned = await createTestDb();
+  const client = await disowned.admin.connect();
   try {
+    await client.query(FIXTURE);
+    await client.query(VERIFY);
     // the fixture objects are declared by no SQL file, so the rebuilt registry disowns them
     await assert.rejects(
       migrate(client, SQL_DIR),
-      /^Error: 90-verify\.sql: table fx_content is not registered/,
+      /^Error: 90-verify.sql: table fx_content is not registered/,
     );
   } finally {
     client.release();
+    await disowned.drop();
   }
 });

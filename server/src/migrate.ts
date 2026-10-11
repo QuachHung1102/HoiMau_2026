@@ -5,6 +5,13 @@ import type { ClientBase } from 'pg';
 
 export type Seeder = (db: ClientBase) => Promise<void>;
 
+export type MigrateOptions = {
+  /** Where the seeders live. Default: src/seed. */
+  seedDir?: string;
+  /** For a test fixture only: accept a set of files without a 90-*.sql self-check. */
+  withoutSelfCheck?: boolean;
+};
+
 const SEED_DIR = fileURLToPath(new URL('./seed', import.meta.url));
 
 /** Decoy files (8N) and the self-check (90) need the seeded content, so they run after it. */
@@ -29,12 +36,13 @@ async function inTransaction(
 /**
  * Apply the schema as its owner (the superuser), one transaction per step:
  * `NN-*.sql` below 80 in name order, then every seeder of `seedDir` (`export async function
- * seed(db)`), then the remaining SQL files. Returns the steps in the order they ran.
+ * seed(db)`), then the remaining SQL files, the `90-*.sql` self-check last. Returns the steps
+ * in the order they ran.
  */
 export async function migrate(
   client: ClientBase,
   sqlDir: string,
-  seedDir: string = SEED_DIR,
+  { seedDir = SEED_DIR, withoutSelfCheck = false }: MigrateOptions = {},
 ): Promise<string[]> {
   const sqlFiles = (await readdir(sqlDir))
     .filter(name => /^\d\d-.*\.sql$/.test(name))
@@ -42,8 +50,12 @@ export async function migrate(
   if (sqlFiles.length === 0) {
     throw new Error(`no NN-*.sql file in ${sqlDir}`);
   }
-  // The self-check judges the finished schema: whatever ran after it would go unchecked.
+  // The self-check judges the finished schema. A set of files without one is a schema nobody
+  // checked, and whatever ran after it would go unchecked too.
   const selfCheck = sqlFiles.findIndex(name => name.startsWith('90-'));
+  if (selfCheck === -1 && !withoutSelfCheck) {
+    throw new Error(`no 90-*.sql self-check in ${sqlDir}`);
+  }
   if (selfCheck !== -1 && selfCheck !== sqlFiles.length - 1) {
     throw new Error(
       `${sqlFiles[selfCheck]} must be the last step, but ${sqlFiles

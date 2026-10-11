@@ -69,6 +69,51 @@ BEGIN
   IF found IS NOT NULL THEN
     RAISE EXCEPTION 'a stored setting applies to an app role: %', found;
   END IF;
+  -- A privilege on a configuration parameter (GRANT SET ON PARAMETER) lets a role change a
+  -- setting it otherwise could not, session_replication_role for one.
+  SELECT string_agg(format('%s to %s (%s)', pa.parname, CASE WHEN g.grantee = 0 THEN 'PUBLIC' ELSE ro.rolname END,
+                           g.privilege_type), '; ' ORDER BY pa.parname, ro.rolname)
+    INTO found
+    FROM pg_parameter_acl pa
+    CROSS JOIN LATERAL aclexplode(pa.paracl) g
+    LEFT JOIN pg_roles ro ON ro.oid = g.grantee
+   WHERE g.grantee = 0 OR ro.rolname LIKE 'app\_%';
+  IF found IS NOT NULL THEN
+    RAISE EXCEPTION 'a configuration parameter is granted to an app role or to PUBLIC: %', found;
+  END IF;
+
+  -- The registry is not trusted either: a row is judged here, however it was written. A class
+  -- fixes what app_auth may be granted; without this a registered TRUNCATE, or a class nobody
+  -- defined, would make the catalog "match".
+  SELECT string_agg(format('table %s (%s): %s', e.name, e.class, e.problem), '; ' ORDER BY e.name)
+    INTO found
+    FROM (SELECT t.name, t.class,
+                 CASE
+                   WHEN t.class NOT IN ('own_read', 'own_rw', 'internal', 'content')
+                     THEN 'unknown class'
+                   WHEN (t.class IN ('own_read', 'own_rw')) <> (t.owner_column IS NOT NULL)
+                     THEN 'owner_column is required for own_read and own_rw, and null for the other classes'
+                   WHEN t.class IN ('own_read', 'content') AND NOT (t.auth_privileges = '{SELECT}' AND t.auth_update_columns = '{}')
+                     THEN 'app_auth holds exactly {SELECT} and no column grant'
+                   WHEN t.class = 'internal' AND NOT (t.auth_privileges = '{}' AND t.auth_update_columns = '{}')
+                     THEN 'app_auth holds nothing'
+                   -- TRUNCATE ignores row level security; REFERENCES and TRIGGER are not a client's business
+                   WHEN t.class = 'own_rw' AND NOT t.auth_privileges <@ ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE']
+                     THEN 'app_auth may hold only SELECT, INSERT, UPDATE, DELETE'
+                 END AS problem
+            FROM meta.expected_tables t) e
+   WHERE e.problem IS NOT NULL;
+  IF found IS NOT NULL THEN
+    RAISE EXCEPTION 'registry: %', found;
+  END IF;
+  SELECT string_agg(format('function %s: only app_anon, app_auth, app_job can be registered, not %s', e.signature, e.roles),
+                    '; ' ORDER BY e.signature)
+    INTO found
+    FROM meta.expected_functions e
+   WHERE NOT e.roles <@ ARRAY['app_anon', 'app_auth', 'app_job'];
+  IF found IS NOT NULL THEN
+    RAISE EXCEPTION 'registry: %', found;
+  END IF;
 
   -- (3) Every registered table exists ...
   SELECT string_agg(e.name, ', ' ORDER BY e.name)
@@ -95,9 +140,12 @@ BEGIN
      ORDER BY 2
   LOOP
     -- A view reads its tables as the view's owner: row level security does not apply to what
-    -- it shows unless it is a security_invoker view. A materialized view is a copy of the rows.
+    -- it shows unless it is a security_invoker view. A materialized view is a copy of the rows,
+    -- and the rows of a foreign table are not in this database at all.
     IF r.relkind = 'm' THEN
       RAISE EXCEPTION 'materialized view % is not allowed: its rows sit outside row level security', r.label;
+    ELSIF r.relkind = 'f' THEN
+      RAISE EXCEPTION 'foreign table % is not allowed: its rows sit outside this database and its fences', r.label;
     ELSIF r.relkind = 'v' AND r.security_invoker IS NOT TRUE THEN
       RAISE EXCEPTION 'view % must be WITH (security_invoker = true): otherwise it reads as its owner, past row level security', r.label;
     END IF;
@@ -185,13 +233,14 @@ BEGIN
     RAISE EXCEPTION 'registered function does not exist: %', found;
   END IF;
   -- (8) A helper that takes the user id as an argument serves whoever may call it: the internal
-  -- ones (app._*, and everything in meta) are registered for no role at all.
+  -- ones (a name starting with "_" in any schema, and everything in meta) are registered for no
+  -- role at all.
   SELECT string_agg(format('%s %s', e.signature, e.roles), ', ' ORDER BY e.signature)
     INTO found
     FROM meta.expected_functions e
     JOIN pg_proc p ON p.oid::regprocedure::text = e.signature
     JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE (n.nspname = 'meta' OR (n.nspname = 'app' AND left(p.proname, 1) = '_'))
+   WHERE (n.nspname = 'meta' OR left(p.proname, 1) = '_')
      AND e.roles <> '{}';
   IF found IS NOT NULL THEN
     RAISE EXCEPTION 'internal function must be registered with no role: %', found;
@@ -199,18 +248,20 @@ BEGIN
 
   -- (6) A SECURITY DEFINER function resolves names with the search_path it carries. One that
   -- carries none uses the caller's; one whose path does not end in pg_temp, or starts with it,
-  -- lets the caller's temporary objects shadow the real ones. Only the listed values pass.
-  SELECT string_agg(format('%s (%s)', p.oid::regprocedure::text,
-                           coalesce((SELECT s FROM unnest(p.proconfig) s WHERE left(s, 12) = 'search_path='),
-                                    'search_path not set')), ', ' ORDER BY p.oid::regprocedure::text)
+  -- lets the caller's temporary objects shadow the real ones. The settings of the function must
+  -- be exactly one of the two allowed paths and nothing else: any further SET (for instance
+  -- session_replication_role = replica, which switches triggers off) rides along unseen.
+  SELECT string_agg(format('%s %s', p.oid::regprocedure::text, coalesce(p.proconfig, '{}')), ', '
+                    ORDER BY p.oid::regprocedure::text)
     INTO found
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
    WHERE n.nspname NOT LIKE 'pg\_%' AND n.nspname <> 'information_schema'
      AND p.prosecdef
-     AND NOT coalesce(p.proconfig && ARRAY['search_path=public, pg_temp', 'search_path=pg_catalog, pg_temp'], false);
+     AND p.proconfig IS DISTINCT FROM ARRAY['search_path=public, pg_temp']
+     AND p.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, pg_temp'];
   IF found IS NOT NULL THEN
-    RAISE EXCEPTION 'SECURITY DEFINER function must SET search_path to "public, pg_temp" or "pg_catalog, pg_temp": %', found;
+    RAISE EXCEPTION 'SECURITY DEFINER function must carry exactly SET search_path = public, pg_temp (or pg_catalog, pg_temp) and no other setting: %', found;
   END IF;
 
   -- (2) (4) (7) (8) Ownership and grants of everything of ours, read from the ACL. Nothing is

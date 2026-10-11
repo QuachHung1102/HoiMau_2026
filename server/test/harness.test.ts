@@ -271,10 +271,10 @@ test('migrate runs SQL below 80, then the seeders, then 8N and 90, and names the
       '80-decoy.sql',
       '90-verify.sql',
     ];
-    assert.deepEqual(
-      await migrate(client, join(root, 'sql'), join(root, 'seed')),
-      expected,
-    );
+    const sqlDir = join(root, 'sql');
+    const seedDir = join(root, 'seed');
+    const noSeeders = { seedDir: join(root, 'absent') };
+    assert.deepEqual(await migrate(client, sqlDir, { seedDir }), expected);
     const { rows } = await client.query(
       'SELECT name FROM fx_migrate_steps ORDER BY n',
     );
@@ -289,7 +289,7 @@ test('migrate runs SQL below 80, then the seeders, then 8N and 90, and names the
       `${step('11')} SELECT 1 / 0;`,
     );
     await assert.rejects(
-      migrate(client, join(root, 'sql'), join(root, 'absent')),
+      migrate(client, sqlDir, noSeeders),
       /^Error: 11-broken\.sql: division by zero$/,
     );
     const { rows: after11 } = await client.query(
@@ -311,7 +311,7 @@ test('migrate runs SQL below 80, then the seeders, then 8N and 90, and names the
       },
     } as unknown as ClientBase;
     await assert.rejects(
-      migrate(lost, join(root, 'sql'), join(root, 'absent')),
+      migrate(lost, sqlDir, noSeeders),
       /^Error: 10-base\.sql: boom$/,
     );
 
@@ -322,10 +322,23 @@ test('migrate runs SQL below 80, then the seeders, then 8N and 90, and names the
     const stepsBefore = await stepCount();
     await writeFile(join(root, 'sql', '91-late.sql'), step('91'));
     await assert.rejects(
-      migrate(client, join(root, 'sql'), join(root, 'seed')),
+      migrate(client, sqlDir, { seedDir }),
       /^Error: 90-verify\.sql must be the last step, but 91-late\.sql would run after it$/,
     );
     assert.equal(await stepCount(), stepsBefore);
+
+    // a set of files without a self-check is refused, unless a fixture says so explicitly
+    await rm(join(sqlDir, '91-late.sql'));
+    await rm(join(sqlDir, '90-verify.sql'));
+    await assert.rejects(
+      migrate(client, sqlDir, { seedDir }),
+      /^Error: no 90-\*\.sql self-check in /,
+    );
+    assert.equal(await stepCount(), stepsBefore);
+    assert.deepEqual(
+      await migrate(client, sqlDir, { seedDir, withoutSelfCheck: true }),
+      expected.slice(0, -1),
+    );
   } finally {
     client.release();
     await rm(root, { recursive: true, force: true });
