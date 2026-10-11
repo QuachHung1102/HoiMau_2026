@@ -41,8 +41,9 @@ CREATE TABLE IF NOT EXISTS meta.expected_policies (
   PRIMARY KEY (table_name, policy)
 );
 
--- roles: exactly the roles granted EXECUTE (PUBLIC counts as one). Every function in public,
--- app and meta must be registered; internal ones (app._*, everything in meta) with '{}'.
+-- roles: exactly the roles granted EXECUTE, among app_anon, app_auth, app_job. Every function in
+-- public, app and meta must be registered; internal ones (a name starting with "_", and
+-- everything in meta) with '{}'.
 CREATE TABLE IF NOT EXISTS meta.expected_functions (
   signature text PRIMARY KEY,
   roles text[] NOT NULL
@@ -54,37 +55,21 @@ DELETE FROM meta.expected_policies;
 DELETE FROM meta.expected_tables;
 DELETE FROM meta.expected_functions;
 
+-- The three functions only record a declaration. 90-verify.sql judges every row of the registry
+-- (class, what the class allows, which roles can be registered), however it was written.
 CREATE OR REPLACE FUNCTION meta.expect_table(
   p_name text, p_class text, p_auth_privileges text[], p_auth_update_columns text[], p_owner_column text
 ) RETURNS void
-LANGUAGE plpgsql
+LANGUAGE sql
 AS $$
-DECLARE
-  problem text := CASE
-    WHEN p_class NOT IN ('own_read', 'own_rw', 'internal', 'content')
-      THEN 'unknown class'
-    WHEN (p_class IN ('own_read', 'own_rw')) <> (p_owner_column IS NOT NULL)
-      THEN 'owner_column is required for own_read and own_rw, and null for the other classes'
-    WHEN p_class IN ('own_read', 'content') AND NOT (p_auth_privileges = '{SELECT}' AND p_auth_update_columns = '{}')
-      THEN 'app_auth holds exactly {SELECT} and no column grant'
-    WHEN p_class = 'internal' AND NOT (p_auth_privileges = '{}' AND p_auth_update_columns = '{}')
-      THEN 'app_auth holds nothing'
-    -- TRUNCATE ignores row level security; REFERENCES and TRIGGER are not a client's business
-    WHEN p_class = 'own_rw' AND NOT p_auth_privileges <@ ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE']
-      THEN 'app_auth may hold only SELECT, INSERT, UPDATE, DELETE'
-  END;
-BEGIN
-  IF problem IS NOT NULL THEN
-    RAISE EXCEPTION 'meta.expect_table(%, %): %', p_name, p_class, problem USING ERRCODE = 'check_violation';
-  END IF;
   INSERT INTO meta.expected_tables (name, class, auth_privileges, auth_update_columns, owner_column)
   VALUES (p_name, p_class, p_auth_privileges, p_auth_update_columns, p_owner_column)
   ON CONFLICT (name) DO UPDATE SET
     class = EXCLUDED.class,
     auth_privileges = EXCLUDED.auth_privileges,
     auth_update_columns = EXCLUDED.auth_update_columns,
-    owner_column = EXCLUDED.owner_column;
-END $$;
+    owner_column = EXCLUDED.owner_column
+$$;
 
 CREATE OR REPLACE FUNCTION meta.expect_policy(
   p_table text, p_policy text, p_cmd text, p_using_expr text, p_check_expr text

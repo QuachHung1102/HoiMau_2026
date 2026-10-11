@@ -179,14 +179,18 @@ export async function startCluster(
     onError: error => console.error('[postgres]', error),
   });
   const stop = async () => {
-    // When the postmaster is already dead the library's stop() waits for an exit event that
-    // never comes, after aiming a forced kill at a PID that may belong to someone else by now.
-    if (findCluster(cluster).postmaster !== null) {
-      await server.stop();
+    try {
+      // When the postmaster is already dead the library's stop() waits for an exit event that
+      // never comes, after aiming a forced kill at a PID that may belong to someone else by now.
+      if (findCluster(cluster).postmaster !== null) {
+        await server.stop();
+      }
+    } finally {
+      // Always, also when the stop above throws. The library force-kills the process tree, and
+      // the postmaster can respawn a worker while that walk is under way: the survivor keeps
+      // the data directory and this process's pipes.
+      await killCluster(cluster);
     }
-    // The library force-kills the process tree, and the postmaster can respawn a worker while
-    // that walk is under way: the survivor keeps the data directory and this process's pipes.
-    await killCluster(cluster);
   };
 
   const boot = (async () => {
