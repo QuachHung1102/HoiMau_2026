@@ -21,7 +21,7 @@
     "db:api-check": "npm --prefix server run db:api-check",
     "db:mutation-check": "npm --prefix server run db:mutation-check",
     "db:cleanup": "npm --prefix server run db:cleanup",
-    "content:count": "npm --prefix server run content:count"
+    "content:count": "npm --prefix server run content:count --"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "3.1.1",
