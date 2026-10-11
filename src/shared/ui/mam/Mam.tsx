@@ -1,26 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, AppState, Easing } from 'react-native';
+import { Animated, Easing } from 'react-native';
 import Svg, { G } from 'react-native-svg';
 import type { PetMood, PetStage } from '../../../../domain/types.ts';
 import * as vi from '../../i18n/vi/pet';
 import { motion } from '../../motion/motion';
-import { useReducedMotion } from '../../motion/useReducedMotion';
+import { useLoopGate } from '../../motion/useLoopGate';
 import { SkinFox } from './SkinFox';
 import { stages } from './stages';
-
-/**
- * True while decorative motion may run: the screen is focused (`active`), the app is in the foreground
- * and motion is not reduced.
- */
-export function useLoopGate(active = true): boolean {
-  const reduced = useReducedMotion();
-  const [foreground, setForeground] = useState(AppState.currentState !== 'background');
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', next => setForeground(next === 'active'));
-    return () => subscription.remove();
-  }, []);
-  return active && foreground && !reduced;
-}
 
 type Bezier = readonly [number, number, number, number];
 type Shape = {
@@ -74,8 +60,9 @@ const shapes: Record<'idle' | 'tired' | 'happy' | 'cheer', Shape> = {
   },
 };
 
-// The seed's head sits lower than the other stages': stage-egg.svg moves its face groups by this much, so a skin follows.
-const EGG_HEAD = 'translate(2.2 31)';
+// The seed's head sits 31 units lower than the other stages' (the vertical part of the offset stage-egg.svg gives its
+// face groups), so a skin moves down with it. The hat is symmetric about x = 64, like the seed: no sideways offset.
+const EGG_HEAD = 'translate(0 31)';
 
 type Props = {
   stage: PetStage;
@@ -135,7 +122,7 @@ export function Mam({ stage, mood, skin, size, animation, decorative = false, ac
   return (
     <Animated.View {...a11y} style={{ width: size, height: size, transform }}>
       <Svg width={size} height={size} viewBox="0 0 128 128">
-        <Stage mood={mood} />
+        <Stage mood={mood} hatted={skin === 'fox'} />
         {skin === 'fox' ? (
           <G transform={stage === 'EGG' ? EGG_HEAD : undefined}>
             <SkinFox />

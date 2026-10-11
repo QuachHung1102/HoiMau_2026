@@ -9,6 +9,14 @@ import { MilestoneBadge } from './MilestoneBadge';
 import { ProgressRing } from './ProgressRing';
 import { StatBar } from './StatBar';
 
+// Jest's AppState mock has no real state (currentState is a jest.fn), so tests set it and put it back.
+const mockedAppState = AppState as unknown as { currentState: unknown };
+const appStateAtLoad = mockedAppState.currentState;
+const setAppState = (state: string) => {
+  mockedAppState.currentState = state;
+};
+afterEach(() => setAppState(appStateAtLoad as string));
+
 afterEach(() => {
   jest.useRealTimers();
   jest.restoreAllMocks();
@@ -27,7 +35,9 @@ test.each([
   [1118, '1.118'],
   [12000, '12.000'],
   [1234567, '1.234.567'],
-])('formatNumber(%d) is "%s" (Vietnamese thousands separator)', (n, text) => {
+  [Number.NaN, '0'],
+  [Number.POSITIVE_INFINITY, '0'],
+])('formatNumber(%d) is "%s" (Vietnamese thousands separator; never "NaN")', (n, text) => {
   expect(formatNumber(n)).toBe(text);
 });
 
@@ -66,9 +76,35 @@ describe('ProgressBar and LevelStrip', () => {
     view.unmount();
   });
 
-  test('ProgressBar keeps now inside the range', () => {
-    const view = render(wrap(<ProgressBar value={500} max={300} label="x" />));
-    expect(view.getByRole('progressbar').props.accessibilityValue).toEqual({ min: 0, max: 300, now: 300 });
+  test.each([
+    ['value above max', 500, 300, { min: 0, max: 300, now: 300 }, '100%'],
+    ['negative value', -5, 300, { min: 0, max: 300, now: 0 }, '0%'],
+    ['value NaN', Number.NaN, 300, { min: 0, max: 300, now: 0 }, '0%'],
+    ['value Infinity', Number.POSITIVE_INFINITY, 300, { min: 0, max: 300, now: 300 }, '100%'],
+    ['max NaN', 5, Number.NaN, { min: 0, max: 0, now: 0 }, '0%'],
+    ['max negative', 5, -3, { min: 0, max: 0, now: 0 }, '0%'],
+    ['max 0', 5, 0, { min: 0, max: 0, now: 0 }, '0%'],
+    ['max Infinity', 5, Number.POSITIVE_INFINITY, { min: 0, max: 0, now: 0 }, '0%'],
+  ] as const)('ProgressBar with %s reports finite numbers and draws a matching fill', (_, value, max, reported, width) => {
+    const view = render(wrap(<ProgressBar value={value} max={max} label="x" />));
+    const got = view.getByRole('progressbar').props.accessibilityValue;
+    expect(got).toEqual(reported);
+    expect(Object.values(got).every(n => Number.isFinite(n))).toBe(true);
+    expect(painted(view)).toContain(`"width":"${width}"`);
+    view.unmount();
+  });
+
+  test.each([
+    ['XP above the level size', 2000, 1118, '1.118 / 1.118 XP', { min: 0, max: 1118, now: 1118 }],
+    ['XP NaN', Number.NaN, 1118, '0 / 1.118 XP', { min: 0, max: 1118, now: 0 }],
+    ['level size NaN', 340, Number.NaN, '0 / 0 XP', { min: 0, max: 0, now: 0 }],
+    ['level size negative', 340, -3, '0 / 0 XP', { min: 0, max: 0, now: 0 }],
+  ] as const)('LevelStrip with %s writes the same clamped numbers it reports', (_, xp, size, text, reported) => {
+    const onPress = jest.fn();
+    const view = render(wrap(<LevelStrip level={5} title="Người kiên trì" xpIntoLevel={xp} xpForNextLevel={size} onPress={onPress} />));
+    expect(view.getByText(text)).toBeTruthy();
+    expect(view.getByRole('button', { name: `Cấp 5 · Người kiên trì. ${text}` })).toBeTruthy();
+    expect(view.UNSAFE_getByProps({ accessibilityRole: 'progressbar' }).props.accessibilityValue).toEqual(reported);
     view.unmount();
   });
 
@@ -165,6 +201,7 @@ describe('chips', () => {
   });
 
   test('the streak flame loops every 2000 ms and stops on unmount and in the background', () => {
+    setAppState('active');
     let onChange: (state: string) => void = () => undefined;
     jest.spyOn(AppState, 'addEventListener').mockImplementation(((_: string, cb: (s: string) => void) => {
       onChange = cb;
@@ -238,13 +275,25 @@ describe('ProgressRing', () => {
     view.unmount();
   });
 
-  test('without children it shows the percentage as text; progress clamps to 0-1', () => {
+  test('without children it shows the percentage as text', () => {
     const view = render(wrap(<ProgressRing progress={0.5} />));
     expect(view.getByText('50%')).toBeTruthy();
-    view.rerender(wrap(<ProgressRing progress={1.4} />));
-    expect(view.getByText('100%')).toBeTruthy();
-    view.rerender(wrap(<ProgressRing progress={-1} />));
-    expect(view.getByText('0%')).toBeTruthy();
+    view.unmount();
+  });
+
+  test.each([
+    [1.4, 100],
+    [Number.POSITIVE_INFINITY, 100],
+    [-1, 0],
+    [Number.NaN, 0],
+  ])('progress %d is drawn and reported as %d%%, with a finite arc', (progress, percent) => {
+    const view = render(wrap(<ProgressRing progress={progress} />));
+    expect(view.getByText(`${percent}%`)).toBeTruthy();
+    expect(view.getByRole('progressbar').props.accessibilityValue).toEqual({ min: 0, max: 100, now: percent });
+    // The arc: dash offset = circumference x (1 - progress). JSON prints both 0 and NaN as null, so compare the number.
+    const [, dash, offset] = /"strokeDasharray":\["([\d.]+)","[\d.]+"\],"strokeDashoffset":(null|[\d.]+)/.exec(painted(view)) ?? [];
+    expect(Number(dash)).toBeGreaterThan(0);
+    expect(offset === 'null' ? 0 : Number(offset)).toBeCloseTo(Number(dash) * (1 - percent / 100));
     view.unmount();
   });
 });
