@@ -2,15 +2,193 @@
  * @format
  */
 
-import React from 'react';
-import ReactTestRenderer from 'react-test-renderer';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { fireEvent, render, screen } from '@testing-library/react-native';
+import * as Keychain from 'react-native-keychain';
+import type { Me } from '../domain/contract/core.ts';
 import App from '../src/app/App';
+import { resetSystemMotionForTests } from '../src/shared/motion/useReducedMotion';
+import { writeCache } from '../src/shared/storage/cache';
 
-test('renders the placeholder screen', async () => {
-  let renderer!: ReactTestRenderer.ReactTestRenderer;
-  await ReactTestRenderer.act(() => {
-    renderer = ReactTestRenderer.create(<App />);
-  });
-  expect(JSON.stringify(renderer.toJSON())).toContain('Hồi Máu');
-  await ReactTestRenderer.act(() => renderer.unmount());
+const USER = '5f0c2a8e-1d37-4a55-9c1b-0c8a4d2e7b10';
+const TOKEN = 'tok-secret-app-1';
+const meOf = (onboarded: boolean): Me => ({
+  user: {
+    id: USER,
+    email: 'an@example.vn',
+    displayName: 'An',
+    timezone: 'Asia/Ho_Chi_Minh',
+    archetype: null,
+    archetypeChangeAvailableAt: null,
+    onboarded,
+  },
+  progression: null,
+  stats: null,
+  pet: null,
+  appearance: null,
+});
+
+type Init = { method: string; headers: Record<string, string> };
+const fetchMock = jest.fn<Promise<unknown>, [string, Init]>();
+const respond = (status: number, body?: unknown) => ({
+  ok: status < 300,
+  status,
+  text: async () => (body === undefined ? '' : JSON.stringify(body)),
+});
+const requests = () =>
+  fetchMock.mock.calls.map(([url, init]) => `${init.method} ${url.replace('http://localhost:8787/api/v1', '')}`);
+const signedIn = () => Keychain.setGenericPassword(USER, TOKEN);
+
+const realFetch = globalThis.fetch;
+let errors: jest.SpyInstance;
+beforeEach(() => {
+  fetchMock.mockReset();
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
+  // The OS "reduce motion" value stays unknown, so the app renders its static (reduced) state.
+  const { AccessibilityInfo } = require('react-native');
+  jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockImplementation(() => new Promise<boolean>(() => undefined));
+  errors = jest.spyOn(console, 'error');
+});
+afterEach(async () => {
+  const complaints = errors.mock.calls.map(call => String(call[0]));
+  jest.restoreAllMocks();
+  jest.useRealTimers();
+  resetSystemMotionForTests();
+  await Keychain.resetGenericPassword();
+  await AsyncStorage.clear();
+  globalThis.fetch = realFetch;
+  expect(complaints).toEqual([]);
+});
+
+test('signed out: Welcome is visible and nothing is requested', async () => {
+  render(<App />);
+  expect(await screen.findByRole('button', { name: 'Tạo tài khoản' })).toBeTruthy();
+  expect(screen.getByRole('header', { name: 'Hồi Máu' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Tôi đã có tài khoản' })).toBeTruthy();
+  expect(fetchMock).not.toHaveBeenCalled();
+  screen.unmount();
+});
+
+test('while the session and GET /me load: the S39 loading state', async () => {
+  await signedIn();
+  fetchMock.mockImplementation(() => new Promise(() => undefined));
+  render(<App />);
+  expect(screen.getByRole('header', { name: 'Đang lấy hành trình' })).toBeTruthy();
+  expect(screen.getByRole('progressbar', { name: 'Đang tải' }).props.accessibilityState).toMatchObject({ busy: true });
+  // still loading once the session is restored and GET /me is on its way
+  await screen.findByText('Dữ liệu của bạn đang được tải.');
+  expect(screen.getByRole('progressbar', { name: 'Đang tải' })).toBeTruthy();
+  screen.unmount();
+});
+
+test('signed in and not onboarded: the onboarding group (its notice until Task 19), with a way out', async () => {
+  await signedIn();
+  fetchMock.mockResolvedValue(respond(200, meOf(false)));
+  render(<App />);
+  expect(await screen.findByText('Phần này đang được hoàn thiện')).toBeTruthy();
+  expect(requests()).toEqual(['GET /me']);
+  expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${TOKEN}`);
+
+  fetchMock.mockResolvedValue(respond(204));
+  fireEvent.press(screen.getByRole('button', { name: 'Đăng xuất' }));
+  expect(await screen.findByRole('button', { name: 'Tạo tài khoản' })).toBeTruthy();
+  expect(requests()).toEqual(['GET /me', 'POST /auth/logout']);
+  expect(await Keychain.getGenericPassword()).toBe(false);
+  screen.unmount();
+});
+
+test('signed in and onboarded: the main group (its notice until the first tab root lands)', async () => {
+  await signedIn();
+  fetchMock.mockResolvedValue(respond(200, meOf(true)));
+  render(<App />);
+  expect(await screen.findByText('Phần này đang được hoàn thiện')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Đăng xuất' })).toBeTruthy();
+  screen.unmount();
+});
+
+test('GET /me 500: the error state, "Thử lại" refetches, "Đăng xuất" is offered', async () => {
+  await signedIn();
+  fetchMock.mockResolvedValue(respond(500, { error: { code: 'INTERNAL', message: 'boom' } }));
+  render(<App />);
+  expect(await screen.findByText('Chưa tải được dữ liệu')).toBeTruthy();
+  expect(
+    screen.getByText('Hệ thống đang gặp sự cố. Bạn thử lại sau ít phút nhé. Những ghi nhận đã lưu vẫn còn.'),
+  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Đăng xuất' })).toBeTruthy();
+  expect(requests()).toEqual(['GET /me']);
+
+  fetchMock.mockResolvedValue(respond(200, meOf(false)));
+  fireEvent.press(screen.getByRole('button', { name: 'Thử lại' }));
+  expect(await screen.findByText('Phần này đang được hoàn thiện')).toBeTruthy();
+  expect(requests()).toEqual(['GET /me', 'GET /me']);
+  expect(screen.queryByText('Chưa tải được dữ liệu')).toBeNull();
+  screen.unmount();
+});
+
+test('offline start with a cached Me: the user gets in from the cache', async () => {
+  await signedIn();
+  await writeCache(USER, 'me', meOf(false));
+  fetchMock.mockRejectedValue(new TypeError('Network request failed'));
+  render(<App />);
+  expect(await screen.findByText('Phần này đang được hoàn thiện')).toBeTruthy();
+  expect(screen.queryByText('Chưa tải được dữ liệu')).toBeNull();
+  screen.unmount();
+});
+
+test('offline start without a cache, or with another user cache: the error state names the network', async () => {
+  await signedIn();
+  await writeCache('someone-else', 'me', meOf(true));
+  await AsyncStorage.setItem(`cache:v1:${USER}:me`, JSON.stringify({ ...meOf(true), user: { ...meOf(true).user, id: 'someone-else' } }));
+  fetchMock.mockRejectedValue(new TypeError('Network request failed'));
+  render(<App />);
+  expect(
+    await screen.findByText('Không kết nối được mạng. Bạn kiểm tra kết nối rồi thử lại nhé. Những ghi nhận đã lưu vẫn còn.'),
+  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Thử lại' })).toBeTruthy();
+  screen.unmount();
+});
+
+test('a server error is not papered over with the cache', async () => {
+  await signedIn();
+  await writeCache(USER, 'me', meOf(false));
+  fetchMock.mockResolvedValue(respond(500, { error: { code: 'INTERNAL', message: 'boom' } }));
+  render(<App />);
+  expect(await screen.findByText('Chưa tải được dữ liệu')).toBeTruthy();
+  screen.unmount();
+});
+
+test('a successful GET /me is written to this user cache', async () => {
+  await signedIn();
+  fetchMock.mockResolvedValue(respond(200, meOf(false)));
+  render(<App />);
+  await screen.findByText('Phần này đang được hoàn thiện');
+  expect(JSON.parse((await AsyncStorage.getItem(`cache:v1:${USER}:me`)) ?? 'null')).toEqual(meOf(false));
+  // and the token is nowhere on disk
+  const disk = JSON.stringify(Object.entries(await AsyncStorage.getMany(await AsyncStorage.getAllKeys())));
+  expect(disk).not.toContain(TOKEN);
+  screen.unmount();
+});
+
+test('GET /me 401 SESSION_INVALID: the session ends and the app is back on the signed-out screens', async () => {
+  await signedIn();
+  await writeCache(USER, 'me', meOf(true));
+  fetchMock.mockResolvedValue(respond(401, { error: { code: 'SESSION_INVALID', message: 'session is not valid' } }));
+  render(<App />);
+  // SignIn is not registered before Task 18, so the landing is Welcome for now
+  expect(await screen.findByRole('button', { name: 'Tôi đã có tài khoản' })).toBeTruthy();
+  expect(await Keychain.getGenericPassword()).toBe(false);
+  expect(await AsyncStorage.getAllKeys()).toEqual([]);
+  expect(requests()).toEqual(['GET /me']);
+  screen.unmount();
+});
+
+test('unmounting the app leaves no timer behind', async () => {
+  await signedIn();
+  fetchMock.mockResolvedValue(respond(200, meOf(false)));
+  render(<App />);
+  await screen.findByText('Phần này đang được hoàn thiện');
+  // Timers only: a microtask queued by the unmount itself is not something that keeps Jest alive.
+  jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+  screen.unmount();
+  expect(jest.getTimerCount()).toBe(0);
 });

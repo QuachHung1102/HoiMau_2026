@@ -1,0 +1,33 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+/**
+ * The only things kept on disk: the last `Me` and the last `DayState` of a user (AR-26). Neither contains
+ * measurements, journal text or a token; do not widen this list without checking P1.0's "never cache" rule.
+ */
+export type CacheKey = 'me' | 'day';
+const KEYS: readonly CacheKey[] = ['me', 'day'];
+
+const storageKey = (userId: string, key: CacheKey) => `cache:v1:${userId}:${key}`;
+
+/** `undefined` when nothing is stored, the stored JSON is corrupted or storage fails. */
+export async function readCache<T>(userId: string, key: CacheKey): Promise<T | undefined> {
+  try {
+    const raw = await AsyncStorage.getItem(storageKey(userId, key));
+    return raw === null ? undefined : (JSON.parse(raw) as T);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Best effort: a failed write never rejects, the cache is an optimisation. */
+export async function writeCache(userId: string, key: CacheKey, value: unknown): Promise<void> {
+  try {
+    await AsyncStorage.setItem(storageKey(userId, key), JSON.stringify(value));
+  } catch {
+    // nothing to do: the next successful read from the server writes it again
+  }
+}
+
+export async function clearUserCache(userId: string): Promise<void> {
+  await AsyncStorage.removeMany(KEYS.map(key => storageKey(userId, key)));
+}

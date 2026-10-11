@@ -14,8 +14,8 @@ const rel = (f: string) => path.relative(src, f).split(path.sep).join('/');
 // Any Vietnamese-only letter (the diacritic vowels and đ), upper or lower case.
 const VIETNAMESE = /[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i;
 
-// User-visible Vietnamese belongs in src/shared/i18n/. src/app/App.tsx is the placeholder screen that Task 17 replaces.
-const exempt = (f: string) => rel(f).startsWith('shared/i18n/') || /\.test\.tsx?$/.test(f) || rel(f) === 'app/App.tsx';
+// User-visible Vietnamese belongs in src/shared/i18n/.
+const exempt = (f: string) => rel(f).startsWith('shared/i18n/') || /\.test\.tsx?$/.test(f);
 
 test('the Vietnamese letter pattern matches Vietnamese and ignores plain ASCII', () => {
   expect(VIETNAMESE.test('Hồi Máu')).toBe(true);

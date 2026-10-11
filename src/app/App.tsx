@@ -1,30 +1,24 @@
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { StyleSheet, Text, View } from 'react-native';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-
-const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-});
-
-const Stack = createNativeStackNavigator();
-
-function Home() {
-  return (
-    <View style={styles.center}>
-      <Text>Hồi Máu</Text>
-    </View>
-  );
-}
+import { SessionProvider, wipeQueries } from '../shared/api/session';
+import { ThemeProvider } from '../shared/theme/ThemeProvider';
+import { AppNavigation } from './navigation';
 
 function App() {
+  // Created per mounted app, never at import time. No automatic retry: a failed load shows "Thử lại".
+  const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }));
+  // Runs before the screens below have let go of their queries, hence the wipe that leaves no timer behind.
+  useEffect(() => () => wipeQueries(queryClient), [queryClient]);
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="Home" component={Home} />
-        </Stack.Navigator>
-      </NavigationContainer>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <SessionProvider>
+            <AppNavigation />
+          </SessionProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

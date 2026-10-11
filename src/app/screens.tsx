@@ -1,0 +1,21 @@
+// The screen registry (AR-25). A feature task adds one import line and one entry per screen, nothing else.
+// A tab root looks like { name: 'Today', component: TodayScreen, label: tabLabel.Today, icon: 'Sun' };
+// the icons of the design are Sun (Today), Route (Plan), Users (Guild), User (Profile). The bar order is fixed
+// in navigation.tsx, so the order inside `tabRoots` does not matter.
+import { WelcomeScreen } from '../features/auth/WelcomeScreen';
+import type { ScreenEntry, TabRoot } from './routes';
+
+/** Signed out. */
+export const authScreens: ScreenEntry[] = [{ name: 'Welcome', component: WelcomeScreen }];
+
+/** Signed in, onboarding not finished. */
+export const onboardingScreens: ScreenEntry[] = [];
+
+/** The first screen of each tab. */
+export const tabRoots: TabRoot[] = [];
+
+/** Screens that open inside the stack of whichever tab they were opened from. */
+export const detailScreens: ScreenEntry[] = [];
+
+/** Full-screen modal flow above the tabs; the tab bar cannot interrupt it. */
+export const focusScreens: ScreenEntry[] = [];
