@@ -1,5 +1,5 @@
 import { fireEvent, render } from '@testing-library/react-native';
-import { AccessibilityInfo, Modal, Text } from 'react-native';
+import { AccessibilityInfo, Modal, ScrollView, Text } from 'react-native';
 import { MotionPreferenceProvider } from '../motion/useReducedMotion';
 import { BottomSheet } from './BottomSheet';
 import { Dialog } from './Dialog';
@@ -49,9 +49,25 @@ test('the Back request calls onDismiss', () => {
 
 test('a tap on the backdrop calls onDismiss', () => {
   const { view, onDismiss } = setup();
-  // the backdrop sits outside the modal card, so a screen reader on iOS does not reach it: query it hidden
-  fireEvent.press(view.getByLabelText('Đóng', { includeHiddenElements: true }));
+  fireEvent.press(view.getByTestId('scrim-backdrop', { includeHiddenElements: true }));
   expect(onDismiss).toHaveBeenCalledTimes(1);
+  view.unmount();
+});
+
+test('the backdrop is hidden from screen readers and carries no label of its own', () => {
+  const { view } = setup();
+  const backdrop = view.getByTestId('scrim-backdrop', { includeHiddenElements: true });
+  expect(backdrop.props).toMatchObject({ accessible: false, importantForAccessibility: 'no' });
+  expect(backdrop.props.accessibilityLabel).toBeUndefined();
+  view.unmount();
+});
+
+test('a note shows as a caption under the body, and is absent without one', () => {
+  const props = { title: 'T', body: 'Phần đã tập vẫn được lưu.', primary: { label: 'OK', onPress: jest.fn() }, onDismiss: jest.fn() };
+  const view = render(wrap(<Dialog {...props} note="Dưới một nửa thời lượng sẽ được ghi là buổi tập dở." />));
+  expect(view.getByText('Dưới một nửa thời lượng sẽ được ghi là buổi tập dở.')).toBeTruthy();
+  view.rerender(wrap(<Dialog {...props} />));
+  expect(view.queryByText('Dưới một nửa thời lượng sẽ được ghi là buổi tập dở.')).toBeNull();
   view.unmount();
 });
 
@@ -93,10 +109,31 @@ test('BottomSheet shows title and children; Back, the close button and the backd
   expect(view.getByRole('header', { name: 'Múi giờ' })).toBeTruthy();
   expect(view.getByText('Nội dung')).toBeTruthy();
   fireEvent(view.UNSAFE_getByType(Modal), 'requestClose');
-  const closers = view.getAllByLabelText('Đóng', { includeHiddenElements: true }); // backdrop and the close button
-  expect(closers).toHaveLength(2);
-  closers.forEach(c => fireEvent.press(c));
+  // one labelled close button for screen readers; the backdrop is touch-only
+  fireEvent.press(view.getByRole('button', { name: 'Đóng' }));
+  fireEvent.press(view.getByTestId('scrim-backdrop', { includeHiddenElements: true }));
+  expect(view.getAllByLabelText('Đóng')).toHaveLength(1);
   expect(onDismiss).toHaveBeenCalledTimes(3);
+  view.unmount();
+});
+
+test('BottomSheet with scroll={false} does not wrap its children in a ScrollView', () => {
+  const view = render(
+    wrap(
+      <BottomSheet title="Danh sách" onDismiss={jest.fn()} scroll={false}>
+        <Text>Hàng</Text>
+      </BottomSheet>,
+    ),
+  );
+  expect(view.UNSAFE_queryAllByType(ScrollView)).toHaveLength(0);
+  view.rerender(
+    wrap(
+      <BottomSheet title="Danh sách" onDismiss={jest.fn()}>
+        <Text>Hàng</Text>
+      </BottomSheet>,
+    ),
+  );
+  expect(view.UNSAFE_queryAllByType(ScrollView)).toHaveLength(1);
   view.unmount();
 });
 

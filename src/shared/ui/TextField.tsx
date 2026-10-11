@@ -55,7 +55,14 @@ export function FieldFrame({ label, error, helper, focused = false, children }: 
       >
         {children}
       </Animated.View>
-      {error ? <InlineError message={error} /> : helper ? <AppText variant="caption">{helper}</AppText> : null}
+      {error ? (
+        <InlineError message={error} />
+      ) : helper ? (
+        // read as the input's hint, so this copy is visual only
+        <AppText variant="caption" accessible={false} importantForAccessibility="no">
+          {helper}
+        </AppText>
+      ) : null}
     </View>
   );
 }
@@ -76,9 +83,12 @@ export function TextField({ label, error, helper, secure = false, onFocus, onBlu
     <FieldFrame label={label} error={error} helper={helper} focused={focused}>
       <View style={styles.row}>
         <TextInput
+          // A revealed password must not be capitalised, corrected or learned by the keyboard; callers can override.
+          {...(secure ? { autoCapitalize: 'none', autoCorrect: false, spellCheck: false } : null)}
           {...rest}
           // React Native has no `invalid` accessibility state on both platforms, so the error is part of the label.
           accessibilityLabel={error ? vi.fieldInvalid(label, error) : label}
+          accessibilityHint={error ? undefined : helper}
           secureTextEntry={secure && hidden}
           placeholderTextColor={palette.muted}
           onFocus={e => {

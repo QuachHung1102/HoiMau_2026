@@ -26,21 +26,38 @@ export function useFocusOnShow() {
   return { ref, focus };
 }
 
-/** Translucent layer under a modal card; pressing it dismisses. */
+/**
+ * Translucent layer under a modal card; a touch on it dismisses. It is hidden from screen readers: the visible
+ * controls and hardware Back are the accessible ways out, and an unexplained second "close" would only confuse.
+ */
 export function Scrim({ onDismiss, children, justify }: { onDismiss: () => void; children: ReactNode; justify: 'center' | 'flex-end' }) {
   const palette = useTheme();
   return (
     // The tint sits on the parent so the transparent Touchable's press scale shows nothing.
     <View style={[styles.scrim, { backgroundColor: `${palette.ink}8C`, justifyContent: justify }]}>
-      <Touchable accessibilityRole="button" accessibilityLabel={vi.close} onPress={onDismiss} style={StyleSheet.absoluteFill} />
+      <Touchable
+        testID="scrim-backdrop"
+        accessible={false}
+        importantForAccessibility="no"
+        accessibilityRole="button"
+        onPress={onDismiss}
+        style={StyleSheet.absoluteFill}
+      />
       {children}
     </View>
   );
 }
 
-type Props = { visible?: boolean; title: string; children: ReactNode; onDismiss: () => void };
+type Props = {
+  visible?: boolean;
+  title: string;
+  children: ReactNode;
+  onDismiss: () => void;
+  /** Default true: children scroll. Pass false to host a list that scrolls itself (a FlatList must not sit in a ScrollView). */
+  scroll?: boolean;
+};
 
-export function BottomSheet({ visible = true, title, children, onDismiss }: Props) {
+export function BottomSheet({ visible = true, title, children, onDismiss, scroll = true }: Props) {
   const palette = useTheme();
   const reduced = useReducedMotion();
   const insets = useSafeAreaInsets();
@@ -67,9 +84,13 @@ export function BottomSheet({ visible = true, title, children, onDismiss }: Prop
               <Icon name="X" color={palette.ink} />
             </Touchable>
           </View>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
-            {children}
-          </ScrollView>
+          {scroll ? (
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+              {children}
+            </ScrollView>
+          ) : (
+            <View style={styles.host}>{children}</View>
+          )}
         </View>
       </Scrim>
     </Modal>
@@ -89,4 +110,5 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   title: { flex: 1 },
   content: { gap: 4 },
+  host: { flexShrink: 1, gap: 4 },
 });

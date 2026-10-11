@@ -9,12 +9,20 @@ import { AppText } from './AppText';
 import { Button } from './Button';
 import { Card } from './Card';
 import { Icon, type IconName } from './Icon';
+import { useAnnounceOnIos } from './Notices';
 
-const SWEEP = 120;
-const SHEEN_ALPHA = ['26', '66', '26'] as const;
+const SWEEP = 160;
+// A faint highlight whose strips ramp up and down in opacity, so the sheen has no hard edge (no gradient library).
+const SHEEN_ALPHA = ['06', '0E', '18', '22', '18', '0E', '06'] as const;
+
+type LoadingProps = {
+  blocks?: number;
+  /** Pass false while the screen is not focused or is hidden: the shimmer then stands still. */
+  active?: boolean;
+};
 
 /** Skeleton blocks for a first load. Keep stale data instead of showing this on a refresh. */
-export function LoadingState({ blocks = 3 }: { blocks?: number }) {
+export function LoadingState({ blocks = 3, active = true }: LoadingProps) {
   const palette = useTheme();
   const reduced = useReducedMotion();
   const [sweep] = useState(() => new Animated.Value(0));
@@ -24,9 +32,9 @@ export function LoadingState({ blocks = 3 }: { blocks?: number }) {
     const subscription = AppState.addEventListener('change', next => setForeground(next === 'active'));
     return () => subscription.remove();
   }, []);
-  // ponytail: no blur handling here; screens that stay mounted behind another one should unmount this state.
+  const running = active && foreground && !reduced;
   useEffect(() => {
-    if (reduced || !foreground) return;
+    if (!running) return;
     sweep.setValue(0);
     // motion: skeleton-shimmer
     const loop = Animated.loop(
@@ -39,7 +47,7 @@ export function LoadingState({ blocks = 3 }: { blocks?: number }) {
     );
     loop.start();
     return () => loop.stop();
-  }, [reduced, foreground, sweep]);
+  }, [running, sweep]);
   const translateX = sweep.interpolate({ inputRange: [0, 1], outputRange: [-SWEEP, width] });
   return (
     <View
@@ -54,27 +62,35 @@ export function LoadingState({ blocks = 3 }: { blocks?: number }) {
         <View key={i} style={[styles.block, { backgroundColor: palette.soft }]}>
           <View style={[styles.barTitle, { backgroundColor: palette.line }]} />
           <View style={[styles.barBody, { backgroundColor: palette.line }]} />
-          {reduced || !foreground ? null : (
+          {running ? (
             <Animated.View style={[styles.sheen, { transform: [{ translateX }] }]}>
-              {/* three bands of rising opacity stand in for a gradient edge */}
-              {SHEEN_ALPHA.map((alpha, band) => (
-                <View key={band} style={[styles.band, { backgroundColor: `${palette.white}${alpha}` }]} />
+              {SHEEN_ALPHA.map((alpha, strip) => (
+                <View key={strip} style={[styles.strip, { backgroundColor: `${palette.white}${alpha}` }]} />
               ))}
             </Animated.View>
-          )}
+          ) : null}
         </View>
       ))}
     </View>
   );
 }
 
+type ErrorProps = {
+  message: string;
+  onRetry: () => void;
+  /** Defaults to the load-failure title. */
+  title?: string;
+  icon?: IconName;
+};
+
 /** A calm failure with a way forward. `message` should say what happened and that saved data is safe. */
-export function ErrorState({ message, onRetry, icon = 'WifiOff' }: { message: string; onRetry: () => void; icon?: IconName }) {
+export function ErrorState({ message, onRetry, title = vi.loadFailedTitle, icon = 'WifiOff' }: ErrorProps) {
+  useAnnounceOnIos(`${title}. ${message}`);
   return (
     <Card>
       <Icon name={icon} />
       <View accessibilityLiveRegion="polite" style={styles.text}>
-        <AppText variant="title">{vi.loadFailedTitle}</AppText>
+        <AppText variant="title">{title}</AppText>
         <AppText variant="secondary">{message}</AppText>
       </View>
       <Button label={vi.retry} onPress={onRetry} />
@@ -122,7 +138,7 @@ const styles = StyleSheet.create({
   barTitle: { height: 16, width: '55%', borderRadius: 8 },
   barBody: { height: 12, width: '85%', borderRadius: 6 },
   sheen: { position: 'absolute', top: 0, bottom: 0, left: 0, width: SWEEP, flexDirection: 'row' },
-  band: { flex: 1 },
+  strip: { flex: 1 },
   text: { gap: 6 },
   empty: { alignItems: 'center', gap: 12, paddingVertical: 12 },
   centered: { textAlign: 'center' },

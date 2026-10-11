@@ -16,13 +16,21 @@ import { useReducedMotion } from '../motion/useReducedMotion';
 import { useTheme } from '../theme/ThemeProvider';
 import { radius, spacing } from '../theme/tokens';
 import { AppText } from './AppText';
+import { useFocusOnShow } from './BottomSheet';
 import { Touchable } from './Touchable';
 
 export type SnackbarOptions = {
+  /** Never put the remaining seconds in the message: `countdown` adds them itself (as text under reduced motion). */
   message: string;
   action?: { label: string; onPress: () => void };
-  /** Default 4000. */
+  /** How long it stays. Default 4000. For an undo this is the visible undo window, a business rule. */
   durationMs?: number;
+  /**
+   * Replaces `durationMs` while a screen reader is on, so TalkBack / VoiceOver users have time to reach the action.
+   * There is deliberately no default multiplier: the server accepts an undo for 10 s while the UI shows 5 s, and
+   * the Today screens pass 9000 here. Without it a screen-reader user gets `durationMs`.
+   */
+  screenReaderDurationMs?: number;
   /** Shows how long the action stays available: a shrinking bar, or the seconds as text under reduced motion. */
   countdown?: boolean;
 };
@@ -30,26 +38,48 @@ export type SnackbarOptions = {
 type SnackbarProps = Omit<SnackbarOptions, 'durationMs'> & { durationMs: number; onDismiss: () => void };
 
 /** One snackbar. Normally shown through `useSnackbar()`; it owns its auto-dismiss timer. */
-export function Snackbar({ message, action, durationMs, countdown = false, onDismiss }: SnackbarProps) {
+export function Snackbar({ message, action, durationMs, screenReaderDurationMs, countdown = false, onDismiss }: SnackbarProps) {
   const palette = useTheme();
   const reduced = useReducedMotion();
   const [enter] = useState(() => new Animated.Value(reduced ? 1 : 0));
   const [bar] = useState(() => new Animated.Value(1));
-  const [seconds, setSeconds] = useState(Math.ceil(durationMs / 1000));
+  const [screenReader, setScreenReader] = useState(false);
+  const windowMs = screenReader && screenReaderDurationMs ? screenReaderDurationMs : durationMs;
+  const [seconds, setSeconds] = useState(Math.ceil(windowMs / 1000));
   const acted = useRef(false);
   const latestDismiss = useRef(onDismiss);
   useEffect(() => {
     latestDismiss.current = onDismiss;
   });
+  const { ref: actionRef, focus: focusAction } = useFocusOnShow();
+
+  // With a screen reader on, say the message and the action together and put focus on the action: the
+  // snackbar sits last in the tree, so otherwise the Undo button would not be found in time.
+  const actionLabel = action?.label;
+  useEffect(() => {
+    let current = true;
+    AccessibilityInfo.isScreenReaderEnabled().then(
+      on => on,
+      () => false,
+    ).then(on => {
+      if (!current) return;
+      setScreenReader(on);
+      if (on && actionLabel) {
+        AccessibilityInfo.announceForAccessibility(vi.snackbarAnnouncement(message, actionLabel));
+        focusAction();
+      } else {
+        AccessibilityInfo.announceForAccessibility(message);
+      }
+    });
+    return () => {
+      current = false;
+    };
+  }, [message, actionLabel, focusAction]);
 
   useEffect(() => {
-    AccessibilityInfo.announceForAccessibility(message);
-  }, [message]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => latestDismiss.current(), durationMs);
+    const timer = setTimeout(() => latestDismiss.current(), windowMs);
     return () => clearTimeout(timer);
-  }, [durationMs]);
+  }, [windowMs]);
 
   useEffect(() => {
     if (reduced) return;
@@ -67,21 +97,24 @@ export function Snackbar({ message, action, durationMs, countdown = false, onDis
   useEffect(() => {
     if (!countdown) return;
     if (reduced) {
-      const end = Date.now() + durationMs;
-      const tick = setInterval(() => setSeconds(Math.max(0, Math.ceil((end - Date.now()) / 1000))), 1000);
-      return () => clearInterval(tick);
+      const end = Date.now() + windowMs;
+      const tick = () => setSeconds(Math.max(0, Math.ceil((end - Date.now()) / 1000)));
+      tick();
+      const interval = setInterval(tick, 1000);
+      return () => clearInterval(interval);
     }
     // motion: snackbar-undo (the bar starts after the slide-in and ends with the window)
+    bar.setValue(1);
     const shrink = Animated.timing(bar, {
       toValue: 0,
-      duration: Math.max(0, durationMs - motion.durationsMs.transition),
+      duration: Math.max(0, windowMs - motion.durationsMs.transition),
       delay: motion.durationsMs.transition,
       easing: Easing.linear,
       useNativeDriver: true,
     });
     shrink.start();
     return () => shrink.stop();
-  }, [countdown, reduced, durationMs, bar]);
+  }, [countdown, reduced, windowMs, bar]);
 
   const slideIn = enter.interpolate({ inputRange: [0, 1], outputRange: [motion.translationDp.float, 0] });
   return (
@@ -99,6 +132,7 @@ export function Snackbar({ message, action, durationMs, countdown = false, onDis
         </View>
         {action ? (
           <Touchable
+            ref={actionRef}
             accessibilityRole="button"
             onPress={() => {
               if (acted.current) return;

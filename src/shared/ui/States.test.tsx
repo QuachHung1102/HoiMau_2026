@@ -1,5 +1,5 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { AccessibilityInfo, Animated, AppState } from 'react-native';
+import { AccessibilityInfo, Animated, AppState, Platform } from 'react-native';
 import { MotionPreferenceProvider, resetSystemMotionForTests } from '../motion/useReducedMotion';
 import { colors } from '../theme/tokens';
 import { EmptyState, ErrorState, LoadingState } from './States';
@@ -89,4 +89,46 @@ test('EmptyState without actions renders no buttons', () => {
   const view = render(wrap(<EmptyState title="Chưa có gì" body="Quay lại sau nhé." />));
   expect(view.queryByRole('button')).toBeNull();
   view.unmount();
+});
+
+test('LoadingState runs the shimmer only while active, in the foreground and with motion allowed', () => {
+  const stop = jest.fn();
+  const loop = jest.spyOn(Animated, 'loop').mockReturnValue({ start: jest.fn(), stop, reset: jest.fn() } as never);
+  const view = render(wrap(<LoadingState active={false} />, 'FULL'));
+  expect(loop).not.toHaveBeenCalled();
+  view.rerender(wrap(<LoadingState active />, 'FULL'));
+  expect(loop).toHaveBeenCalledTimes(1);
+  view.rerender(wrap(<LoadingState active={false} />, 'FULL')); // the screen lost focus
+  expect(stop).toHaveBeenCalled();
+  view.unmount();
+});
+
+test('ErrorState shows the load-failure title by default and a custom title when given', () => {
+  const view = render(wrap(<ErrorState message="Thử lại nhé." onRetry={jest.fn()} />));
+  expect(view.getByText('Chưa tải được dữ liệu')).toBeTruthy();
+  view.rerender(wrap(<ErrorState title="Chưa gửi được lời nhắc" message="Thử lại nhé." onRetry={jest.fn()} />));
+  expect(view.getByText('Chưa gửi được lời nhắc')).toBeTruthy();
+  expect(view.queryByText('Chưa tải được dữ liệu')).toBeNull();
+  view.unmount();
+});
+
+describe('where a live region is the only announcement', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => undefined);
+  });
+
+  test('ErrorState announces its text on iOS, which ignores live regions', () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    const view = render(wrap(<ErrorState message="Thử lại nhé." onRetry={jest.fn()} />));
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith('Chưa tải được dữ liệu. Thử lại nhé.');
+    view.unmount();
+  });
+
+  test('ErrorState does not announce on Android, where the live region already does', () => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    const view = render(wrap(<ErrorState message="Thử lại nhé." onRetry={jest.fn()} />));
+    expect(AccessibilityInfo.announceForAccessibility).not.toHaveBeenCalled();
+    view.unmount();
+  });
 });

@@ -12,7 +12,7 @@ import { SelectField } from '../../../src/shared/ui/SelectField';
 import { useSnackbar } from '../../../src/shared/ui/Snackbar';
 import { EmptyState, ErrorState, LoadingState } from '../../../src/shared/ui/States';
 import { TextField } from '../../../src/shared/ui/TextField';
-import { Checkbox, FilterChip, SegmentedControl, Switch } from '../../../src/shared/ui/Toggles';
+import { Checkbox, FilterChip, RadioRow, SegmentedControl, Switch } from '../../../src/shared/ui/Toggles';
 import { withApp, type Entries, type EntryOptions } from '../harness';
 
 const noop = () => undefined;
@@ -136,6 +136,22 @@ function Toggles() {
   );
 }
 
+// S74: single choice with radio rows, and a disabled action that says why.
+function Radios() {
+  const [reminder, setReminder] = useState('Mình cùng vận động nhé?');
+  return (
+    <Screen title="Gửi một lời nhắc" subtitle="Một lời mời nhẹ nhàng cho Minh." onBack={noop}>
+      {['Mình cùng vận động nhé?', 'Nghỉ một chút, uống nước nào.', 'Hôm nay bạn thế nào?'].map(text => (
+        <RadioRow key={text} label={text} description="Mẫu lời nhắc" selected={reminder === text} onPress={() => setReminder(text)} />
+      ))}
+      <RadioRow label="Chưa gửi được lúc này" description="Không chọn được" selected={false} onPress={noop} disabled />
+      <DisabledReason icon="Clock" reason="Lời nhắc gửi được từ 12:00 đến 20:00 theo giờ của Minh." />
+      <Button label="Chưa gửi được lúc này" disabled onPress={noop} />
+      <Button variant="secondary" label="Để lúc khác" onPress={noop} />
+    </Screen>
+  );
+}
+
 // S39: skeleton blocks on first load.
 function Loading() {
   return (
@@ -173,7 +189,7 @@ function ShowUndo() {
   const { show } = useSnackbar();
   useEffect(() => {
     show({
-      message: 'Đã lưu thêm một phần nước · +10 XP · còn 3 giây để hoàn tác',
+      message: 'Đã lưu thêm một phần nước · +10 XP',
       action: { label: 'Hoàn tác', onPress: noop },
       countdown: true,
       durationMs: 60000,
@@ -209,6 +225,7 @@ function DialogScreen() {
         visible={open}
         title="Kết thúc buổi tập bây giờ?"
         body="Bạn đã tập 06:18 trên 15:00. Phần đã tập vẫn được lưu."
+        note="Dưới một nửa thời lượng sẽ được ghi là buổi tập dở, vẫn nhận XP theo phần đã tập."
         primary={{ label: 'Tập tiếp', onPress: () => setOpen(false) }}
         secondary={{ label: 'Kết thúc và lưu', onPress: () => setOpen(false) }}
         onDismiss={() => setOpen(false)}
@@ -238,6 +255,7 @@ export const entries: Entries = {
   'kit-fields': make(<Fields />),
   'kit-field-errors': make(<FieldErrors />),
   'kit-toggles': make(<Toggles />),
+  'kit-radio-rows': make(<Radios />),
   'kit-states-loading': make(<Loading />),
   'kit-states-error': make(<LoadFailed />),
   'kit-states-empty': make(<Empty />),
