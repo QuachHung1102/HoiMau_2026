@@ -4,8 +4,17 @@ import type { PetMood, PetStage } from '../../../../domain/types.ts';
 import { MotionPreferenceProvider, resetSystemMotionForTests } from '../../motion/useReducedMotion';
 import { Mam } from './Mam';
 
+// Jest's AppState mock has no real state (currentState is a jest.fn), so tests set it and put it back.
+const mockedAppState = AppState as unknown as { currentState: unknown };
+const appStateAtLoad = mockedAppState.currentState;
+const setAppState = (state: string) => {
+  mockedAppState.currentState = state;
+};
+afterEach(() => setAppState(appStateAtLoad as string));
+// The app is in the foreground unless a test says otherwise.
+beforeEach(() => setAppState('active'));
 afterEach(() => jest.restoreAllMocks());
-const wrap = (node: React.ReactElement, motion: 'REDUCED' | 'FULL' = 'REDUCED') => (
+const wrap =(node: React.ReactElement, motion: 'REDUCED' | 'FULL' = 'REDUCED') => (
   <MotionPreferenceProvider value={motion}>{node}</MotionPreferenceProvider>
 );
 const painted = (view: ReturnType<typeof render>) => JSON.stringify(view.toJSON());
@@ -48,8 +57,15 @@ function captureAppState() {
   return captured;
 }
 
-test('there are 15 stage x mood combinations', () => {
-  expect(combos).toHaveLength(15);
+test('the 15 stage x mood combinations carry 15 different labels', () => {
+  const labels = combos.map(([stage, mood]) => {
+    const view = render(wrap(<Mam stage={stage} mood={mood} size={128} />));
+    const label: string = view.getByRole('image').props.accessibilityLabel;
+    view.unmount();
+    return label;
+  });
+  expect(labels).toHaveLength(15);
+  expect(new Set(labels).size).toBe(15);
 });
 
 test.each(combos)('%s / %s is one image labelled with the stage and the mood, showing only that face', (stage, mood) => {
@@ -83,16 +99,35 @@ test('skin="fox" adds the overlay on top of the stage', () => {
   view.unmount();
 });
 
-test('on the seed the skin moves down with the head (the offset stage-egg.svg gives its face)', () => {
-  const headOffsets = (stage: PetStage, skin?: 'fox') => {
+test('on the seed the skin moves straight down with the head: 31 units, no sideways shift', () => {
+  const draw = (stage: PetStage, skin?: 'fox') => {
     const view = render(wrap(<Mam stage={stage} mood="HAPPY" skin={skin} size={128} />));
-    const count = painted(view).split('"matrix":[1,0,0,1,2.2,31]').length - 1;
+    const json = painted(view);
     view.unmount();
-    return count;
+    return json;
   };
-  expect(headOffsets('EGG')).toBe(1); // the face
-  expect(headOffsets('EGG', 'fox')).toBe(2); // the face and the skin
-  expect(headOffsets('HATCHLING', 'fox')).toBe(0);
+  const down = '"matrix":[1,0,0,1,0,31]';
+  const count = (json: string, part: string) => json.split(part).length - 1;
+  expect(count(draw('EGG'), down)).toBe(0);
+  expect(count(draw('EGG', 'fox'), down)).toBe(1);
+  expect(draw('EGG', 'fox')).toMatch(/"matrix":\[1,0,0,1,0,31\]\},"children":\[\{"type":"RNSVGGroup","props":\{[^}]*\}?[^}]*"name":"skin"/);
+  expect(count(draw('EGG', 'fox'), '"matrix":[1,0,0,1,2.2,31]')).toBe(1); // only the face keeps the 2.2
+  expect(count(draw('HATCHLING', 'fox'), down)).toBe(0);
+});
+
+test.each([
+  ['JUVENILE', ['leaf-top']],
+  ['ADULT', ['leaf-top', 'bud']],
+  ['MYTHIC', ['leaf-top', 'crown']],
+] as const)('under the fox hat %s leaves out what the hat would sit on (%j) and keeps the rest', (stage, covered) => {
+  const bare = render(wrap(<Mam stage={stage} mood="HAPPY" size={128} />));
+  const bareNames = groups(bare);
+  bare.unmount();
+  const hatted = render(wrap(<Mam stage={stage} mood="HAPPY" skin="fox" size={128} />));
+  const hattedNames = groups(hatted);
+  hatted.unmount();
+  expect(bareNames).toEqual(expect.arrayContaining([...covered]));
+  expect(hattedNames).toEqual([...bareNames.filter(n => !(covered as readonly string[]).includes(n)), 'skin']);
 });
 
 test('the picture is drawn at the requested size in the 128 viewBox', () => {

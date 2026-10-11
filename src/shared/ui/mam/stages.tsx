@@ -1,6 +1,7 @@
 // Converted from design/assets/mam/stage-*.svg (viewBox 0 0 128 128) by a throwaway script; maintained by hand from here.
 // Group ids are those of the SVG files. Only the face of the current mood is rendered; TIRED also droops the two
-// side leaves by 12 degrees around their pivots, as the design playground does.
+// side leaves by 12 degrees around their pivots, as the design playground does. "hatted" leaves out leaf-top, bud
+// and crown (added by hand in the script: the design has no render of a skin on those stages).
 import type { ReactElement } from 'react';
 import { Circle, Ellipse, G, Path } from 'react-native-svg';
 import type { PetMood, PetStage } from '../../../../domain/types.ts';
@@ -12,7 +13,11 @@ const BODY = '#2F75EE';
 const FACE = '#0C2A67';
 const POLLEN = '#F2C46B';
 
-type StageProps = { mood: PetMood };
+type StageProps = {
+  mood: PetMood;
+  /** A skin covers the top of the head: the top leaf, bud or flower is left out. */
+  hatted?: boolean;
+};
 
 function Egg({ mood }: StageProps) {
   return (
@@ -109,7 +114,7 @@ function Hatchling({ mood }: StageProps) {
   );
 }
 
-function Juvenile({ mood }: StageProps) {
+function Juvenile({ mood, hatted }: StageProps) {
   return (
     <>
       <G id="leaf-left" transform={mood === 'TIRED' ? 'rotate(-12 38.3 30.9)' : undefined}>
@@ -118,11 +123,13 @@ function Juvenile({ mood }: StageProps) {
       <G id="leaf-right" transform={mood === 'TIRED' ? 'rotate(12 85.7 30.9)' : undefined}>
         <Path d="M0 39.31277l19.87357 24.02298c12.01147-1.09196 23.3678-6.55173 31.01147-16.37931 8.73563-11.57471 11.79312-27.29885 9.60919-46.95402-9.82758 0-17.68964-0.21839-27.51724 3.49425-17.25285 6.33333-29.26436 20.31034-32.97699 35.8161z" transform="translate(78.97010526315789 9.562408421052632) scale(0.3368421052631579)" fill={LEAF} />
       </G>
-      <G id="leaf-top">
-        <G transform="translate(63 19) rotate(38) scale(0.6) translate(-38.3 -30.9)">
-          <Path d="M1.08121 0.0273c-2.4023 13.10345-1.31035 29.48276 8.51723 44.11494 7.86207 11.57471 19.87356 18.12643 32.75862 19.21839l18.34484-22.93104c-2.18391-13.75862-14.4138-30.13792-32.54024-37.12643-7.20689-2.4023-15.28735-3.49425-27.08045-3.27586z" transform="translate(24.02199578947368 9.554021052631578) scale(0.3368421052631579)" fill={LEAF} />
+      {!hatted ? (
+        <G id="leaf-top">
+          <G transform="translate(63 19) rotate(38) scale(0.6) translate(-38.3 -30.9)">
+            <Path d="M1.08121 0.0273c-2.4023 13.10345-1.31035 29.48276 8.51723 44.11494 7.86207 11.57471 19.87356 18.12643 32.75862 19.21839l18.34484-22.93104c-2.18391-13.75862-14.4138-30.13792-32.54024-37.12643-7.20689-2.4023-15.28735-3.49425-27.08045-3.27586z" transform="translate(24.02199578947368 9.554021052631578) scale(0.3368421052631579)" fill={LEAF} />
+          </G>
         </G>
-      </G>
+      ) : null}
       <G id="arm-right">
         <Path d="M248.97 194.59C266.44 177.11 289.37 141.95 292.65 117.06L292.65 112.69C292.65 101.77 281.73 91.94 268.62 96.75C266.66 97.4 264.69 98.28 262.07 99.59C256.39 102.64 247.66 109.2 235.86 117.93C220 132 226 186 248.97 194.59Z" transform="translate(14.748766315789474 17.213776842105265) scale(0.3368421052631579)" fill={BODY} />
       </G>
@@ -158,7 +165,7 @@ function Juvenile({ mood }: StageProps) {
   );
 }
 
-function Adult({ mood }: StageProps) {
+function Adult({ mood, hatted }: StageProps) {
   return (
     <>
       <G id="leaf-left" transform={mood === 'TIRED' ? 'rotate(-12 38.3 30.9)' : undefined}>
@@ -171,15 +178,19 @@ function Adult({ mood }: StageProps) {
           <Path d="M0 39.31277l19.87357 24.02298c12.01147-1.09196 23.3678-6.55173 31.01147-16.37931 8.73563-11.57471 11.79312-27.29885 9.60919-46.95402-9.82758 0-17.68964-0.21839-27.51724 3.49425-17.25285 6.33333-29.26436 20.31034-32.97699 35.8161z" transform="translate(78.97010526315789 9.562408421052632) scale(0.3368421052631579)" fill={LEAF} />
         </G>
       </G>
-      <G id="leaf-top">
-        <G transform="translate(63 19) rotate(38) scale(0.62) translate(-38.3 -30.9)">
-          <Path d="M1.08121 0.0273c-2.4023 13.10345-1.31035 29.48276 8.51723 44.11494 7.86207 11.57471 19.87356 18.12643 32.75862 19.21839l18.34484-22.93104c-2.18391-13.75862-14.4138-30.13792-32.54024-37.12643-7.20689-2.4023-15.28735-3.49425-27.08045-3.27586z" transform="translate(24.02199578947368 9.554021052631578) scale(0.3368421052631579)" fill={LEAF} />
+      {!hatted ? (
+        <G id="leaf-top">
+          <G transform="translate(63 19) rotate(38) scale(0.62) translate(-38.3 -30.9)">
+            <Path d="M1.08121 0.0273c-2.4023 13.10345-1.31035 29.48276 8.51723 44.11494 7.86207 11.57471 19.87356 18.12643 32.75862 19.21839l18.34484-22.93104c-2.18391-13.75862-14.4138-30.13792-32.54024-37.12643-7.20689-2.4023-15.28735-3.49425-27.08045-3.27586z" transform="translate(24.02199578947368 9.554021052631578) scale(0.3368421052631579)" fill={LEAF} />
+          </G>
         </G>
-      </G>
-      <G id="bud">
-        <Circle cx="61" cy="5.5" r="4.5" fill={colors.lime} />
-        <Circle cx="61" cy="5.5" r="2" fill={LEAF} />
-      </G>
+      ) : null}
+      {!hatted ? (
+        <G id="bud">
+          <Circle cx="61" cy="5.5" r="4.5" fill={colors.lime} />
+          <Circle cx="61" cy="5.5" r="2" fill={LEAF} />
+        </G>
+      ) : null}
       <G id="arm-right">
         <Path d="M248.97 194.59C266.44 177.11 289.37 141.95 292.65 117.06L292.65 112.69C292.65 101.77 281.73 91.94 268.62 96.75C266.66 97.4 264.69 98.28 262.07 99.59C256.39 102.64 247.66 109.2 235.86 117.93C220 132 226 186 248.97 194.59Z" transform="translate(14.748766315789474 17.213776842105265) scale(0.3368421052631579)" fill={BODY} />
       </G>
@@ -215,7 +226,7 @@ function Adult({ mood }: StageProps) {
   );
 }
 
-function Mythic({ mood }: StageProps) {
+function Mythic({ mood, hatted }: StageProps) {
   return (
     <>
       <G id="halo">
@@ -231,19 +242,23 @@ function Mythic({ mood }: StageProps) {
           <Path d="M0 39.31277l19.87357 24.02298c12.01147-1.09196 23.3678-6.55173 31.01147-16.37931 8.73563-11.57471 11.79312-27.29885 9.60919-46.95402-9.82758 0-17.68964-0.21839-27.51724 3.49425-17.25285 6.33333-29.26436 20.31034-32.97699 35.8161z" transform="translate(78.97010526315789 9.562408421052632) scale(0.3368421052631579)" fill={LEAF} />
         </G>
       </G>
-      <G id="leaf-top">
-        <G transform="translate(63 19) rotate(38) scale(0.62) translate(-38.3 -30.9)">
-          <Path d="M1.08121 0.0273c-2.4023 13.10345-1.31035 29.48276 8.51723 44.11494 7.86207 11.57471 19.87356 18.12643 32.75862 19.21839l18.34484-22.93104c-2.18391-13.75862-14.4138-30.13792-32.54024-37.12643-7.20689-2.4023-15.28735-3.49425-27.08045-3.27586z" transform="translate(24.02199578947368 9.554021052631578) scale(0.3368421052631579)" fill={LEAF} />
+      {!hatted ? (
+        <G id="leaf-top">
+          <G transform="translate(63 19) rotate(38) scale(0.62) translate(-38.3 -30.9)">
+            <Path d="M1.08121 0.0273c-2.4023 13.10345-1.31035 29.48276 8.51723 44.11494 7.86207 11.57471 19.87356 18.12643 32.75862 19.21839l18.34484-22.93104c-2.18391-13.75862-14.4138-30.13792-32.54024-37.12643-7.20689-2.4023-15.28735-3.49425-27.08045-3.27586z" transform="translate(24.02199578947368 9.554021052631578) scale(0.3368421052631579)" fill={LEAF} />
+          </G>
         </G>
-      </G>
-      <G id="crown">
-        <Ellipse cx="61.00" cy="1.80" rx="2.6" ry="3.8" transform="rotate(0 61.00 1.80)" fill={colors.lime} />
-        <Ellipse cx="64.99" cy="4.70" rx="2.6" ry="3.8" transform="rotate(72 64.99 4.70)" fill={colors.lime} />
-        <Ellipse cx="63.47" cy="9.40" rx="2.6" ry="3.8" transform="rotate(144 63.47 9.40)" fill={colors.lime} />
-        <Ellipse cx="58.53" cy="9.40" rx="2.6" ry="3.8" transform="rotate(216 58.53 9.40)" fill={colors.lime} />
-        <Ellipse cx="57.01" cy="4.70" rx="2.6" ry="3.8" transform="rotate(288 57.01 4.70)" fill={colors.lime} />
-        <Circle cx="61" cy="6" r="2.4" fill={POLLEN} />
-      </G>
+      ) : null}
+      {!hatted ? (
+        <G id="crown">
+          <Ellipse cx="61.00" cy="1.80" rx="2.6" ry="3.8" transform="rotate(0 61.00 1.80)" fill={colors.lime} />
+          <Ellipse cx="64.99" cy="4.70" rx="2.6" ry="3.8" transform="rotate(72 64.99 4.70)" fill={colors.lime} />
+          <Ellipse cx="63.47" cy="9.40" rx="2.6" ry="3.8" transform="rotate(144 63.47 9.40)" fill={colors.lime} />
+          <Ellipse cx="58.53" cy="9.40" rx="2.6" ry="3.8" transform="rotate(216 58.53 9.40)" fill={colors.lime} />
+          <Ellipse cx="57.01" cy="4.70" rx="2.6" ry="3.8" transform="rotate(288 57.01 4.70)" fill={colors.lime} />
+          <Circle cx="61" cy="6" r="2.4" fill={POLLEN} />
+        </G>
+      ) : null}
       <G id="arm-right">
         <Path d="M248.97 194.59C266.44 177.11 289.37 141.95 292.65 117.06L292.65 112.69C292.65 101.77 281.73 91.94 268.62 96.75C266.66 97.4 264.69 98.28 262.07 99.59C256.39 102.64 247.66 109.2 235.86 117.93C220 132 226 186 248.97 194.59Z" transform="translate(14.748766315789474 17.213776842105265) scale(0.3368421052631579)" fill={BODY} />
       </G>

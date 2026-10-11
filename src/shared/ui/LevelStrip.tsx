@@ -42,20 +42,24 @@ export function BarTrack({ ratio, track = 'soft' }: { ratio: number; track?: 'so
   );
 }
 
-const within = (value: number, max: number) => (value > 0 ? Math.min(value, max) : 0);
+/** Finite numbers for a bar: `max` must be finite and above 0, else the bar is 0 of 0; `now` is `value` kept in 0..max. */
+function barRange(value: number, max: number) {
+  const top = Number.isFinite(max) && max > 0 ? max : 0;
+  return { max: top, now: value > 0 ? Math.min(value, top) : 0 };
+}
 
 /** A bar with its value written under it (`label`, e.g. "64% tới Chồi non"). */
 export function ProgressBar({ value, max, label }: { value: number; max: number; label: string }) {
-  const now = within(value, max);
+  const range = barRange(value, max);
   return (
     <View
       accessible
       accessibilityRole="progressbar"
       accessibilityLabel={label}
-      accessibilityValue={{ min: 0, max, now }}
+      accessibilityValue={{ min: 0, max: range.max, now: range.now }}
       style={styles.bar}
     >
-      <BarTrack ratio={max > 0 ? now / max : 0} />
+      <BarTrack ratio={range.max > 0 ? range.now / range.max : 0} />
       <AppText variant="caption">{label}</AppText>
     </View>
   );
@@ -72,18 +76,20 @@ type LevelStripProps = {
 
 export function LevelStrip({ level, title, xpIntoLevel, xpForNextLevel, onPress }: LevelStripProps) {
   const heading = vi.levelTitle(level, title);
-  const rolling = useNumberRoll(xpIntoLevel);
+  // The text shows the same clamped numbers the bar reports.
+  const { now, max } = barRange(xpIntoLevel, xpForNextLevel);
+  const rolling = useNumberRoll(now);
   const content = (
     <View style={styles.strip}>
       <AppText weight="semibold">{heading}</AppText>
-      <ProgressBar value={xpIntoLevel} max={xpForNextLevel} label={vi.xpProgress(rolling, xpForNextLevel)} />
+      <ProgressBar value={now} max={max} label={vi.xpProgress(rolling, max)} />
     </View>
   );
   if (!onPress) return content;
   return (
     <Touchable
       accessibilityRole="button"
-      accessibilityLabel={`${heading}. ${vi.xpProgress(xpIntoLevel, xpForNextLevel)}`}
+      accessibilityLabel={`${heading}. ${vi.xpProgress(now, max)}`}
       onPress={onPress}
     >
       {content}

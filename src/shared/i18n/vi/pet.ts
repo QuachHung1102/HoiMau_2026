@@ -1,8 +1,9 @@
 // Game components and Mầm (Task 12): stats, level, chips, milestones, the mascot.
 import type { PetMood, PetStage } from '../../../../domain/types.ts';
 
-/** 1118 -> "1.118". Hermes is not guaranteed to ship `Intl.NumberFormat('vi-VN')`. */
-export const formatNumber = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+/** 1118 -> "1.118"; anything that is not a finite number -> "0". Hermes is not guaranteed to ship `Intl.NumberFormat('vi-VN')`. */
+export const formatNumber = (n: number) =>
+  (Number.isFinite(n) ? String(Math.round(n)) : '0').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
 export const statLabel = { hp: 'Sức sống', en: 'Năng lượng', str: 'Sức mạnh', spd: 'Sức bền' } as const;
 export const statValue = (value: number) => `${value}/100`;

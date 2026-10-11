@@ -2,15 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 import * as vi from '../i18n/vi/pet';
 import { motion } from '../motion/motion';
+import { useLoopGate } from '../motion/useLoopGate';
 import { useReducedMotion } from '../motion/useReducedMotion';
 import { useTheme } from '../theme/ThemeProvider';
-import type { Palette } from '../theme/tokens';
+import { radius, type Palette } from '../theme/tokens';
 import { AppText } from './AppText';
 import { Icon, type IconName } from './Icon';
-import { useLoopGate } from './mam/Mam';
 
 /** Counts from the previous value to the new one. The first value, and every value under reduced motion, shows at once. */
-export function useNumberRoll(value: number): number {
+export function useNumberRoll(value: number, durationMs: number = motion.durationsMs.countUp): number {
   const reduced = useReducedMotion();
   const [shown, setShown] = useState(value);
   const previous = useRef(value);
@@ -23,7 +23,7 @@ export function useNumberRoll(value: number): number {
     // motion: number-roll (text cannot run on the native driver)
     const roll = Animated.timing(driver, {
       toValue: value,
-      duration: motion.durationsMs.countUp,
+      duration: durationMs,
       easing: Easing.bezier(...motion.easing.enter),
       useNativeDriver: false,
     });
@@ -33,7 +33,7 @@ export function useNumberRoll(value: number): number {
       driver.removeListener(listener);
       setShown(value); // an interrupted roll ends on its target
     };
-  }, [value, reduced]);
+  }, [value, reduced, durationMs]);
   return reduced ? value : shown;
 }
 
@@ -147,8 +147,8 @@ export function OfflineBadge({ count }: { count: number }) {
 }
 
 const styles = StyleSheet.create({
-  // No fixed height: the chip grows with the font scale.
-  chip: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12 },
+  // No fixed height: the chip grows with the font scale. At its 32 dp height the button radius (14) makes it a pill, as in S09.
+  chip: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.button },
   flame: { transformOrigin: 'bottom' },
   frost: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6 },
   dot: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },

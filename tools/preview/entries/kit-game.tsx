@@ -35,6 +35,8 @@ const styles = StyleSheet.create({
   centered: { textAlign: 'center' },
   sizes: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-around' },
   big: { alignItems: 'center' },
+  foxGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around', rowGap: 8 },
+  foxCell: { alignItems: 'center' },
 });
 
 // S09 / S21 / S23 / S38 pieces: level strip + coins, the four stats, every chip, the bar.
@@ -90,7 +92,7 @@ function RingsAndMilestones() {
   );
 }
 
-// 5 stages x 3 moods, then the fox skin on the two combinations the design renders.
+// 5 stages x 3 moods, then the fox skin on every stage.
 function MamGrid() {
   return (
     <Screen>
@@ -115,17 +117,27 @@ function MamGrid() {
           </View>
         ))}
         <View style={styles.row}>
-          <View style={styles.cell}>
-            <Mam stage="HATCHLING" mood="HAPPY" skin="fox" size={96} />
-          </View>
-          <View style={styles.cell}>
-            <Mam stage="HATCHLING" mood="NEUTRAL" skin="fox" size={96} />
-          </View>
-          <View style={styles.cell}>
-            <Mam stage="ADULT" mood="TIRED" skin="fox" size={96} />
-          </View>
+          {STAGES.map(stage => (
+            <Mam key={stage} stage={stage} mood="HAPPY" skin="fox" size={68} />
+          ))}
         </View>
         <AppText variant="caption" style={styles.centered}>Mũ cáo nhỏ</AppText>
+      </View>
+    </Screen>
+  );
+}
+
+// The fox skin on every stage, large: only the two HATCHLING combinations have a design render.
+function MamFox() {
+  return (
+    <Screen title="Mũ cáo nhỏ" subtitle="Chỉ Mầm nhú có bản vẽ thiết kế; các giai đoạn khác cần người thiết kế xem.">
+      <View style={styles.foxGrid}>
+        {STAGES.map(stage => (
+          <View key={stage} style={styles.foxCell}>
+            <Mam stage={stage} mood={stage === 'ADULT' ? 'TIRED' : stage === 'JUVENILE' ? 'NEUTRAL' : 'HAPPY'} skin="fox" size={150} />
+            <AppText variant="caption" style={styles.centered}>{stageName[stage]}</AppText>
+          </View>
+        ))}
       </View>
     </Screen>
   );
@@ -204,8 +216,11 @@ export const entries: Entries = {
   'kit-game-rings': make(<RingsAndMilestones />),
   'kit-mam-grid': make(<MamGrid />),
   'kit-mam-sizes': make(<MamSizes />),
+  'kit-mam-fox': make(<MamFox />),
   's65-level-up': make(levelUp, still),
   's66-streak-milestone': make(milestone, still),
   's69-mam-evolve': make(evolve, still),
   's65-level-up-motion': make(levelUp),
+  's66-streak-milestone-motion': make(milestone),
+  's69-mam-evolve-motion': make(evolve),
 };
