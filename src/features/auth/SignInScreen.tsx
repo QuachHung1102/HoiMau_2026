@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import type { ScreenProps } from '../../app/routes';
 import { normalizeEmail } from '../../../domain/validation.ts';
 import { useSession } from '../../shared/api/session';
@@ -20,7 +21,7 @@ const FIELDS = ['email', 'password'] as const;
 
 /** S02: sign in. Every credential failure reads the same: it never says whether the email has an account. */
 export function SignInScreen({ navigation }: ScreenProps<'SignIn'>) {
-  const { status, expired, signIn } = useSession();
+  const { expired, signIn } = useSession();
   const login = useLogin();
   const run = useSingleFlight();
   const [email, setEmail] = useState('');
@@ -41,9 +42,10 @@ export function SignInScreen({ navigation }: ScreenProps<'SignIn'>) {
       await run(async signal => {
         // reset(): the variables hold the password, so they go as soon as the request has settled
         const session = await login.mutateAsync({ body: { email: normalizeEmail(email), password }, signal }).finally(() => login.reset());
+        // The root gate unmounts the auth screens once signed in, so this runs only while signed out, and once.
+        await signIn(session.token, session.userId);
+        // Cleared only now: if the keychain write failed, the person keeps what they typed.
         setPassword('');
-        // Once, and only while signed out; the root gate moves on by itself afterwards.
-        if (status === 'signedOut') await signIn(session.token, session.userId);
       });
     } catch (error) {
       show(failure(error, { own: { INVALID_CREDENTIALS: 'password' }, known: FIELDS }));
@@ -90,9 +92,14 @@ export function SignInScreen({ navigation }: ScreenProps<'SignIn'>) {
       <Actions>
         <Button label={vi.signInAction} loading={login.isPending} onPress={submit} />
         <Button variant="secondary" label={vi.forgotLink} onPress={() => navigation.navigate('ForgotPassword')} />
-        <TextLink label={vi.noAccountLink} onPress={() => navigation.navigate('SignUp', undefined, { pop: true })} />
+        <View style={styles.link}>
+          <TextLink label={vi.noAccountLink} onPress={() => navigation.navigate('SignUp', undefined, { pop: true })} />
+        </View>
         <AppText variant="caption">{vi.accountProtected}</AppText>
       </Actions>
     </Screen>
   );
 }
+
+// The link is a 48 dp row; pulled into the 24 dp gaps around it (never over a control) it sits 24 dp from its neighbours, as in the frame.
+const styles = StyleSheet.create({ link: { marginVertical: -12 } });

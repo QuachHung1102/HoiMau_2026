@@ -7,6 +7,8 @@
     <style>
       html, body, #root { height: 100%; margin: 0; }
       body { background: #e5e7eb; }
+      /* the browser's focus ring is not what a device draws */
+      input, textarea { outline: none !important; }
       .phone { width: 390px; height: 100vh; margin: 0 auto; display: flex; overflow: hidden; background: #fff; }
       .list { padding: 16px; font-family: sans-serif; }
     </style>

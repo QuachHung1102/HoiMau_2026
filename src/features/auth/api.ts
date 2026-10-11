@@ -40,6 +40,8 @@ export function useMe() {
 type Call<Body> = { body: Body; signal: AbortSignal };
 const authMutation = <Body, Result>(path: string) => ({
   gcTime: 0,
+  // An offline press must fail fast (NETWORK from the client), not wait forever with `loading` on and the password kept.
+  networkMode: 'always' as const,
   mutationFn: ({ body, signal }: Call<Body>) => api.write<Result>('POST', path, body, { signal }),
 });
 

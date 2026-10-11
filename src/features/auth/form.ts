@@ -89,11 +89,14 @@ export function failure<F extends string>(
   if (field && copy) return { fields: { [field]: copy } as Partial<Record<F, string>> };
   if (error.code === 'VALIDATION_FAILED' && isValidationDetails(error.details)) {
     const fields: Partial<Record<F, string>> = {};
+    let dropped = false;
     for (const item of error.details.fields) {
       const message = known.includes(item.field as F) ? fieldCopy(item.field, item.rule) : undefined;
       if (message) fields[item.field as F] ??= message;
+      else dropped = true;
     }
-    if (Object.keys(fields).length > 0) return { fields };
+    // A field this form has no place for must not vanish silently: say something is wrong beyond the marked fields.
+    if (Object.keys(fields).length > 0) return dropped ? { fields, form: common.unknownError } : { fields };
   }
   return { fields: {}, form: copy ?? common.unknownError };
 }

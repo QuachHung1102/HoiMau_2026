@@ -196,7 +196,7 @@ test('GET /me 401 SESSION_INVALID: the session ends and the app is back on the s
   render(<App />);
   // the landing is S02, with the notice that the session ended
   expect(await screen.findByRole('header', { name: 'Chào bạn trở lại' })).toBeTruthy();
-  expect(screen.getByText('Phiên đăng nhập đã hết hạn')).toBeTruthy();
+  expect(screen.getByText('Phiên đăng nhập đã hết hạn. Bạn đăng nhập lại nhé.')).toBeTruthy();
   expect(await Keychain.getGenericPassword()).toBe(false);
   expect(await AsyncStorage.getAllKeys()).toEqual([]);
   expect(requests()).toEqual(['GET /me']);

@@ -24,7 +24,7 @@ const INPUT_FIELDS = ['displayName', 'email', 'password'] as const;
 
 /** S03: create an account. On success the session starts and the root gate moves on to onboarding. */
 export function SignUpScreen({ navigation }: ScreenProps<'SignUp'>) {
-  const { status, signIn } = useSession();
+  const { signIn } = useSession();
   const register = useRegister();
   const run = useSingleFlight();
   const [displayName, setDisplayName] = useState('');
@@ -56,9 +56,15 @@ export function SignUpScreen({ navigation }: ScreenProps<'SignUp'>) {
         const session = await register
           .mutateAsync({ body: { email: normalizeEmail(email), password, displayName: displayName.trim(), acceptedTerms: true }, signal })
           .finally(() => register.reset());
+        // The root gate unmounts the auth screens once signed in, so this runs only while signed out, and once.
+        try {
+          await signIn(session.token, session.userId);
+        } catch {
+          // The account exists now: a retry of this form would be refused, so say so.
+          return show({ fields: {}, form: vi.accountCreatedNotSignedIn });
+        }
+        // Cleared only now: if the keychain write failed, the person keeps what they typed.
         setPassword('');
-        // Once, and only while signed out; the root gate moves on by itself afterwards.
-        if (status === 'signedOut') await signIn(session.token, session.userId);
       });
     } catch (error) {
       show(failure(error, { own: { REGISTRATION_UNAVAILABLE: 'email', NAME_NOT_ALLOWED: 'displayName' }, known: INPUT_FIELDS }));
@@ -151,6 +157,6 @@ export function SignUpScreen({ navigation }: ScreenProps<'SignUp'>) {
 
 const styles = StyleSheet.create({
   // lines up with the checkbox label (24 dp box + 16 dp gap)
-  termsLink: { marginLeft: 40, marginTop: -12, alignItems: 'flex-start' },
+  termsLink: { marginLeft: 40, alignItems: 'flex-start' },
   section: { marginTop: 12, gap: 2 },
 });

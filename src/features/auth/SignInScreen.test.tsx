@@ -1,3 +1,4 @@
+import { onlineManager } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import * as Keychain from 'react-native-keychain';
 import { answer, fetchMock, mount, pendingRequest, queryClient, refuse, respond, sent, session, TOKEN, USER, installAuthTestEnv, watchFocus } from './authTestKit';
@@ -18,6 +19,7 @@ const liveRegionOf = (text: string) => {
   return node?.props.accessibilityLiveRegion;
 };
 const ready = () => screen.findByRole('header', { name: 'Chào bạn trở lại' });
+const SESSION_ENDED = 'Phiên đăng nhập đã hết hạn. Bạn đăng nhập lại nhé.';
 const EMAIL_INVALID = 'Email chưa đúng định dạng, ví dụ ban@example.com.';
 
 test('S02 shows the two fields, the primary action and the ways to other screens', async () => {
@@ -29,7 +31,7 @@ test('S02 shows the two fields, the primary action and the ways to other screens
   expect(screen.getByRole('link', { name: 'Chưa có tài khoản? Tạo tài khoản' })).toBeTruthy();
   expect(screen.getByText('Thông tin tài khoản được bảo vệ.')).toBeTruthy();
   // nothing about a session ending when there was none
-  expect(screen.queryByText('Phiên đăng nhập đã hết hạn')).toBeNull();
+  expect(screen.queryByText(SESSION_ENDED)).toBeNull();
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
@@ -79,7 +81,7 @@ test('happy path: POST /auth/login with the normalised email and the password as
   expect(sent().find(r => r.path === '/me')?.headers.Authorization).toBe(`Bearer ${TOKEN}`);
 });
 
-test('the password leaves the field as soon as the request succeeds, and the mutation cache never keeps it', async () => {
+test('the password stays in the field until the sign-in has succeeded, and the mutation cache never keeps it', async () => {
   answer('/auth/login', respond(200, session));
   let finishKeychain!: () => void;
   jest.mocked(Keychain.setGenericPassword).mockImplementationOnce(() => new Promise(resolve => (finishKeychain = () => resolve({ service: 'x', storage: 'x' } as never))));
@@ -89,7 +91,9 @@ test('the password leaves the field as soon as the request succeeds, and the mut
   signIn();
   // the request has succeeded and the keychain is still writing: the screen is still here
   await waitFor(() => expect(Keychain.setGenericPassword).toHaveBeenCalled());
-  expect(screen.getByLabelText('Mật khẩu').props.value).toBe('');
+  // not cleared before signIn resolved: a failing keychain write must not make the person retype it
+  expect(screen.getByLabelText('Mật khẩu').props.value).toBe('mat-khau-dung');
+  // but the request is over, so the variables that held it are gone from the query client
   await waitFor(() => expect(queryClient().getMutationCache().getAll()).toEqual([]));
   await act(async () => finishKeychain());
   await screen.findByText('Phần này đang được hoàn thiện');
@@ -231,7 +235,7 @@ describe('failed requests', () => {
     fill();
     signIn();
     await screen.findByText('Email hoặc mật khẩu chưa đúng.');
-    expect(screen.queryByText('Phiên đăng nhập đã hết hạn')).toBeNull();
+    expect(screen.queryByText(SESSION_ENDED)).toBeNull();
   });
 
   test('the keychain failing after a good answer reports a generic error and signs nobody in', async () => {
@@ -243,6 +247,25 @@ describe('failed requests', () => {
     signIn();
     expect(await screen.findByText('Có lỗi xảy ra. Bạn thử lại nhé.')).toBeTruthy();
     expect(screen.queryByText('Phần này đang được hoàn thiện')).toBeNull();
+    // the form keeps what was typed
+    expect(screen.getByLabelText('Mật khẩu').props.value).toBe('mat-khau-dung');
+    expect(screen.getByLabelText('Email').props.value).toBe('an@example.vn');
+  });
+
+  test('offline with an online manager wired: the press still reaches fetch and fails fast with NETWORK', async () => {
+    onlineManager.setOnline(false);
+    try {
+      fetchMock.mockRejectedValue(new TypeError('Network request failed'));
+      mount('SignIn');
+      await ready();
+      fill();
+      signIn();
+      expect(await screen.findByText('Không kết nối được mạng. Bạn kiểm tra kết nối rồi thử lại nhé.')).toBeTruthy();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('button', { name: 'Đăng nhập' }).props.accessibilityState).toMatchObject({ busy: false });
+    } finally {
+      onlineManager.setOnline(true);
+    }
   });
 });
 
@@ -330,13 +353,13 @@ describe('the session ended on the server', () => {
     answer('/auth/login', respond(200, session));
     fetchMock.mockResolvedValueOnce(refuse(401, 'SESSION_INVALID')); // the restored session's GET /me
     mount('Welcome');
-    expect(await screen.findByText('Phiên đăng nhập đã hết hạn')).toBeTruthy();
+    expect(await screen.findByText(SESSION_ENDED)).toBeTruthy();
     expect(await ready()).toBeTruthy();
-    expect(liveRegionOf('Phiên đăng nhập đã hết hạn')).toBe('polite');
+    expect(liveRegionOf(SESSION_ENDED)).toBe('polite');
     fill();
     signIn();
     await screen.findByText('Phần này đang được hoàn thiện');
-    expect(screen.queryByText('Phiên đăng nhập đã hết hạn')).toBeNull();
+    expect(screen.queryByText(SESSION_ENDED)).toBeNull();
     expect(Keychain.setGenericPassword).toHaveBeenCalledTimes(1);
   });
 });

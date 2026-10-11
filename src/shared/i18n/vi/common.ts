@@ -15,7 +15,7 @@ export const errorText = {
   NETWORK: 'Không kết nối được mạng. Bạn kiểm tra kết nối rồi thử lại nhé.',
   TIMEOUT: 'Kết nối hơi chậm. Bạn thử lại nhé.',
   RATE_LIMITED: 'Bạn thao tác hơi nhanh. Chờ một chút rồi thử lại nhé.',
-  SESSION_INVALID: 'Phiên đăng nhập đã hết hạn',
+  SESSION_INVALID: 'Phiên đăng nhập đã hết hạn. Bạn đăng nhập lại nhé.',
   INTERNAL: 'Hệ thống đang gặp sự cố. Bạn thử lại sau ít phút nhé.',
 } as const;
 

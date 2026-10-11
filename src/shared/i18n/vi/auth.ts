@@ -44,7 +44,7 @@ export const termsLink = 'Đọc điều khoản và chính sách riêng tư';
 
 // S04
 export const forgotTitle = 'Lấy lại mật khẩu';
-export const forgotSubtitle = 'Chúng tôi sẽ gửi mã đến email của bạn.';
+export const forgotSubtitle = 'Mình sẽ gửi mã đến email của bạn.';
 export const forgotAction = 'Gửi mã';
 /** The one answer to every accepted request, for any email (S04 and the resend on S55). */
 export const forgotSent = 'Nếu email đã đăng ký, bạn sẽ nhận được mã trong ít phút.';
@@ -54,11 +54,17 @@ export const haveCodeAction = 'Nhập mã';
 
 // S55
 export const newPasswordTitle = 'Đặt mật khẩu mới';
-export const newPasswordSubtitle = 'Nhập mã chúng tôi đã gửi qua email của bạn.';
+/** Shows where the code went, so a typo made on S04 is visible. */
+export const newPasswordSubtitle = (email: string) => `Nhập mã đã gửi đến ${email}.`;
 export const newPasswordAction = 'Lưu mật khẩu mới';
 export const newPasswordSaved = 'Mật khẩu đã được đổi. Bạn đăng nhập lại nhé.';
 export const resendHint = 'Nếu mã đã hết hạn, hãy gửi lại mã.';
 export const resendAction = 'Gửi lại mã';
+/** The server sends at most this many codes per hour; a new code voids the old one. */
+export const resendLimitPerHour = 3;
+export const resendNote = `Mã mới sẽ thay mã cũ. Bạn có thể gửi lại tối đa ${resendLimitPerHour} lần mỗi giờ.`;
+export const codePlaceholder = (digits: number) => '•'.repeat(digits);
+export const accountCreatedNotSignedIn = 'Tài khoản đã được tạo nhưng chưa đăng nhập được. Bạn thử đăng nhập bằng email vừa dùng nhé.';
 
 // Client-side validation: what the person can fix, never what the server knows about an account.
 export const emailRequired = 'Bạn nhập email nhé.';
