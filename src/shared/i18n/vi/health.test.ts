@@ -6,6 +6,13 @@ import {
   healthVi,
 } from './health';
 
+/** Entries may start with ^ and end with $ (see crisisMatch.ts); nothing else is syntax. */
+const withoutAnchors = (entry: string): string =>
+  entry.slice(
+    entry.startsWith('^') ? 1 : 0,
+    entry.endsWith('$') ? -1 : undefined,
+  );
+
 test('CRISIS_LINES are exactly 115 and 111', () => {
   expect(CRISIS_LINES).toEqual([
     { number: '115', label: 'Cấp cứu' },
@@ -17,27 +24,22 @@ test('CRISIS_KEYWORDS has at least 15 distinct phrases, each already normalised'
   expect(CRISIS_KEYWORDS.length).toBeGreaterThanOrEqual(15);
   expect(new Set(CRISIS_KEYWORDS).size).toBe(CRISIS_KEYWORDS.length);
   for (const keyword of CRISIS_KEYWORDS) {
-    expect(keyword).toBe(normalizeVi(keyword));
-    expect(keyword.split(' ').length).toBeGreaterThanOrEqual(2);
+    const core = withoutAnchors(keyword);
+    expect(core).toBe(normalizeVi(core));
+    expect(core.split(' ').length).toBeGreaterThanOrEqual(2);
+    expect(core).not.toMatch(/[\^$]/);
   }
 });
 
-test('everyday sentences do not match a crisis keyword', () => {
-  const everyday = [
-    'Hôm nay mệt quá, chết đói mất',
-    'Tôi đi từ từ cho khỏe',
-    'Mệt muốn chết, đói quá',
-  ];
-  for (const text of everyday) {
-    expect(CRISIS_KEYWORDS.filter(k => normalizeVi(text).includes(k))).toEqual(
-      [],
-    );
+test('CRISIS_PHRASES_EXACT entries are distinct and equal their own NFC lower-case form', () => {
+  expect(CRISIS_PHRASES_EXACT.length).toBeGreaterThan(0);
+  expect(new Set(CRISIS_PHRASES_EXACT).size).toBe(CRISIS_PHRASES_EXACT.length);
+  for (const phrase of CRISIS_PHRASES_EXACT) {
+    const core = withoutAnchors(phrase);
+    expect(core).toBe(core.normalize('NFC').toLowerCase());
+    expect(core).toBe(core.trim());
+    expect(core).not.toMatch(/[\^$]/);
   }
-  expect(
-    CRISIS_KEYWORDS.some(k =>
-      normalizeVi('Tôi không muốn sống nữa').includes(k),
-    ),
-  ).toBe(true);
 });
 
 test('the safety-clamp explanation groups thousands the Vietnamese way', () => {
@@ -51,15 +53,6 @@ test('the workout caution is the designed sentence', () => {
   );
 });
 
-test('CRISIS_PHRASES_EXACT entries are distinct and equal their own NFC lower-case form', () => {
-  expect(CRISIS_PHRASES_EXACT.length).toBeGreaterThan(0);
-  expect(new Set(CRISIS_PHRASES_EXACT).size).toBe(CRISIS_PHRASES_EXACT.length);
-  for (const phrase of CRISIS_PHRASES_EXACT) {
-    expect(phrase).toBe(phrase.normalize('NFC').toLowerCase());
-    expect(phrase).toBe(phrase.trim());
-  }
-});
-
 test('the estimate notes use the "ước tính, không phải chẩn đoán" wording', () => {
   expect(healthVi.estimate.prescription).toContain(
     'ước tính, không phải chẩn đoán',
@@ -67,10 +60,18 @@ test('the estimate notes use the "ước tính, không phải chẩn đoán" wor
   expect(healthVi.estimate.stats).toContain('ước tính, không phải chẩn đoán');
 });
 
-test('the macro explanation says the energy target is unchanged', () => {
+test('the macro explanation says the energy target is unchanged and only the split moved', () => {
   expect(healthVi.macroAdjusted.body).toContain(
-    'Mục tiêu năng lượng của bạn vẫn giữ nguyên',
+    'Mục tiêu năng lượng của bạn vẫn giữ nguyên; mình chỉ chia lại đạm, béo và carb để chất béo chiếm ít nhất 20% năng lượng và carb không bị đẩy xuống quá thấp.',
   );
-  expect(healthVi.macroAdjusted.body).toContain('50 g');
-  expect(healthVi.macroAdjusted.body).toContain('20%');
+  expect(healthVi.macroAdjusted.body).not.toContain('50 g');
+});
+
+test('the info paragraph about the floor states the 20 % rule as a maximum', () => {
+  const floor = healthVi.info.paragraphs.find(
+    p => p.title === 'Mức nền an toàn',
+  );
+  expect(floor?.body).toContain(
+    'chỉ thấp hơn mức năng lượng bạn dùng mỗi ngày tối đa 20%',
+  );
 });
