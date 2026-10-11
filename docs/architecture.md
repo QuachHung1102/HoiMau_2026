@@ -28,19 +28,25 @@
 
 Trong lúc đọc phiên từ keychain hoặc chờ `GET /me`, app hiện trạng thái đang tải. Nếu `GET /me` lỗi và không có dữ liệu để dùng, app hiện trạng thái lỗi với **Thử lại** và **Đăng xuất**. Nhóm nào chưa có màn hình trong sổ đăng ký thì hiện thông báo "Phần này đang được hoàn thiện" kèm **Đăng xuất**.
 
-Quy tắc sổ đăng ký: toàn bộ tên route và tham số khai báo một lần trong `src/app/routes.ts` (`RootParamList`); `src/app/screens.tsx` xuất năm mảng `authScreens`, `onboardingScreens`, `tabRoots`, `detailScreens`, `focusScreens`. Một tính năng thêm màn hình bằng một dòng import và một phần tử trong mảng tương ứng, không sửa gì khác trong `src/app/`. Thứ tự tab cố định trong `navigation.tsx`. Liên kết tới route chưa đăng ký thì không làm gì cho tới khi màn đó có mặt; `__tests__/routes.test.ts` kiểm tra mọi màn đã đăng ký đều có trong `RootParamList`.
+Quy tắc sổ đăng ký: toàn bộ tên route và tham số khai báo một lần trong `src/app/routes.ts` (`RootParamList`); `src/app/screens.tsx` xuất năm mảng `authScreens`, `onboardingScreens`, `tabRoots`, `detailScreens`, `focusScreens`. Một tính năng thêm màn hình bằng một dòng import và một phần tử trong mảng tương ứng, không sửa gì khác trong `src/app/`. Thứ tự tab cố định trong `navigation.tsx`. `__tests__/routes.test.ts` kiểm tra mọi màn đã đăng ký đều có trong `RootParamList`.
+
+Quy tắc điều hướng theo tên:
+
+- `navigate('<màn gốc của tab>')` (`Today`, `Plan`, `Guild`, `Profile`) dùng được từ mọi nơi trong phần chính của app: từ tab khác, từ màn chi tiết, từ luồng buổi tập. Kết quả luôn giống nhau: luồng buổi tập đóng lại, tab đó được chọn và hiện màn gốc của nó (màn chi tiết đang mở trong tab đó được đóng).
+- Liên kết tới route đã khai báo nhưng chưa có màn hình trong sổ đăng ký thì không làm gì và không báo lỗi, cho tới khi màn đó có mặt.
+- Mọi lệnh điều hướng khác không được xử lý (tên không khai báo, route của nhóm không đang hiển thị, Back khi không còn gì để lùi) ghi `console.error` kèm tên route khi chạy bản dev.
 
 Thanh thông báo ngắn (snackbar) của toàn app nằm phía trên điều hướng và tự nâng lên trên thanh tab khi màn gốc của một tab đang hiển thị.
 
 ### API client
 
-`src/shared/api/client.ts` là đường duy nhất tới API (`api.get`, `api.write`); địa chỉ gốc ở `src/shared/api/config.ts`. Client chỉ gửi và nhận JSON, gắn `Authorization: Bearer` khi có phiên, gắn `Idempotency-Key` (UUID v4 từ `newActionId()`) cho mọi lần ghi và hủy yêu cầu sau 10 giây. Mọi thất bại thành `ApiError` với `status`, `code`, `details`: mã của máy chủ khi có, `NETWORK` khi không gửi được, `TIMEOUT` khi quá hạn, `INTERNAL` khi phản hồi không đúng dạng lỗi. Client không ghi log, không tự cache và không đưa token, URL hay nội dung yêu cầu vào lỗi. Chuỗi tiếng Việt cho từng mã lỗi nằm ở `src/shared/i18n/vi/`.
+`src/shared/api/client.ts` là đường duy nhất tới API (`api.get`, `api.write`); địa chỉ gốc ở `src/shared/api/config.ts`. Client chỉ gửi và nhận JSON, gắn `Authorization: Bearer` khi có phiên, gắn `Idempotency-Key` (UUID v4 từ `newActionId()`) cho các lần ghi mà hợp đồng API đánh dấu là idempotent (tra trong `OPERATIONS` của `domain/contract/operations.ts`; các route đăng nhập, đăng ký, đăng xuất, quên và đặt lại mật khẩu không có khóa) và hủy yêu cầu sau 10 giây. Nơi gọi có thể truyền `signal` để tự hủy; khi đó lời gọi kết thúc bằng chính lỗi hủy, không phải `ApiError`. Mọi thất bại khác thành `ApiError` với `status`, `code`, `details`: mã của máy chủ khi có, `NETWORK` khi không gửi được, `TIMEOUT` khi quá hạn, `INTERNAL` khi phản hồi không đúng dạng lỗi hoặc không dựng được yêu cầu. Client không ghi log, không tự cache và không đưa token, URL hay nội dung yêu cầu vào lỗi. Chuỗi tiếng Việt cho từng mã lỗi nằm ở `src/shared/i18n/vi/`.
 
 ### Phiên đăng nhập
 
 `src/shared/api/session.ts` giữ phiên. Token chỉ nằm trong keychain của hệ điều hành (react-native-keychain) và trong bộ nhớ khi đang đăng nhập; không ghi vào AsyncStorage, cache truy vấn, log hay thông báo lỗi. Mở app thì phiên được khôi phục từ keychain.
 
-Đăng xuất theo thứ tự: thu hồi phiên trên máy chủ (nếu lỗi hoặc quá hạn 10 giây vẫn tiếp tục, để đăng xuất được cả khi mất mạng), xóa keychain, xóa cache truy vấn trong bộ nhớ, xóa cache trên đĩa của tài khoản đó. Khi máy chủ trả `401 SESSION_INVALID` cho một yêu cầu có token, phiên kết thúc đúng một lần dù nhiều yêu cầu cùng nhận 401; lỗi 401 của chính các biểu mẫu đăng nhập, đăng ký là lỗi thường của biểu mẫu.
+Đăng xuất theo thứ tự: thu hồi phiên trên máy chủ (nếu lỗi hoặc quá hạn 10 giây vẫn tiếp tục, để đăng xuất được cả khi mất mạng), xóa keychain, xóa cache truy vấn trong bộ nhớ (các yêu cầu đang chạy bị hủy), xóa cache trên đĩa của tài khoản đó. Nếu keychain không xóa được, app thử lại một lần; vẫn không được thì ghi đè bằng mật khẩu rỗng, và lần mở app sau coi mật khẩu rỗng là chưa đăng nhập, để token không còn dùng lại được trên máy dùng chung. Khi máy chủ trả `401 SESSION_INVALID` cho một yêu cầu có token, phiên kết thúc đúng một lần dù nhiều yêu cầu cùng nhận 401; lỗi 401 của chính các biểu mẫu đăng nhập, đăng ký là lỗi thường của biểu mẫu.
 
 ### Cache trên đĩa
 

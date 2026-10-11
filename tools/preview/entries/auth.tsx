@@ -6,8 +6,12 @@ const gate = { session, route: { name: 'Today' } } as const;
 
 export const entries: Entries = {
   's01-welcome': () => withApp(null, { session: null, route: { name: 'Welcome' } }),
-  // GET /me never answers: the session gate stays on its loading state.
-  's39-loading': () => withApp(null, { ...gate, fetchStub: () => new Promise(() => undefined) }),
+  // GET /me never answers (it only ends when the query is cancelled): the session gate stays on its loading state.
+  's39-loading': () =>
+    withApp(null, {
+      ...gate,
+      fetchStub: (_url, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('aborted')))),
+    }),
   // No fetch stub = no network, and nothing is cached: the gate shows the load error with both ways forward.
   's39-error': () => withApp(null, gate),
 };

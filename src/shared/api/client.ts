@@ -1,4 +1,5 @@
 import type { ErrorCode, ValidationDetails } from '../../../domain/contract/common.ts';
+import { OPERATIONS } from '../../../domain/contract/operations.ts';
 import { API_BASE_URL } from './config';
 import { newActionId } from './uuid';
 
@@ -6,7 +7,7 @@ const TIMEOUT_MS = 10_000;
 
 /** Every failure of a request. `message` is the code only: no URL, header, body or server text. */
 export class ApiError extends Error {
-  /** HTTP status; 0 for NETWORK / TIMEOUT. */
+  /** HTTP status; 0 when there was no response (NETWORK, TIMEOUT, or a request that could not be built). */
   status: number;
   code: ErrorCode | 'NETWORK' | 'TIMEOUT';
   details?: Record<string, unknown>;
@@ -40,15 +41,32 @@ export function bindApiSession(next: BoundSession | null) {
   session = next;
 }
 
-async function request<T>(method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown, idempotencyKey?: string): Promise<T> {
+type Method = 'GET' | 'POST' | 'PATCH';
+type RequestOptions = { body?: unknown; idempotencyKey?: string; signal?: AbortSignal };
+
+async function request<T>(method: Method, path: string, { body, idempotencyKey, signal: callerSignal }: RequestOptions = {}): Promise<T> {
   const sent = session;
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (sent) headers.Authorization = `Bearer ${sent.token}`;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
+  let json: string | undefined;
+  try {
+    json = body === undefined ? undefined : JSON.stringify(body);
+  } catch {
+    throw new ApiError(0, 'INTERNAL'); // a body that cannot be serialised is our bug, not the network's
+  }
 
+  // One signal for fetch: aborted by our 10 s timer or by the caller (a cancelled query).
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, TIMEOUT_MS);
+  const abortForCaller = () => controller.abort();
+  callerSignal?.addEventListener('abort', abortForCaller);
+  if (callerSignal?.aborted) controller.abort();
   let status: number;
   let ok: boolean;
   let text: string;
@@ -56,16 +74,19 @@ async function request<T>(method: 'GET' | 'POST' | 'PATCH', path: string, body?:
     const response = await fetch(API_BASE_URL + path, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: json,
       // The cast bridges two declarations of the same global (React Native's and Node's, which test files pull in).
       signal: controller.signal as RequestInit['signal'],
     });
     ({ status, ok } = response);
     text = await response.text(); // reading the body is under the same timeout
-  } catch {
-    throw new ApiError(0, controller.signal.aborted ? 'TIMEOUT' : 'NETWORK');
+  } catch (failure) {
+    // The caller's own abort is passed on as it is, so TanStack Query sees a cancellation and not an error.
+    if (callerSignal?.aborted && !timedOut) throw failure;
+    throw new ApiError(0, timedOut ? 'TIMEOUT' : 'NETWORK');
   } finally {
     clearTimeout(timer);
+    callerSignal?.removeEventListener('abort', abortForCaller);
   }
 
   let payload: unknown;
@@ -94,13 +115,34 @@ const queryString = (query: Record<string, string | number | undefined> = {}) =>
   return pairs.length ? `?${pairs.join('&')}` : '';
 };
 
-/** JSON over HTTPS-or-dev-HTTP. Never logs; caches nothing; every write carries an `Idempotency-Key`. */
+/** The operation of the API contract a write goes to (`:param` segments match any non-empty segment). */
+function operationOf(method: Method, path: string) {
+  const segments = path.split('/');
+  return OPERATIONS.find(operation => {
+    const pattern = operation.path.split('/');
+    return (
+      operation.method === method &&
+      pattern.length === segments.length &&
+      pattern.every((part, i) => (part.startsWith(':') ? segments[i] !== '' : part === segments[i]))
+    );
+  });
+}
+
+/** JSON only. Never logs a request or a response; caches nothing. `signal` lets the caller cancel. */
 export const api = {
-  get<T>(path: string, query?: Record<string, string | number | undefined>): Promise<T> {
-    return request<T>('GET', path + queryString(query));
+  get<T>(path: string, query?: Record<string, string | number | undefined>, opts?: { signal?: AbortSignal }): Promise<T> {
+    return request<T>('GET', path + queryString(query), { signal: opts?.signal });
   },
-  /** Pass `idempotencyKey` to repeat the same action (a retry); without one a new action id is generated. */
-  write<T>(method: 'POST' | 'PATCH', path: string, body?: unknown, opts?: { idempotencyKey?: string }): Promise<T> {
-    return request<T>(method, path, body, opts?.idempotencyKey ?? newActionId());
+  /**
+   * The contract decides whether a write carries an `Idempotency-Key`: routes marked idempotent always do (pass
+   * `idempotencyKey` to repeat the same action, e.g. a retry; without one a new action id is generated), the
+   * others (the auth routes) never do.
+   */
+  write<T>(method: 'POST' | 'PATCH', path: string, body?: unknown, opts?: { idempotencyKey?: string; signal?: AbortSignal }): Promise<T> {
+    const operation = operationOf(method, path);
+    // A programming error, reported with the method and path only (never a body).
+    if (!operation && __DEV__) console.error(`api.write: ${method} ${path} is not an operation of the API contract`);
+    const idempotencyKey = operation?.idempotent ? opts?.idempotencyKey ?? newActionId() : undefined;
+    return request<T>(method, path, { body, idempotencyKey, signal: opts?.signal });
   },
 };

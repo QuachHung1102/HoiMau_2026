@@ -8,9 +8,10 @@ export const meKey = ['me'] as const;
 
 async function fetchMe(userId: string, signal: AbortSignal): Promise<Me> {
   try {
-    const me = await api.get<Me>('/me');
-    // A sign-out clears the query cache, which aborts this signal: then nothing is written back to disk.
-    if (!signal.aborted) await writeCache(userId, 'me', me);
+    const me = await api.get<Me>('/me', undefined, { signal });
+    // A sign-out wipes the query cache, which aborts this signal: a late answer for a user who has left is then
+    // never written to disk. The write is not awaited (the screen does not wait for the disk) and never rejects.
+    if (!signal.aborted) writeCache(userId, 'me', me);
     return me;
   } catch (error) {
     // Offline start: a signed-in user is let in with the last known `Me` instead of being locked out.

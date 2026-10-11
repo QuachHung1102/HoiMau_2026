@@ -35,13 +35,13 @@ test('S01 shows the product name, the habit loop and the two ways in', () => {
   expect(screen.getByText('Mỗi ngày, một chút tốt hơn.')).toBeTruthy();
   expect(screen.getByText('Thói quen nhỏ.\nHành trình của riêng bạn.')).toBeTruthy();
   expect(screen.getByText('Ghi lại việc bạn đã làm, nuôi dưỡng Mầm và cùng bạn bè giữ nhịp mỗi ngày.')).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Tạo tài khoản' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Bắt đầu hành trình' })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Tôi đã có tài khoản' })).toBeTruthy();
 });
 
-test('"Tạo tài khoản" opens SignUp', async () => {
+test('"Bắt đầu hành trình" opens SignUp', async () => {
   render(welcome());
-  fireEvent.press(screen.getByRole('button', { name: 'Tạo tài khoản' }));
+  fireEvent.press(screen.getByRole('button', { name: 'Bắt đầu hành trình' }));
   expect(await screen.findByText('stub SignUp')).toBeTruthy();
 });
 
@@ -73,7 +73,7 @@ test('Mầm stops idling when another screen covers Welcome', async () => {
   jest.spyOn(Animated, 'loop').mockReturnValue({ start: jest.fn(), stop, reset: jest.fn() } as never);
   render(welcome('FULL'));
   expect(stop).not.toHaveBeenCalled();
-  fireEvent.press(screen.getByRole('button', { name: 'Tạo tài khoản' }));
+  fireEvent.press(screen.getByRole('button', { name: 'Bắt đầu hành trình' }));
   await screen.findByText('stub SignUp');
   expect(stop).toHaveBeenCalled();
 });

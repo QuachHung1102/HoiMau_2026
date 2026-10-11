@@ -23,10 +23,27 @@ export function useSession(): Session {
 
 const bestEffort = (step: Promise<unknown>) => step.catch(() => undefined);
 
+// What an empty credential is stored under when the keychain refuses to forget the real one.
+const SIGNED_OUT = 'signed-out';
+
+/**
+ * Removes the token from the keychain. A phone may be shared, so a reset that fails must not leave a token the
+ * next cold start would sign in with: retry once, then overwrite the credential with an empty password (which
+ * the restore below treats as signed out).
+ */
+async function forgetToken() {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (await Keychain.resetGenericPassword().catch(() => false)) return;
+  }
+  await bestEffort(Keychain.setGenericPassword(SIGNED_OUT, ''));
+}
+
 /**
  * `queryClient.clear()` that leaves no timer behind. An entry removed while a mounted screen still uses it would
  * start its garbage-collection timer (5 min) when that screen unmounts, with nothing left to cancel it; entries
  * that are being dropped anyway need no collection.
+ * Use this, never a plain `clear()`, wherever screens may still be mounted (sign-out, app unmount): plain
+ * `clear()` there is what keeps a test run from exiting.
  */
 export function wipeQueries(queryClient: QueryClient) {
   for (const entry of [...queryClient.getQueryCache().getAll(), ...queryClient.getMutationCache().getAll()]) entry.gcTime = Infinity;
@@ -55,8 +72,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
         userIdRef.current = null;
         bindApiSession(null);
-        await bestEffort(Keychain.resetGenericPassword());
-        wipeQueries(queryClient); // also cancels what is in flight, before the disk cache goes
+        await forgetToken();
+        // Also aborts the `signal` of every query in flight, so a request that passed it on (`api.get(..., { signal })`)
+        // stops here and cannot write to the disk cache after it is cleared below.
+        wipeQueries(queryClient);
         if (userId) await bestEffort(clearUserCache(userId));
         setState({ status: 'signedOut', userId: null, expired });
       })().finally(() => {
@@ -87,6 +106,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       .catch(() => false as const)
       .then(stored => {
         if (!current || userIdRef.current) return;
+        // An empty password is what `forgetToken` leaves behind when the keychain would not reset: not a session.
         if (stored && stored.username && stored.password) enter(stored.password, stored.username);
         else setState({ status: 'signedOut', userId: null, expired: false });
       });

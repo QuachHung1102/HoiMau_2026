@@ -229,6 +229,112 @@ test('an ApiError never carries the token, the URL or the request', async () => 
   expect(error.message).toBe('INTERNAL');
 });
 
+test.each([
+  ['/auth/register', { email: 'a@b.vn', password: 'long-enough', displayName: 'An', acceptedTerms: true }],
+  ['/auth/login', { email: 'a@b.vn', password: 'long-enough' }],
+  ['/auth/logout', undefined],
+  ['/auth/password/forgot', { email: 'a@b.vn' }],
+  ['/auth/password/reset', { email: 'a@b.vn', code: '123456', newPassword: 'long-enough' }],
+])('POST %s is not idempotent in the contract: no Idempotency-Key, not even a supplied one', async (path, body) => {
+  fetchMock.mockResolvedValue(respond(200, {}));
+  await api.write('POST', path, body);
+  await api.write('POST', path, body, { idempotencyKey: '0b8f4d0e-6a57-4c0e-9d58-2f1f3d1c9a11' });
+  expect(fetchMock.mock.calls.map(([, init]) => 'Idempotency-Key' in init.headers)).toEqual([false, false]);
+});
+
+test('a quest tick (a path with a parameter) carries a key: generated, or the supplied one unchanged', async () => {
+  fetchMock.mockResolvedValue(respond(200, {}));
+  await api.write('POST', '/day/quests/WATER/progress', {});
+  await api.write('POST', '/day/quests/WATER/progress', {}, { idempotencyKey: 'caller-key-1' });
+  const [generated, supplied] = fetchMock.mock.calls.map(([, init]) => init.headers['Idempotency-Key']);
+  expect(generated).toMatch(UUID_V4);
+  expect(supplied).toBe('caller-key-1');
+});
+
+test.each([
+  ['a path of no operation', 'POST', '/day/quests/WATER/tick'],
+  ['the wrong method for a path', 'PATCH', '/day/bedtime'],
+  ['an empty path parameter', 'POST', '/day/quests//progress'],
+] as const)('%s is a programming error: reported with method and path only, sent without a key', async (_name, method, path) => {
+  fetchMock.mockResolvedValue(respond(404, { error: { code: 'NOT_FOUND', message: 'x' } }));
+  await caught(api.write(method, path, { secret: 'body text' }, { idempotencyKey: 'caller-key-1' }));
+  expect(lastCall()[1].headers['Idempotency-Key']).toBeUndefined();
+  const error = logs[3];
+  expect(error.mock.calls).toEqual([[`api.write: ${method} ${path} is not an operation of the API contract`]]);
+  error.mockClear();
+});
+
+test('a body that cannot be serialised is INTERNAL, not NETWORK, and nothing is sent', async () => {
+  jest.useFakeTimers();
+  const circular: Record<string, unknown> = {};
+  circular.self = circular;
+  const error = await caught(api.write('POST', '/journal', circular));
+  expect([error.status, error.code]).toEqual([0, 'INTERNAL']);
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+describe('a caller signal', () => {
+  const abortable = () =>
+    fetchMock.mockImplementation(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          const fail = () => reject(Object.assign(new Error('The operation was aborted.'), { name: 'AbortError' }));
+          if (init.signal.aborted) fail();
+          else init.signal.addEventListener('abort', fail);
+        }),
+    );
+  const rejection = (promise: Promise<unknown>) =>
+    promise.then(
+      () => undefined,
+      (e: unknown) => e as Error,
+    );
+
+  test('aborting cancels the request and rejects with the abort itself, not an ApiError', async () => {
+    jest.useFakeTimers();
+    abortable();
+    const caller = new AbortController();
+    const pending = rejection(api.get('/me', undefined, { signal: caller.signal }));
+    expect(lastCall()[1].signal.aborted).toBe(false);
+    caller.abort();
+    const error = await pending;
+    expect(lastCall()[1].signal.aborted).toBe(true);
+    expect(error).not.toBeInstanceOf(ApiError);
+    expect(error?.name).toBe('AbortError');
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test('a signal that is already aborted cancels at once', async () => {
+    jest.useFakeTimers();
+    abortable();
+    const caller = new AbortController();
+    caller.abort();
+    const error = await rejection(api.write('POST', '/day/bedtime', {}, { signal: caller.signal }));
+    expect(error?.name).toBe('AbortError');
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test('the 10 s timeout still applies and is still TIMEOUT', async () => {
+    jest.useFakeTimers();
+    abortable();
+    const caller = new AbortController();
+    const pending = caught(api.get('/me', undefined, { signal: caller.signal }));
+    jest.advanceTimersByTime(10_000);
+    expect((await pending).code).toBe('TIMEOUT');
+    expect(caller.signal.aborted).toBe(false);
+  });
+
+  test('a network failure with a live signal is still NETWORK, and the signal is let go afterwards', async () => {
+    const caller = new AbortController();
+    const remove = jest.spyOn(caller.signal, 'removeEventListener');
+    fetchMock.mockRejectedValue(new TypeError('Network request failed'));
+    expect((await caught(api.get('/me', undefined, { signal: caller.signal }))).code).toBe('NETWORK');
+    fetchMock.mockResolvedValue(respond(200, {}));
+    await api.get('/me', undefined, { signal: caller.signal });
+    expect(remove.mock.calls.map(([type]) => type)).toEqual(['abort', 'abort']);
+  });
+});
+
 test('isValidationDetails narrows VALIDATION_FAILED details and rejects anything else', () => {
   const details: unknown = { fields: [{ field: 'email', rule: 'format' }, { field: 'Idempotency-Key', rule: 'required' }] };
   expect(isValidationDetails(details)).toBe(true);
