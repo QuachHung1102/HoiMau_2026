@@ -140,8 +140,11 @@ export const api = {
    */
   write<T>(method: 'POST' | 'PATCH', path: string, body?: unknown, opts?: { idempotencyKey?: string; signal?: AbortSignal }): Promise<T> {
     const operation = operationOf(method, path);
-    // A programming error, reported with the method and path only (never a body).
-    if (!operation && __DEV__) console.error(`api.write: ${method} ${path} is not an operation of the API contract`);
+    // Programming errors, reported with the method and path only (never a body or a key).
+    if (__DEV__) {
+      if (!operation) console.error(`api.write: ${method} ${path} is not an operation of the API contract`);
+      else if (!operation.idempotent && opts?.idempotencyKey) console.error(`api.write: ${method} ${path} takes no Idempotency-Key in the API contract`);
+    }
     const idempotencyKey = operation?.idempotent ? opts?.idempotencyKey ?? newActionId() : undefined;
     return request<T>(method, path, { body, idempotencyKey, signal: opts?.signal });
   },
