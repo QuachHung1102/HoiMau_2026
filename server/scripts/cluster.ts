@@ -61,30 +61,42 @@ function listProcesses(): Process[] {
 }
 
 /**
- * PIDs of the live processes of this cluster, postmaster first: the PID recorded in
- * `postmaster.pid` when it really is our postgres on this data directory and port, and the
- * children of that PID. A recorded PID can be stale and reused by any process, so nothing is
- * ever identified by the pid file alone, nor by the process name (the system service is
- * postgres.exe too).
+ * The live processes of this cluster: the PID recorded in `postmaster.pid` when it really is
+ * our postgres on this data directory and port, and the children of that PID. A recorded PID
+ * can be stale and reused by any process, so nothing is ever identified by the pid file alone,
+ * nor by the process name (the system service is postgres.exe too).
  */
-export function clusterProcesses({ port, dataDir }: Cluster): number[] {
+function findCluster({ port, dataDir }: Cluster): {
+  postmaster: number | null;
+  children: number[];
+} {
   const pidFile = join(dataDir, 'postmaster.pid');
   if (!existsSync(pidFile)) {
-    return [];
+    return { postmaster: null, children: [] };
   }
   const recorded = Number(readFileSync(pidFile, 'utf8').split('\n')[0]);
   const ours = listProcesses().filter(({ command }) =>
     command.includes(normalise(BINARIES)),
   );
-  const postmaster = ours.filter(
+  const postmaster = ours.some(
     ({ pid, command }) =>
       pid === recorded &&
       command.includes(normalise(dataDir)) &&
       command.includes(`-p ${port}`),
   );
-  // Windows only: elsewhere a child's command line is its title, and children die with the postmaster.
-  const children = ours.filter(({ parent }) => parent === recorded);
-  return [...postmaster, ...children].map(({ pid }) => pid);
+  return {
+    postmaster: postmaster ? recorded : null,
+    // Windows only: elsewhere a child's command line is its title, and children die with the postmaster.
+    children: ours
+      .filter(({ parent }) => parent === recorded)
+      .map(({ pid }) => pid),
+  };
+}
+
+/** PIDs of the live processes of this cluster, postmaster first. */
+export function clusterProcesses(cluster: Cluster): number[] {
+  const { postmaster, children } = findCluster(cluster);
+  return postmaster === null ? children : [postmaster, ...children];
 }
 
 /** Kills what `clusterProcesses` finds, then removes the pid file. Returns the PIDs it killed. */
@@ -167,7 +179,11 @@ export async function startCluster(
     onError: error => console.error('[postgres]', error),
   });
   const stop = async () => {
-    await server.stop();
+    // When the postmaster is already dead the library's stop() waits for an exit event that
+    // never comes, after aiming a forced kill at a PID that may belong to someone else by now.
+    if (findCluster(cluster).postmaster !== null) {
+      await server.stop();
+    }
     // The library force-kills the process tree, and the postmaster can respawn a worker while
     // that walk is under way: the survivor keeps the data directory and this process's pipes.
     await killCluster(cluster);
