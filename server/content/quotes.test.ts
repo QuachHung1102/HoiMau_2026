@@ -57,6 +57,10 @@ test('no dismissive, commanding or praising wording', () => {
     'tuyet voi',
     'khong sao',
     'vui len',
+    'dung o day',
+    'an toan',
+    'bao mat',
+    'giai quyet xong',
   ];
   for (const q of QUOTES) {
     const n = ` ${normalizeVi(q.text).replace(/[^a-z0-9]+/g, ' ')} `;

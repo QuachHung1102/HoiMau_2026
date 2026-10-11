@@ -16,7 +16,7 @@ export const QUOTES: QuoteSeed[] = [
   },
   {
     code: 'Q003',
-    text: 'Viết xong rồi, bạn có thể dừng ở đây.',
+    text: 'Viết đến đây là đủ cho hôm nay rồi.',
     author: null,
   },
   {
@@ -66,7 +66,7 @@ export const QUOTES: QuoteSeed[] = [
   },
   {
     code: 'Q013',
-    text: 'Điều bạn vừa viết vẫn còn đó, ngay cả khi bạn đóng trang này.',
+    text: 'Bạn đã viết điều này ra bằng chính lời của mình.',
     author: null,
   },
   {
@@ -106,7 +106,7 @@ export const QUOTES: QuoteSeed[] = [
   },
   {
     code: 'Q021',
-    text: 'Viết ra không đồng nghĩa với việc giải quyết xong điều gì.',
+    text: 'Viết ra thôi cũng được, chưa cần giải quyết điều gì.',
     author: null,
   },
   {
@@ -166,7 +166,7 @@ export const QUOTES: QuoteSeed[] = [
   },
   {
     code: 'Q033',
-    text: 'Mình luôn có chỗ cho bạn ở trang này.',
+    text: 'Trang này có chỗ cho bạn.',
     author: null,
   },
   {
@@ -176,7 +176,7 @@ export const QUOTES: QuoteSeed[] = [
   },
   {
     code: 'Q035',
-    text: 'Điều đã được viết ra thì đã có một chỗ để đặt xuống.',
+    text: 'Bạn vừa viết xong một trang theo cách của riêng bạn.',
     author: null,
   },
   {
@@ -196,7 +196,7 @@ export const QUOTES: QuoteSeed[] = [
   },
   {
     code: 'Q039',
-    text: 'Khi nào muốn đọc lại, những dòng này vẫn ở nguyên chỗ cũ.',
+    text: 'Khi nào muốn đọc lại, bạn có thể mở trang này ra.',
     author: null,
   },
   {
@@ -226,7 +226,7 @@ export const QUOTES: QuoteSeed[] = [
   },
   {
     code: 'Q045',
-    text: 'Những dòng vừa rồi sẽ ở lại đây, yên lặng và an toàn.',
+    text: 'Những dòng vừa rồi đã được đặt yên trên trang này.',
     author: null,
   },
 ];
