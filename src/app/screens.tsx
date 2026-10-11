@@ -2,11 +2,21 @@
 // A tab root looks like { name: 'Today', component: TodayScreen, label: tabLabel.Today, icon: 'Sun' };
 // the icons of the design are Sun (Today), Route (Plan), Users (Guild), User (Profile). The bar order is fixed
 // in navigation.tsx, so the order inside `tabRoots` does not matter.
+import { ForgotPasswordScreen } from '../features/auth/ForgotPasswordScreen';
+import { NewPasswordScreen } from '../features/auth/NewPasswordScreen';
+import { SignInScreen } from '../features/auth/SignInScreen';
+import { SignUpScreen } from '../features/auth/SignUpScreen';
 import { WelcomeScreen } from '../features/auth/WelcomeScreen';
 import type { ScreenEntry, TabRoot } from './routes';
 
 /** Signed out. */
-export const authScreens: ScreenEntry[] = [{ name: 'Welcome', component: WelcomeScreen }];
+export const authScreens: ScreenEntry[] = [
+  { name: 'Welcome', component: WelcomeScreen },
+  { name: 'SignIn', component: SignInScreen },
+  { name: 'SignUp', component: SignUpScreen },
+  { name: 'ForgotPassword', component: ForgotPasswordScreen },
+  { name: 'NewPassword', component: NewPasswordScreen },
+];
 
 /** Signed in, onboarding not finished. */
 export const onboardingScreens: ScreenEntry[] = [];

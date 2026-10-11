@@ -194,8 +194,9 @@ test('GET /me 401 SESSION_INVALID: the session ends and the app is back on the s
   await writeCache(USER, 'me', meOf(true));
   fetchMock.mockResolvedValue(respond(401, { error: { code: 'SESSION_INVALID', message: 'session is not valid' } }));
   render(<App />);
-  // SignIn is not registered before Task 18, so the landing is Welcome for now
-  expect(await screen.findByRole('button', { name: 'Tôi đã có tài khoản' })).toBeTruthy();
+  // the landing is S02, with the notice that the session ended
+  expect(await screen.findByRole('header', { name: 'Chào bạn trở lại' })).toBeTruthy();
+  expect(screen.getByText('Phiên đăng nhập đã hết hạn')).toBeTruthy();
   expect(await Keychain.getGenericPassword()).toBe(false);
   expect(await AsyncStorage.getAllKeys()).toEqual([]);
   expect(requests()).toEqual(['GET /me']);

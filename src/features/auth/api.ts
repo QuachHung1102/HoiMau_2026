@@ -1,5 +1,5 @@
-import { skipToken, useQuery } from '@tanstack/react-query';
-import type { Me } from '../../../domain/contract/core.ts';
+import { skipToken, useMutation, useQuery } from '@tanstack/react-query';
+import type { AuthSession, ForgotRequest, LoginRequest, Me, RegisterRequest, ResetRequest } from '../../../domain/contract/core.ts';
 import { ApiError, api } from '../../shared/api/client';
 import { useSession } from '../../shared/api/session';
 import { readCache, writeCache } from '../../shared/storage/cache';
@@ -32,3 +32,19 @@ export function useMe() {
     queryFn: status === 'signedIn' && userId ? ({ signal }) => fetchMe(userId, signal) : skipToken,
   });
 }
+
+// The five auth routes are anonymous and not idempotent in the contract: no Idempotency-Key, and a 401 here is an
+// ordinary ApiError (no bearer was sent), never a session expiry.
+// The variables hold a password: gcTime 0 keeps the mutation out of the cache once nobody observes it, and the
+// screens `reset()` it as soon as the request has settled.
+type Call<Body> = { body: Body; signal: AbortSignal };
+const authMutation = <Body, Result>(path: string) => ({
+  gcTime: 0,
+  mutationFn: ({ body, signal }: Call<Body>) => api.write<Result>('POST', path, body, { signal }),
+});
+
+export const useRegister = () => useMutation(authMutation<RegisterRequest, AuthSession>('/auth/register'));
+export const useLogin = () => useMutation(authMutation<LoginRequest, AuthSession>('/auth/login'));
+/** Always 202 with an empty object, whatever the email (S04). */
+export const useForgotPassword = () => useMutation(authMutation<ForgotRequest, unknown>('/auth/password/forgot'));
+export const useResetPassword = () => useMutation(authMutation<ResetRequest, unknown>('/auth/password/reset'));

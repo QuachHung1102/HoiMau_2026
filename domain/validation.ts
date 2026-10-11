@@ -8,6 +8,7 @@ export const LIMITS = {
   age: { min: 16, max: 90 },
   displayName: { min: 1, max: 40 },
   password: { min: 8, max: 128 },
+  resetCode: { length: 8 },
   manualKcal: { min: 1, max: 5000 },
   mealLabel: { max: 60 },
   journalBody: { min: 1, max: 5000 },

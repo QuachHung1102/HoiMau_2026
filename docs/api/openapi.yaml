@@ -193,7 +193,7 @@ paths:
       operationId: forgotPassword
       tags: [auth]
       summary: Request a reset code
-      description: 'Emails a 6-digit code when the email belongs to an account (S04). The answer is always `202` with an empty object, so it never reveals whether the account exists.'
+      description: 'Emails an 8-digit code when the email belongs to an account (S04). The answer is always `202` with an empty object, so it never reveals whether the account exists.'
       x-auth: anon
       security: []
       requestBody:
@@ -1988,7 +1988,7 @@ components:
       required: [email, code, newPassword]
       properties:
         email: { type: string }
-        code: { type: string, description: 'The 6-digit code from the email.' }
+        code: { type: string, description: 'The 8-digit code from the email.' }
         newPassword: { type: string, minLength: 8, maxLength: 128 }
 
     # ---- core.ts: profile ----
