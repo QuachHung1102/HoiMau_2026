@@ -235,11 +235,19 @@ test.each([
   ['/auth/logout', undefined],
   ['/auth/password/forgot', { email: 'a@b.vn' }],
   ['/auth/password/reset', { email: 'a@b.vn', code: '123456', newPassword: 'long-enough' }],
-])('POST %s is not idempotent in the contract: no Idempotency-Key, not even a supplied one', async (path, body) => {
+])('POST %s is not idempotent in the contract: no Idempotency-Key', async (path, body) => {
   fetchMock.mockResolvedValue(respond(200, {}));
   await api.write('POST', path, body);
-  await api.write('POST', path, body, { idempotencyKey: '0b8f4d0e-6a57-4c0e-9d58-2f1f3d1c9a11' });
-  expect(fetchMock.mock.calls.map(([, init]) => 'Idempotency-Key' in init.headers)).toEqual([false, false]);
+  expect('Idempotency-Key' in lastCall()[1].headers).toBe(false);
+});
+
+test('a key supplied for a non-idempotent route is a caller bug: reported without the key, and still not sent', async () => {
+  fetchMock.mockResolvedValue(respond(200, {}));
+  await api.write('POST', '/auth/login', { email: 'a@b.vn', password: 'long-enough' }, { idempotencyKey: 'caller-key-1' });
+  expect('Idempotency-Key' in lastCall()[1].headers).toBe(false);
+  const error = logs[3];
+  expect(error.mock.calls).toEqual([['api.write: POST /auth/login takes no Idempotency-Key in the API contract']]);
+  error.mockClear();
 });
 
 test('a quest tick (a path with a parameter) carries a key: generated, or the supplied one unchanged', async () => {

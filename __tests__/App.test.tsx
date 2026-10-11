@@ -149,7 +149,7 @@ test.each([
   // under fake timers the query waits through the client's 10 s in no real time
   if (name.includes('10 s')) jest.useFakeTimers();
   render(<App />);
-  expect(await screen.findByText('Kiểm tra kết nối rồi thử lại.', {}, { timeout: 12_000 })).toBeTruthy();
+  expect(await screen.findByText('Kiểm tra kết nối rồi thử lại. Những ghi nhận đã lưu vẫn còn.', {}, { timeout: 12_000 })).toBeTruthy();
   expect(screen.getByText('Chưa tải được dữ liệu')).toBeTruthy();
   expect(screen.getByRole('header', { name: 'Đang lấy hành trình' })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Thử lại' })).toBeTruthy();
@@ -163,7 +163,7 @@ test('offline start with another user cache on disk: that cache is not used', as
   await AsyncStorage.setItem(`cache:v1:${USER}:me`, JSON.stringify({ ...meOf(true), user: { ...meOf(true).user, id: 'someone-else' } }));
   fetchMock.mockRejectedValue(new TypeError('Network request failed'));
   render(<App />);
-  expect(await screen.findByText('Kiểm tra kết nối rồi thử lại.')).toBeTruthy();
+  expect(await screen.findByText('Kiểm tra kết nối rồi thử lại. Những ghi nhận đã lưu vẫn còn.')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Thử lại' })).toBeTruthy();
   screen.unmount();
 });

@@ -12,4 +12,4 @@ export const signOut = 'Đăng xuất';
 export const loadingTitle = 'Đang lấy hành trình';
 export const loadingSubtitle = 'Dữ liệu của bạn đang được tải.';
 /** The start-up load failed for lack of a connection (NETWORK / TIMEOUT); other codes use common `errorText`. */
-export const loadFailedOffline = 'Kiểm tra kết nối rồi thử lại.';
+export const loadFailedOffline = 'Kiểm tra kết nối rồi thử lại. Những ghi nhận đã lưu vẫn còn.';
