@@ -86,63 +86,63 @@ test('tags come from the two vocabularies, without repeats', () => {
   }
 });
 
-// Words (diacritics stripped, whole words) that name each ingredient tag in dish text. Both
-// directions are checked: a tag needs a word that names it, and a word needs its tag. `strip`
-// removes the known false positives first: "mì gạo" and "mì Quảng" are rice noodles, "sữa đậu
-// nành" is soy not dairy, "trứng gà" is egg not poultry, "cà chua" is tomato not fish, and so on.
-// "cà chua", "cà rốt", "cả xương", "cả khi" and "cả lõi" are not fish; "không trứng" and the sentence that says a dish
-// has no meat, fish or egg are the reason a tag is absent, not a mention.
-const NOT_FISH = [
-  'ca chua',
-  'ca rot',
-  'ca phe',
-  'ca tim',
-  'ca ri',
-  'ca xuong',
-  'ca khi',
-  'ca loi',
-];
-const NOT_FLESH_EGG = ['khong dung thit ca hay trung', 'khong trung'];
-const TAG_WORDS: Record<
-  IngredientTag,
-  { words: string[]; strip?: string[] }
-> = {
+// Words that name each ingredient tag in dish text; both directions are checked: a tag needs a
+// word that names it, and a word needs its tag. `plain` words are matched with diacritics
+// stripped (robust to a missing tone mark). `exact` words are matched on the accented,
+// lower-cased text, because stripping makes them collide with other words: bơ (butter) and bò
+// (beef), cá (fish) / cà (tomato) / cả (all), chả (pork roll) / chà, nêm (season) / nem, sữa /
+// sửa, trứng / trưng, mì / mí. `strip` removes phrases that are not a mention before matching.
+type Words = { plain?: string[]; exact?: string[]; strip?: string[] };
+const NO_FLESH_EGG = ['không dùng thịt, cá hay trứng', 'không trứng']; // says what is absent
+const TAG_WORDS: Record<IngredientTag, Words> = {
   'co:thit-do': {
-    words: ['heo', 'bo', 'suon', 'ba chi', 'gio', 'cha', 'xuc xich', 'pate'],
+    plain: ['heo', 'suon', 'ba chi', 'xuc xich', 'pate', 'pa te', 'lap xuong'],
+    exact: ['bò', 'chả', 'giò', 'nem', 'chà bông'],
   },
-  'co:gia-cam': { words: ['ga', 'vit'], strip: ['trung ga'] },
+  'co:gia-cam': {
+    exact: ['gà', 'vịt', 'ngan'],
+    strip: ['trứng gà'], // egg, not poultry
+  },
   'co:hai-san': {
-    words: [
-      'ca',
-      'tom',
-      'cua',
-      'muc',
-      'nuoc mam',
-      'mam ruoc',
-      'mam tom',
-      'dau hao',
-      'hai san',
-    ],
-    strip: [...NOT_FISH, ...NOT_FLESH_EGG],
+    plain: ['tom', 'ngheu', 'hai san', 'dau hao', 'nuoc mam', 'nuoc cham'],
+    exact: ['cá', 'cua', 'mực', 'mắm', 'sò', 'ốc', 'ghẹ'],
+    strip: NO_FLESH_EGG,
   },
-  'co:trung': { words: ['trung'], strip: NOT_FLESH_EGG },
-  'co:sua': { words: ['sua', 'pho mai'], strip: ['sua dau nanh'] },
-  'co:dau-phong': { words: ['dau phong', 'lac'] },
+  'co:trung': {
+    plain: ['mayonnaise'],
+    exact: ['trứng'],
+    strip: NO_FLESH_EGG,
+  },
+  'co:sua': {
+    plain: ['pho mai'],
+    exact: ['sữa', 'bơ', 'kem'],
+    strip: ['sữa đậu nành'], // soy, not dairy
+  },
+  'co:dau-phong': { plain: ['dau phong', 'sa te'] },
   'co:gluten': {
-    words: ['banh mi', 'mi', 'yen mach', 'bot mi', 'banh bao'],
-    strip: ['mi gao', 'mi quang'],
+    plain: ['banh mi', 'yen mach', 'bot mi', 'xi dau', 'banh bao', 'vo cha gio', 'vo ram'],
+    exact: ['mì', 'tương'], // soy sauce usually contains wheat
+    strip: ['mì gạo', 'mì quảng'], // rice noodles
   },
   'co:dau-nanh': {
-    words: ['dau hu', 'dau nanh', 'nuoc tuong', 'tuong'],
-    strip: ['tuong ot'],
+    plain: ['dau hu', 'dau nanh', 'xi dau'],
+    exact: ['tương'],
   },
 };
-const mentions = (text: string, tag: IngredientTag) => {
-  const { words, strip = [] } = TAG_WORDS[tag];
-  let haystack = ` ${normalizeVi(text).replace(/[^a-z0-9]+/g, ' ').trim()} `;
-  for (const s of strip) haystack = haystack.split(` ${s} `).join(' ');
-  return words.filter(w => haystack.includes(` ${w} `));
+const named = (text: string, { plain = [], exact = [], strip = [] }: Words) => {
+  let accented = text.toLowerCase().normalize('NFC');
+  for (const phrase of strip) accented = accented.split(phrase).join(' ');
+  const stripped = ` ${normalizeVi(accented).replace(/[^a-z0-9]+/g, ' ').trim()} `;
+  const letter = String.raw`[\p{L}\p{N}]`;
+  return [
+    ...plain.filter(w => stripped.includes(` ${w} `)),
+    ...exact.filter(w =>
+      new RegExp(`(?<!${letter})${w}(?!${letter})`, 'u').test(accented),
+    ),
+  ];
 };
+const mentions = (text: string, tag: IngredientTag) =>
+  named(text, TAG_WORDS[tag]);
 const textOf = (m: (typeof MEALS)[number]) =>
   `${m.name}. ${m.portionText} ${m.description}`;
 
@@ -164,9 +164,11 @@ test('chay and khong-thit hold: no flesh tag, no fish sauce; chay also no egg an
   for (const m of MEALS) {
     if (!m.tags.includes('khong-thit') && !m.tags.includes('chay')) continue;
     for (const tag of FLESH) assert.ok(!m.tags.includes(tag), `${m.code}: ${tag}`);
-    const text = ` ${normalizeVi(textOf(m)).replace(/[^a-z0-9]+/g, ' ')} `;
-    for (const word of ['nuoc mam', 'mam', 'tom kho', 'dau hao'])
-      assert.ok(!text.includes(` ${word} `), `${m.code}: names "${word}"`);
+    const fishSauce = named(textOf(m), {
+      plain: ['nuoc mam', 'nuoc cham', 'dau hao'],
+      exact: ['mắm', 'tôm khô'],
+    });
+    assert.deepEqual(fishSauce, [], `${m.code}: names fish sauce`);
     if (m.tags.includes('chay')) {
       assert.ok(m.tags.includes('khong-thit'), `${m.code}: chay needs khong-thit`);
       assert.ok(

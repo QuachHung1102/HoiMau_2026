@@ -12,6 +12,8 @@ import type { MealSeed } from './types.ts';
 // `khong-thit` = no meat, poultry, seafood or fish sauce; `chay` = also no egg and no dairy.
 // `it-nau` = needs little or no cooking; `ngoai-hang` = easy to buy ready-made outside.
 // Rice carbs: cooked rice is about 0.28 g carbs per gram.
+// Soy sauce (nước tương, xì dầu, tương) usually contains wheat, so it carries `co:gluten` as well as
+// `co:dau-nanh`. Every savoury dish text names its seasoning, so a missing tag is a claim of the text.
 export const MEALS: MealSeed[] = [
   // ---------------------------------------------------------------- BREAKFAST
   {
@@ -67,11 +69,10 @@ export const MEALS: MealSeed[] = [
     proteinG: 16,
     carbsG: 62,
     fatG: 8,
-    tags: ['chay', 'khong-thit', 'ngoai-hang', 'co:dau-nanh'],
+    tags: ['chay', 'khong-thit', 'ngoai-hang', 'co:gluten', 'co:dau-nanh'],
     portionText:
       '1 tô vừa (khoảng 550 g): 150 g bánh phở, 80 g đậu hũ, 60 g nấm, 30 g rau cải, 230 ml nước dùng rau củ.',
-    description:
-      'Nước dùng nấu từ rau củ, bánh phở với đậu hũ chiên và nấm. Món sáng không dùng thịt, cá hay trứng.',
+    description: 'Nước dùng nấu từ rau củ và nêm nước tương, bánh phở với đậu hũ chiên và nấm. Món sáng không dùng thịt, cá hay trứng.',
     imageKey: null,
   },
   {
@@ -105,10 +106,8 @@ export const MEALS: MealSeed[] = [
     carbsG: 68,
     fatG: 14,
     tags: ['ngoai-hang', 'co:gia-cam'],
-    portionText:
-      '1 phần (khoảng 320 g): 250 g xôi, 60 g thịt gà xé, 10 g hành phi.',
-    description:
-      'Xôi nếp dẻo ăn cùng gà xé và hành phi, gói gọn để ăn trên đường đi làm.',
+    portionText: '1 phần (khoảng 320 g): 250 g xôi, 60 g thịt gà luộc xé nêm muối, 10 g hành phi.',
+    description: 'Xôi nếp dẻo ăn cùng gà luộc xé nêm muối và hành phi, gói gọn để ăn trên đường đi làm.',
     imageKey: null,
   },
   {
@@ -227,8 +226,7 @@ export const MEALS: MealSeed[] = [
     tags: ['ngoai-hang', 'co:thit-do', 'co:trung', 'co:gluten'],
     portionText:
       '1 chảo (khoảng 360 g): 1 ổ bánh mì 100 g, 2 quả trứng ốp la (khoảng 100 g), 1 cây xúc xích 50 g, 80 g đậu sốt cà chua, 30 g rau.',
-    description:
-      'Trứng ốp la, xúc xích và đậu sốt cà chua dọn trong chảo nóng, ăn cùng ổ bánh mì.',
+    description: 'Trứng ốp la, xúc xích và đậu sốt cà chua nêm muối và tiêu, dọn trong chảo nóng, ăn cùng ổ bánh mì.',
     imageKey: null,
   },
   {
@@ -257,10 +255,8 @@ export const MEALS: MealSeed[] = [
     carbsG: 100,
     fatG: 24,
     tags: ['ngoai-hang', 'co:gia-cam'],
-    portionText:
-      '1 phần khoảng 550 g: 330 g cơm (khoảng 2 chén), 160 g thịt đùi gà nướng, 60 g rau củ theo mùa.',
-    description:
-      'Cơm trắng với thịt gà nướng và rau củ theo mùa, một bữa trưa quen thuộc.',
+    portionText: '1 phần khoảng 550 g: 330 g cơm (khoảng 2 chén), 160 g thịt đùi gà nướng ướp muối, tiêu và tỏi, 60 g rau củ theo mùa.',
+    description: 'Cơm trắng với thịt gà nướng ướp muối, tiêu và tỏi, ăn cùng rau củ theo mùa. Một bữa trưa quen thuộc.',
     imageKey: 'Fr7yg',
   },
   {
@@ -284,11 +280,10 @@ export const MEALS: MealSeed[] = [
     mealSlot: 'LUNCH',
     kcal: 760,
     proteinG: 40,
-    carbsG: 95,
+    carbsG: 92,
     fatG: 22,
     tags: ['ngoai-hang', 'co:gia-cam', 'co:hai-san', 'co:dau-phong'],
-    portionText:
-      '1 tô lớn (khoảng 430 g): 200 g bún tươi, 100 g thịt gà xé, 60 g rau thơm, 20 g đậu phộng giã, 50 ml nước mắm chua ngọt.',
+    portionText: '1 tô lớn (khoảng 610 g): 330 g bún tươi, 150 g thịt gà xé, 60 g rau thơm, 20 g đậu phộng giã, 50 ml nước mắm chua ngọt.',
     description:
       'Bún tươi trộn gà xé và nhiều rau thơm, rưới nước mắm chua ngọt.',
     imageKey: null,
@@ -301,11 +296,10 @@ export const MEALS: MealSeed[] = [
     proteinG: 32,
     carbsG: 100,
     fatG: 24,
-    tags: ['chay', 'khong-thit', 'co:dau-nanh'],
+    tags: ['chay', 'khong-thit', 'co:gluten', 'co:dau-nanh'],
     portionText:
       '1 phần khoảng 600 g: 300 g cơm (khoảng 2 chén), 150 g đậu hũ chiên, 80 g nấm xào, 70 g rau cải.',
-    description:
-      'Đậu hũ chiên vàng om cùng nấm, ăn với cơm trắng và rau xanh. Món không dùng thịt, cá hay trứng.',
+    description: 'Đậu hũ chiên vàng om cùng nấm và nước tương, ăn với cơm trắng và rau xanh. Món không dùng thịt, cá hay trứng.',
     imageKey: null,
   },
   {
@@ -364,8 +358,7 @@ export const MEALS: MealSeed[] = [
     tags: ['ngoai-hang', 'co:thit-do', 'co:hai-san', 'co:dau-phong'],
     portionText:
       '1 tô (khoảng 500 g): 200 g mì gạo, 3 con tôm (40 g), 50 g thịt heo, 100 ml nước dùng, 20 g đậu phộng rang, 20 g bánh tráng, 70 g rau sống.',
-    description:
-      'Mì gạo sợi to trộn ít nước dùng đậm vị cùng tôm, thịt heo, đậu phộng và rau sống.',
+    description: 'Mì gạo sợi to trộn ít nước dùng đậm vị nêm nước mắm và nghệ, cùng tôm, thịt heo, đậu phộng và rau sống.',
     imageKey: null,
   },
   {
@@ -376,11 +369,9 @@ export const MEALS: MealSeed[] = [
     proteinG: 28,
     carbsG: 66,
     fatG: 17,
-    tags: ['ngoai-hang', 'co:hai-san', 'co:trung', 'co:dau-nanh'],
-    portionText:
-      '1 tô (khoảng 550 g): 150 g bún, 120 g riêu cua nấu với trứng, 2 miếng đậu hũ chiên (60 g), 40 g cà chua, 30 g rau sống, 150 ml nước dùng.',
-    description:
-      'Bún trong nước dùng cà chua với riêu cua nấu cùng trứng và đậu hũ chiên, ăn kèm rau sống.',
+    tags: ['ngoai-hang', 'co:thit-do', 'co:hai-san', 'co:trung', 'co:dau-nanh'],
+    portionText: '1 tô (khoảng 620 g): 220 g bún, 120 g riêu cua nấu với trứng, 2 miếng đậu hũ chiên (60 g), 40 g cà chua, 30 g rau sống, 150 ml nước dùng hầm xương heo.',
+    description: 'Bún trong nước dùng cà chua hầm với xương heo, có riêu cua nấu cùng trứng và đậu hũ chiên, ăn kèm rau sống.',
     imageKey: null,
   },
   {
@@ -406,13 +397,7 @@ export const MEALS: MealSeed[] = [
     proteinG: 24,
     carbsG: 55,
     fatG: 12,
-    tags: [
-      'ngoai-hang',
-      'co:thit-do',
-      'co:hai-san',
-      'co:dau-phong',
-      'co:dau-nanh',
-    ],
+    tags: ['ngoai-hang', 'co:thit-do', 'co:hai-san', 'co:dau-phong', 'co:gluten', 'co:dau-nanh'],
     portionText:
       '1 phần (khoảng 300 g): 5 cuốn tôm, thịt heo luộc, bún và rau thơm (270 g), 30 g tương đậu phộng để chấm.',
     description:
@@ -443,10 +428,8 @@ export const MEALS: MealSeed[] = [
     carbsG: 82,
     fatG: 26,
     tags: ['ngoai-hang', 'co:thit-do', 'co:hai-san', 'co:dau-phong'],
-    portionText:
-      '1 tô (khoảng 450 g): 150 g bún, 100 g thịt bò xào sả, 100 g rau sống, 20 g đậu phộng rang, 80 ml nước mắm chua ngọt.',
-    description:
-      'Bún trộn với thịt bò xào sả, rau sống và đậu phộng rang, rưới nước mắm chua ngọt.',
+    portionText: '1 tô lớn (khoảng 580 g): 280 g bún, 100 g thịt bò xào sả, 100 g rau sống, 20 g đậu phộng rang, 80 ml nước mắm chua ngọt.',
+    description: 'Bún trộn với thịt bò ướp tỏi, sả và nước mắm rồi xào, thêm rau sống và đậu phộng rang, rưới nước mắm chua ngọt.',
     imageKey: null,
   },
   {
@@ -457,7 +440,7 @@ export const MEALS: MealSeed[] = [
     proteinG: 20,
     carbsG: 84,
     fatG: 24,
-    tags: ['khong-thit', 'co:trung', 'co:dau-nanh'],
+    tags: ['khong-thit', 'co:trung', 'co:gluten', 'co:dau-nanh'],
     portionText:
       '1 đĩa (khoảng 450 g): 280 g cơm nguội (khoảng 1,5 chén), 2 quả trứng (100 g), 70 g hành lá, cà rốt và đậu hà lan.',
     description:
@@ -472,11 +455,9 @@ export const MEALS: MealSeed[] = [
     proteinG: 28,
     carbsG: 48,
     fatG: 13,
-    tags: ['ngoai-hang', 'co:gia-cam', 'co:gluten'],
-    portionText:
-      '1 ổ (khoảng 230 g): 1 ổ bánh mì 90 g, 70 g thịt gà xé, 50 g dưa leo và rau thơm, 20 g sốt cà chua.',
-    description:
-      'Ổ bánh mì với thịt gà xé, dưa leo, rau thơm và sốt cà chua. Một bữa trưa gọn, ăn được cả khi đang di chuyển.',
+    tags: ['ngoai-hang', 'co:gia-cam', 'co:trung', 'co:gluten'],
+    portionText: '1 ổ (khoảng 220 g): 1 ổ bánh mì 90 g, 70 g thịt gà xé luộc nêm muối và tiêu, 50 g dưa leo và rau thơm, 10 g mayonnaise phết trong ổ.',
+    description: 'Ổ bánh mì phết mayonnaise với thịt gà xé, dưa leo và rau thơm. Một bữa trưa gọn, ăn được cả khi đang di chuyển.',
     imageKey: null,
   },
   {
@@ -484,14 +465,12 @@ export const MEALS: MealSeed[] = [
     name: 'Cơm gà xối mỡ',
     mealSlot: 'LUNCH',
     kcal: 990,
-    proteinG: 60,
+    proteinG: 58,
     carbsG: 98,
     fatG: 40,
     tags: ['ngoai-hang', 'co:gia-cam'],
-    portionText:
-      '1 đĩa lớn (khoảng 700 g): 330 g cơm, 250 g thịt gà chiên xối mỡ (1 đùi góc tư), 120 g dưa leo và cà chua.',
-    description:
-      'Cơm trắng với đùi gà chiên giòn da, ăn cùng dưa leo, cà chua và muối tiêu chanh. Phần ăn lớn.',
+    portionText: '1 đĩa lớn (khoảng 750 g): 330 g cơm, 1 đùi gà góc tư chiên xối mỡ (khoảng 300 g cả xương, 220 g thịt), 120 g dưa leo và cà chua.',
+    description: 'Cơm trắng với đùi gà ướp muối, tiêu, tỏi và ngũ vị hương, chiên giòn da rồi xối mỡ nóng, ăn cùng dưa leo, cà chua và muối tiêu chanh. Phần ăn lớn.',
     imageKey: null,
   },
   {
@@ -537,8 +516,7 @@ export const MEALS: MealSeed[] = [
     tags: ['chay', 'khong-thit', 'co:dau-nanh'],
     portionText:
       '1 phần (khoảng 500 g): 200 g đậu hũ chiên sốt cà chua, 200 g cơm (1 chén), 100 g rau luộc.',
-    description:
-      'Đậu hũ chiên om trong sốt cà chua, ăn với cơm và đĩa rau luộc. Món không dùng thịt, cá hay trứng.',
+    description: 'Đậu hũ chiên om trong sốt cà chua nêm muối, ăn với cơm và đĩa rau luộc. Món không dùng thịt, cá hay trứng.',
     imageKey: null,
   },
   {
@@ -611,8 +589,7 @@ export const MEALS: MealSeed[] = [
     tags: ['co:thit-do', 'co:hai-san'],
     portionText:
       '1 phần (khoảng 500 g): 100 g thịt bò xào, 150 g rau muống xào tỏi, 250 g cơm (khoảng 1,25 chén).',
-    description:
-      'Thịt bò xào nhanh lửa lớn, nêm nước mắm, ăn cùng rau muống xào tỏi và cơm.',
+    description: 'Thịt bò ướp tỏi và tiêu, xào nhanh lửa lớn, nêm nước mắm, ăn cùng rau muống xào tỏi và cơm.',
     imageKey: null,
   },
   {
@@ -686,8 +663,7 @@ export const MEALS: MealSeed[] = [
     tags: ['chay', 'khong-thit', 'co:dau-nanh'],
     portionText:
       '1 phần (khoảng 650 g): 350 ml canh gồm 100 g đậu hũ và 80 g nấm, 200 g cơm (1 chén), 100 g rau xào.',
-    description:
-      'Canh nấm nấu với đậu hũ và rau, ăn cùng cơm và đĩa rau xào nhỏ. Món không dùng thịt, cá hay trứng.',
+    description: 'Canh nấm nấu với đậu hũ và rau, nêm muối, ăn cùng cơm và đĩa rau xào nhỏ. Món không dùng thịt, cá hay trứng.',
     imageKey: null,
   },
   {
@@ -713,7 +689,7 @@ export const MEALS: MealSeed[] = [
     proteinG: 14,
     carbsG: 70,
     fatG: 12,
-    tags: ['chay', 'khong-thit', 'co:dau-nanh'],
+    tags: ['chay', 'khong-thit', 'co:gluten', 'co:dau-nanh'],
     portionText:
       '1 đĩa (khoảng 350 g): 200 g miến đã ngâm (từ 80 g miến khô), 60 g nấm, 50 g đậu hũ, 40 g cà rốt và cải, xào với nước tương.',
     description:
@@ -728,26 +704,23 @@ export const MEALS: MealSeed[] = [
     proteinG: 55,
     carbsG: 75,
     fatG: 40,
-    tags: ['ngoai-hang', 'co:thit-do', 'co:gluten'],
+    tags: ['ngoai-hang', 'co:thit-do', 'co:sua', 'co:gluten'],
     portionText:
       '1 phần (khoảng 480 g): 180 g bò bít tết, 150 g khoai tây chiên, 1 ổ bánh mì nhỏ (50 g), 100 g xà lách và cà chua.',
-    description:
-      'Bò bít tết áp chảo với khoai tây chiên, bánh mì và rau trộn, rưới sốt tiêu. Phần ăn lớn.',
+    description: 'Bò bít tết áp chảo với bơ, ăn cùng khoai tây chiên, bánh mì và rau trộn, nêm muối và rưới sốt tiêu. Phần ăn lớn.',
     imageKey: null,
   },
   {
     code: 'MI_Y_SOT_BO_BAM',
     name: 'Mì Ý sốt bò bằm',
     mealSlot: 'DINNER',
-    kcal: 735,
-    proteinG: 36,
+    kcal: 780,
+    proteinG: 38,
     carbsG: 98,
-    fatG: 22,
-    tags: ['ngoai-hang', 'co:thit-do', 'co:gluten'],
-    portionText:
-      '1 đĩa (khoảng 490 g): 280 g mì Ý đã luộc (từ 120 g mì khô), 110 g thịt bò bằm, 100 g sốt cà chua.',
-    description:
-      'Mì Ý trộn với sốt cà chua nấu cùng thịt bò bằm, làm xong trong một nồi sốt.',
+    fatG: 26,
+    tags: ['ngoai-hang', 'co:thit-do', 'co:sua', 'co:gluten'],
+    portionText: '1 đĩa (khoảng 505 g): 280 g mì Ý đã luộc (từ 120 g mì khô), 110 g thịt bò bằm, 100 g sốt cà chua, 15 g phô mai bào.',
+    description: 'Mì Ý trộn với sốt cà chua nấu cùng thịt bò bằm, nêm muối và tiêu, rắc phô mai bào. Làm xong trong một nồi sốt.',
     imageKey: null,
   },
   {
@@ -759,8 +732,7 @@ export const MEALS: MealSeed[] = [
     carbsG: 95,
     fatG: 34,
     tags: ['co:gia-cam', 'co:hai-san'],
-    portionText:
-      '1 phần (khoảng 650 g): 320 g cơm, 200 g thịt gà rô ti (1 đùi góc tư), 80 g dưa leo và rau, 50 ml nước sốt.',
+    portionText: '1 phần (khoảng 720 g): 320 g cơm, 1 đùi gà góc tư rô ti (khoảng 270 g cả xương, 200 g thịt), 80 g dưa leo và rau, 50 ml nước sốt.',
     description:
       'Thịt gà chiên rồi rim với nước mắm và đường cho thấm, ăn với cơm và rau. Phần ăn lớn.',
     imageKey: null,
@@ -789,7 +761,7 @@ export const MEALS: MealSeed[] = [
     carbsG: 14,
     fatG: 5,
     tags: ['chay', 'khong-thit', 'it-nau', 'ngoai-hang', 'co:dau-nanh'],
-    portionText: '1 ly (250 ml), ít đường.',
+    portionText: '1 ly (khoảng 250 ml), ít đường.',
     description: 'Sữa đậu nành nguyên chất pha ít đường, uống lạnh hoặc ấm.',
     imageKey: null,
   },
@@ -928,9 +900,9 @@ export const MEALS: MealSeed[] = [
     proteinG: 11,
     carbsG: 42,
     fatG: 9,
-    tags: ['ngoai-hang', 'co:thit-do', 'co:trung', 'co:gluten'],
-    portionText: '1 cái vừa (khoảng 130 g), vỏ bột mì, nhân thịt heo và trứng cút.',
-    description: 'Bánh bao hấp nóng, vỏ bột mì, nhân thịt heo băm và trứng cút.',
+    tags: ['ngoai-hang', 'co:thit-do', 'co:trung', 'co:hai-san', 'co:gluten'],
+    portionText: '1 cái vừa (khoảng 130 g), vỏ bột mì, nhân thịt heo và trứng cút nêm nước mắm.',
+    description: 'Bánh bao hấp nóng, vỏ bột mì, nhân thịt heo băm và trứng cút nêm nước mắm.',
     imageKey: null,
   },
 ];
