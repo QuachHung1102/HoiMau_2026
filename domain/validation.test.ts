@@ -6,7 +6,9 @@ import {
   ageFrom,
   allowedArchetypes,
   bmi,
+  isDisplayName,
   isEmail,
+  normalizeEmail,
   validateBiometrics,
 } from './validation.ts';
 
@@ -209,4 +211,127 @@ test('isEmail accepts plain addresses and rejects malformed ones', () => {
   }
   assert.equal(isEmail(`${'a'.repeat(250)}@b.co`), false); // longer than 254
   assert.equal(isEmail(42 as unknown as string), false);
+});
+
+// Characters below are built from code points so that no invisible character and no escape
+// sequence lives in this file.
+const cp = String.fromCodePoint;
+const UNSEEN: [string, string][] = [
+  ['NUL', cp(0x0)],
+  ['TAB', cp(0x9)],
+  ['newline', cp(0xa)],
+  ['unit separator U+001F', cp(0x1f)],
+  ['DEL U+007F', cp(0x7f)],
+  ['NEL U+0085', cp(0x85)],
+  ['U+009F', cp(0x9f)],
+  ['zero-width space U+200B', cp(0x200b)],
+  ['zero-width joiner U+200D', cp(0x200d)],
+  ['right-to-left mark U+200F', cp(0x200f)],
+  ['U+202A', cp(0x202a)],
+  ['right-to-left override U+202E', cp(0x202e)],
+  ['word joiner U+2060', cp(0x2060)],
+  ['U+2069', cp(0x2069)],
+  ['BOM U+FEFF', cp(0xfeff)],
+];
+
+test('isEmail keeps the 254 limit and does not lower-case or trim', () => {
+  const longest = `${'a'.repeat(249)}@b.co`;
+  assert.equal(longest.length, 254);
+  assert.equal(isEmail(longest), true);
+  assert.equal(isEmail('Lan@Example.COM'), true);
+  assert.equal(isEmail(' lan@example.com'), false);
+  assert.equal(isEmail('lan@example.com '), false);
+  assert.equal(isEmail(`${cp(0xa0)}lan@example.com`), false); // NBSP in front
+});
+
+test('isEmail refuses control, invisible and text-direction characters anywhere', () => {
+  for (const [name, ch] of UNSEEN) {
+    assert.equal(isEmail(`${ch}lan@example.com`), false, `${name} first`);
+    assert.equal(isEmail(`lan${ch}@example.com`), false, `${name} inside`);
+    assert.equal(isEmail(`lan@exa${ch}mple.com`), false, `${name} in host`);
+    assert.equal(isEmail(`lan@example.com${ch}`), false, `${name} last`);
+  }
+});
+
+test('isEmail refuses look-alikes: text that is not in NFKC form', () => {
+  const composed = `l${cp(0xe2)}n@example.com`; // a with circumflex, one code point
+  const decomposed = `la${cp(0x302)}n@example.com`; // a + combining circumflex
+  assert.equal(decomposed.normalize('NFC'), composed);
+  assert.equal(isEmail(composed), true);
+  assert.equal(isEmail(decomposed), false);
+  assert.equal(isEmail(`lan${cp(0xff20)}evil.com@example.com`), false); // fullwidth @
+  assert.equal(isEmail(`lan@ex${cp(0xfb01)}le.com`), false); // "fi" ligature
+  assert.equal(isEmail(`${cp(0x212a)}@example.com`), false); // Kelvin sign
+});
+
+test('isEmail refuses what only fails once lower-cased, as the database does', () => {
+  // H + combining macron below has no composed form, h + the same mark does
+  const mark = `H${cp(0x331)}@example.com`;
+  assert.equal(mark.normalize('NFKC'), mark);
+  assert.notEqual(mark.toLowerCase().normalize('NFKC'), mark.toLowerCase());
+  assert.equal(isEmail(mark), false);
+  // capital I with dot above lower-cases to two units: 130 units as typed, 255 lower-cased
+  const dotted = `${cp(0x130).repeat(125)}@b.co`;
+  assert.equal(dotted.length, 130);
+  assert.equal(dotted.toLowerCase().length, 255);
+  assert.equal(isEmail(dotted), false);
+  assert.equal(isEmail(`${cp(0x130)}@b.co`), true);
+});
+
+test('normalizeEmail trims and lower-cases, nothing else', () => {
+  assert.equal(normalizeEmail('  Lan@Example.COM \n'), 'lan@example.com');
+  assert.equal(normalizeEmail('lan@example.com'), 'lan@example.com');
+  assert.equal(isEmail(normalizeEmail(' Lan.Nguyen@Mail.Example.VN ')), true);
+  const zeroWidth = `lan${cp(0x200b)}@example.com`;
+  assert.equal(normalizeEmail(zeroWidth), zeroWidth); // not repaired, isEmail refuses it
+});
+
+test('isDisplayName accepts ordinary names', () => {
+  assert.equal(isDisplayName('Nguyễn Thị Lan'), true);
+  assert.equal(isDisplayName('Nguyễn Thị Lan'.normalize('NFD')), true);
+  assert.equal(isDisplayName('A'), true);
+  assert.equal(isDisplayName(`Lan ${cp(0x1f98a)}`), true); // fox emoji
+  assert.equal(isDisplayName(`Lan ${cp(0x2764)}${cp(0xfe0f)}`), true); // heart + variation selector
+  assert.equal(isDisplayName(`Lan${cp(0xa0)}Anh`), true); // NBSP between words
+});
+
+test('isDisplayName counts 1 to 40 code points, not UTF-16 units', () => {
+  assert.equal(isDisplayName(''), false);
+  assert.equal(isDisplayName('a'.repeat(40)), true);
+  assert.equal(isDisplayName('a'.repeat(41)), false);
+  const astral = cp(0x1f600).repeat(40);
+  assert.equal(astral.length, 80);
+  assert.equal(isDisplayName(astral), true);
+  assert.equal(isDisplayName(cp(0x1f600).repeat(41)), false);
+});
+
+test('isDisplayName refuses whitespace-only names and space at either end', () => {
+  for (const blank of [
+    ' ',
+    '   ',
+    cp(0xa0),
+    cp(0x3000),
+    `${cp(0xa0)} ${cp(0x3000)}`,
+  ]) {
+    assert.equal(isDisplayName(blank), false, `blank of ${blank.length}`);
+  }
+  assert.equal(isDisplayName(' Lan'), false);
+  assert.equal(isDisplayName('Lan '), false);
+  assert.equal(isDisplayName(`Lan${cp(0xa0)}`), false);
+  assert.equal(isDisplayName(`${cp(0x3000)}Lan`), false);
+});
+
+test('isDisplayName refuses control, invisible and text-direction characters', () => {
+  for (const [name, ch] of UNSEEN) {
+    assert.equal(isDisplayName(ch), false, `${name} alone`);
+    assert.equal(isDisplayName(`La${ch}n`), false, `${name} inside`);
+    assert.equal(isDisplayName(`${ch}Lan`), false, `${name} first`);
+    assert.equal(isDisplayName(`Lan${ch}`), false, `${name} last`);
+  }
+  // known limit: an emoji joined with U+200D is refused
+  assert.equal(
+    isDisplayName(`Lan ${cp(0x1f469)}${cp(0x200d)}${cp(0x1f4bb)}`),
+    false,
+  );
+  assert.equal(isDisplayName(42 as unknown as string), false);
 });

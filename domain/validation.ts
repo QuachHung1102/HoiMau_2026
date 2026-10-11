@@ -28,7 +28,7 @@ export type BiometricsInput = {
   activityLevel: ActivityLevel;
 };
 
-/** Current year in the user's time zone − birthYear (R-D06). */
+/** Current year in the user's time zone minus birthYear (R-D06). */
 export function ageFrom(
   birthYear: number,
   nowMs: number,
@@ -121,10 +121,55 @@ export function allowedArchetypes(
     : ['TANKER', 'ASSASSIN', 'SUPPORTER'];
 }
 
+// What a reader cannot see: C0 and C1 controls, zero-width and text-direction formatting, BOM.
+// Same class as users_display_name_check and app._email in server/sql/10-auth.sql, plus NUL
+// (PostgreSQL text cannot hold it). Kept as escapes: this file must stay ASCII.
+const UNSEEN =
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/;
+
+const isNfkc = (text: string) => text === text.normalize('NFKC');
+
+/** The caller's spelling of an email before isEmail and before sending it: trim + lower-case. */
+export function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+/**
+ * Judges the value as given: it never trims or lower-cases (normalizeEmail does). Refuses
+ * everything app._email in server/sql/10-auth.sql refuses: more than 254 characters, an unseen
+ * character, and look-alikes of a real address, i.e. text that is not in NFKC form as typed or
+ * once lower-cased (a decomposed letter, a fullwidth "@", a ligature).
+ */
 export function isEmail(value: string): boolean {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const lower = value.toLowerCase();
   return (
-    typeof value === 'string' &&
     value.length <= 254 &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+    lower.length <= 254 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) &&
+    !UNSEEN.test(value) &&
+    isNfkc(value) &&
+    isNfkc(lower)
   );
+}
+
+/**
+ * 1 to 40 code points (the database counts with char_length), no whitespace at either end (so
+ * never whitespace-only, NBSP and U+3000 included) and no unseen character. Stricter than
+ * users_display_name_check, which only trims plain spaces. Known limit: an emoji sequence joined
+ * with U+200D (zero-width joiner) is refused; a single emoji is accepted.
+ */
+export function isDisplayName(value: string): boolean {
+  if (
+    typeof value !== 'string' ||
+    value !== value.trim() ||
+    UNSEEN.test(value)
+  ) {
+    return false;
+  }
+  const length = [...value].length;
+  return length >= LIMITS.displayName.min && length <= LIMITS.displayName.max;
 }
