@@ -9,6 +9,7 @@
 | Khu vực | Màn hình / thành phần | Task | Kiểm chứng |
 | --- | --- | --- | --- |
 | Giao diện nền | Token màu/chữ/khoảng cách, ba bảng màu, font Be Vietnam Pro và Inter, token chuyển động, `useReducedMotion`, `AppText`, `Screen`, `Touchable`, `Button`, `Icon`, `Card`, `ListRow` | 10 | Jest (có test chống lệch `DESIGN.md` và `design/motion/tokens.json`), `tsc`, ảnh chụp `kit-primitives` và `kit-primitives-forest` trong bản xem trước; chưa chạy trên thiết bị |
+| Giao diện nền | Ô nhập và lựa chọn (`TextField`, `SelectField`, `Checkbox`, `Switch`, `SegmentedControl`, `FilterChip`), thông báo (`InlineError`, `DisabledReason`), trạng thái tải/lỗi/trống, `Snackbar` có đếm ngược hoàn tác, `Dialog`, `BottomSheet` | 11 | Jest (vai trò, trạng thái truy cập, bộ đếm giờ, giảm chuyển động), `tsc`, ảnh chụp `kit-fields`, `kit-field-errors`, `kit-toggles`, `kit-states-*`, `kit-snackbar-undo`, `kit-dialog`, `kit-sheet` trong bản xem trước; chưa chạy trên thiết bị |
 
 ## Cấu trúc phát triển
 

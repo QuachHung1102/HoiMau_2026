@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { MotionPreferenceProvider } from '../../src/shared/motion/useReducedMotion';
 import { ThemeProvider } from '../../src/shared/theme/ThemeProvider';
+import { SnackbarProvider } from '../../src/shared/ui/Snackbar';
 import type { ThemeCode } from '../../src/shared/theme/tokens';
 
 export type EntryOptions = {
@@ -17,7 +18,7 @@ export type EntryOptions = {
 
 export type Entries = Record<string, () => ReactElement>;
 
-// Later tasks extend this with the session, snackbar and navigation providers when those exist.
+// Later tasks extend this with the session and navigation providers when those exist.
 export function withApp(node: ReactElement, opts: EntryOptions = {}): ReactElement {
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, gcTime: Infinity, retry: false } } });
   for (const [key, data] of opts.queries ?? []) client.setQueryData(key, data);
@@ -30,7 +31,9 @@ export function withApp(node: ReactElement, opts: EntryOptions = {}): ReactEleme
     <SafeAreaProvider>
       <ThemeProvider theme={opts.theme}>
         <MotionPreferenceProvider value={opts.motion ?? 'FULL'}>
-          <QueryClientProvider client={client}>{node}</QueryClientProvider>
+          <QueryClientProvider client={client}>
+            <SnackbarProvider>{node}</SnackbarProvider>
+          </QueryClientProvider>
         </MotionPreferenceProvider>
       </ThemeProvider>
     </SafeAreaProvider>
