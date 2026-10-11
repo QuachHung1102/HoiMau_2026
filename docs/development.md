@@ -96,7 +96,7 @@ Thêm màn hình bằng cách đăng ký trong `src/app/screens.tsx` (xem [kiế
 App chỉ có một địa chỉ API: `API_BASE_URL = 'http://localhost:8787/api/v1'` trong `src/shared/api/config.ts`. Trên thiết bị hoặc emulator Android, `localhost` là chính thiết bị đó, nên phải chuyển cổng về máy phát triển:
 
 ```sh
-npm run server:dev                # terminal 1: PostgreSQL dev (cổng 54330) và API ở cổng 8787
+npm run server:dev                # terminal 1: PostgreSQL dev (cổng 54330) và API ở cổng 8787 (từ Task 8)
 adb reverse tcp:8787 tcp:8787     # làm lại sau mỗi lần cắm lại thiết bị hoặc khởi động lại emulator
 npm start                         # terminal 2: Metro
 npm run android                   # terminal 3

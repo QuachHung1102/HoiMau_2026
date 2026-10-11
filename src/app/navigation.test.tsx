@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import * as Keychain from 'react-native-keychain';
 import type { Me } from '../../domain/contract/core.ts';
@@ -10,6 +10,7 @@ import { TAB_BAR_HEIGHT } from './TabBar';
 
 // A stand-in registry with every group filled, so the real navigators are exercised before the features land.
 // Each stub shows its name and params and has links: "go <Route>", "back" and "snack" (shows a snackbar).
+// `SignUp` is declared but not registered here; `Nowhere` is not a route at all.
 jest.mock('./screens', () => {
   const { createElement } = require('react');
   const { Text, View } = require('react-native');
@@ -17,6 +18,10 @@ jest.mock('./screens', () => {
   const links: [string, object?][] = [
     ['SignIn'],
     ['SignUp'],
+    ['Nowhere'],
+    ['Today'],
+    ['Plan'],
+    ['Profile'],
     ['QuestBoard'],
     ['MealDetail', { mealSlot: 'LUNCH' }],
     ['FocusSession', { id: 'w1' }],
@@ -68,10 +73,15 @@ beforeEach(() => {
   fetchMock.mockReset();
   globalThis.fetch = fetchMock as unknown as typeof fetch;
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  errors = jest.spyOn(console, 'error');
+  // silenced, then checked in afterEach: any complaint fails the test that caused it
+  errors = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 afterEach(async () => {
-  const complaints = errors.mock.calls.map(call => String(call[0]));
+  const complaints = errors.mock.calls
+    // bottom-tabs clears its previous screen on a 32 ms timer of its own; when that fires between the end of a
+    // test and its cleanup, React reports it as an update outside act(). It is the library's timer, not a flow.
+    .filter(call => !(String(call[0]).includes('not wrapped in act') && call[1] === 'BottomTabView'))
+    .map(call => call.map(String).join(' | '));
   jest.restoreAllMocks();
   client.clear();
   await Keychain.resetGenericPassword();
@@ -115,11 +125,43 @@ test('signed out: the auth screens, starting on Welcome, and no request', async 
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
-test('a link to a route that is not registered is inert and silent (AR-25)', async () => {
+test('a link to a declared route that is not registered yet is inert and silent (AR-25)', async () => {
   await open({ signedIn: false });
   await screen.findByText('screen Welcome {}');
   press('go SignUp');
   expect(screen.getByText('screen Welcome {}')).toBeTruthy();
+  expect(errors).not.toHaveBeenCalled();
+});
+
+test('a registered route of the current group navigates', async () => {
+  await open({ signedIn: false });
+  await screen.findByText('screen Welcome {}');
+  press('go SignIn');
+  expect(await screen.findByText('screen SignIn {}')).toBeTruthy();
+  expect(errors).not.toHaveBeenCalled();
+});
+
+test.each([
+  ['an undeclared name', 'go Nowhere', 'Navigation: NAVIGATE "Nowhere" was not handled by any navigator.'],
+  ['a route of a group that is not on screen', 'go QuestBoard', 'Navigation: NAVIGATE "QuestBoard" was not handled by any navigator.'],
+  ['a tab root while the tabs are not on screen', 'go Today', 'Navigation: NAVIGATE "Today" was not handled by any navigator.'],
+])('%s is reported in development and changes nothing', async (_name, link, message) => {
+  errors.mockImplementation(() => undefined);
+  await open({ signedIn: false });
+  await screen.findByText('screen Welcome {}');
+  press(link);
+  expect(errors.mock.calls).toEqual([[message]]);
+  expect(screen.getByText('screen Welcome {}')).toBeTruthy();
+  errors.mockClear();
+});
+
+test('a back with nowhere to go is reported too, by its action type', async () => {
+  errors.mockImplementation(() => undefined);
+  await open({ signedIn: false });
+  await screen.findByText('screen Welcome {}');
+  press('back');
+  expect(errors.mock.calls).toEqual([['Navigation: GO_BACK was not handled by any navigator.']]);
+  errors.mockClear();
 });
 
 test('signed in, not onboarded: the onboarding screens without a tab bar', async () => {
@@ -163,6 +205,85 @@ test('a detail opens with its params inside the stack of the tab it was opened f
   fireEvent.press(within(detail.parent!.parent!).getByText('back'));
   // back on the Profile root, not on Today
   expect(await screen.findByRole('tab', { name: 'Cá nhân', selected: true })).toBeTruthy();
+});
+
+// navigate('<tab root>') by name, from wherever a signed-in, onboarded user can be
+const on = (text: string) => within(screen.getByText(text).parent!.parent!);
+const selectedTab = () => screen.queryAllByRole('tab', { selected: true }).map(tab => tab.props.accessibilityLabel);
+
+test('tab root to tab root by name, also to a tab that was never opened, and back again', async () => {
+  await open();
+  await screen.findByText('screen Today {}');
+  fireEvent.press(on('screen Today {}').getByText('go Plan'));
+  expect(await screen.findByText('screen Plan {}')).toBeTruthy();
+  await waitFor(() => expect(selectedTab()).toEqual(['Lộ trình']));
+
+  fireEvent.press(on('screen Plan {}').getByText('go Today'));
+  await waitFor(() => expect(selectedTab()).toEqual(['Hôm nay']));
+  // second visit to a tab that is already mounted
+  fireEvent.press(on('screen Today {}').getByText('go Plan'));
+  await waitFor(() => expect(selectedTab()).toEqual(['Lộ trình']));
+  fireEvent.press(on('screen Plan {}').getByText('go Profile'));
+  expect(await screen.findByText('screen Profile {}')).toBeTruthy();
+  await waitFor(() => expect(selectedTab()).toEqual(['Cá nhân']));
+});
+
+test('from a detail to another tab root by name', async () => {
+  await open();
+  await screen.findByText('screen Today {}');
+  fireEvent.press(on('screen Today {}').getByText('go QuestBoard'));
+  await screen.findByText('screen QuestBoard {}');
+  fireEvent.press(on('screen QuestBoard {}').getByText('go Plan'));
+  expect(await screen.findByText('screen Plan {}')).toBeTruthy();
+  await waitFor(() => expect(selectedTab()).toEqual(['Lộ trình']));
+});
+
+test('from a detail to the root of its own tab by name: one root, not a second copy', async () => {
+  await open();
+  await screen.findByText('screen Today {}');
+  fireEvent.press(on('screen Today {}').getByText('go QuestBoard'));
+  await screen.findByText('screen QuestBoard {}');
+  expect(selectedTab()).toEqual([]);
+  fireEvent.press(on('screen QuestBoard {}').getByText('go Today'));
+  await waitFor(() => expect(selectedTab()).toEqual(['Hôm nay']));
+  expect(screen.queryByText('screen QuestBoard {}')).toBeNull();
+  expect(screen.getAllByText('screen Today {}')).toHaveLength(1);
+});
+
+test('a tab root reached by name shows the root even when a detail was left open in that tab', async () => {
+  await open();
+  await screen.findByText('screen Today {}');
+  fireEvent.press(on('screen Today {}').getByText('go QuestBoard'));
+  await screen.findByText('screen QuestBoard {}');
+  fireEvent.press(on('screen QuestBoard {}').getByText('go Plan'));
+  await screen.findByText('screen Plan {}');
+  fireEvent.press(on('screen Plan {}').getByText('go Today'));
+  await waitFor(() => expect(selectedTab()).toEqual(['Hôm nay']));
+  expect(screen.queryByText('screen QuestBoard {}')).toBeNull();
+});
+
+test('from the focus flow to a tab root by name: the modal closes and that tab is selected', async () => {
+  await open();
+  await screen.findByText('screen Today {}');
+  fireEvent.press(on('screen Today {}').getByText('go FocusSession'));
+  await screen.findByText('screen FocusSession {"id":"w1"}');
+  fireEvent.press(on('screen FocusSession {"id":"w1"}').getByText('go Profile'));
+  expect(await screen.findByText('screen Profile {}')).toBeTruthy();
+  await waitFor(() => expect(screen.queryByText('screen FocusSession {"id":"w1"}')).toBeNull());
+  expect(selectedTab()).toEqual(['Cá nhân']);
+});
+
+test('from the focus flow, opened from a detail, back to the root of the tab it started in', async () => {
+  await open();
+  await screen.findByText('screen Today {}');
+  fireEvent.press(on('screen Today {}').getByText('go QuestBoard'));
+  await screen.findByText('screen QuestBoard {}');
+  fireEvent.press(on('screen QuestBoard {}').getByText('go FocusSession'));
+  await screen.findByText('screen FocusSession {"id":"w1"}');
+  fireEvent.press(on('screen FocusSession {"id":"w1"}').getByText('go Today'));
+  await waitFor(() => expect(screen.queryByText('screen FocusSession {"id":"w1"}')).toBeNull());
+  await waitFor(() => expect(selectedTab()).toEqual(['Hôm nay']));
+  expect(screen.queryByText('screen QuestBoard {}')).toBeNull();
 });
 
 test('the focus flow is a full-screen modal above the tabs with the back gesture off', async () => {
@@ -212,10 +333,10 @@ test.each([
   ['a tab root', 'Guild', undefined, 'screen Guild {}', 'Tổ đội'],
   ['a detail (in the first tab, above its root)', 'MealDetail', { mealSlot: 'DINNER' }, 'screen MealDetail {"mealSlot":"DINNER"}', null],
   ['a focus screen', 'FocusSession', { id: 'w9' }, 'screen FocusSession {"id":"w9"}', null],
-] as const)('stateForRoute opens the app on %s', async (_name, route, params, text, selectedTab) => {
+] as const)('stateForRoute opens the app on %s', async (_name, route, params, text, tabLabel) => {
   await open({ initialState: stateForRoute(route, params) });
   const shown = await screen.findByText(text);
-  if (selectedTab) expect(screen.getByRole('tab', { name: selectedTab, selected: true })).toBeTruthy();
+  if (tabLabel) expect(screen.getByRole('tab', { name: tabLabel, selected: true })).toBeTruthy();
   else {
     fireEvent.press(within(shown.parent!.parent!).getByText('back'));
     expect(await screen.findByRole('tab', { name: 'Hôm nay', selected: true })).toBeTruthy();

@@ -15,6 +15,8 @@ function App() {
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
           <SessionProvider>
+            {/* Slot: a provider that must sit above every navigator wraps <AppNavigation /> right here.
+                Task 19 owns this one line (its OnboardingProvider); nothing else in this file moves. */}
             <AppNavigation />
           </SessionProvider>
         </QueryClientProvider>

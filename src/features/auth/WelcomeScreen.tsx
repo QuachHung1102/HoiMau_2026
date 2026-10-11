@@ -32,7 +32,7 @@ export function WelcomeScreen({ navigation }: ScreenProps<'Welcome'>) {
       </AppText>
       <AppText variant="secondary">{vi.welcomeBody}</AppText>
       <View style={styles.actions}>
-        <Button label={vi.createAccount} onPress={() => navigation.navigate('SignUp')} />
+        <Button label={vi.welcomeStart} onPress={() => navigation.navigate('SignUp')} />
         <Button variant="secondary" label={vi.haveAccount} onPress={() => navigation.navigate('SignIn')} />
       </View>
     </Screen>

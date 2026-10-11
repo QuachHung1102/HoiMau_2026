@@ -246,7 +246,7 @@ test('two signOut calls share one flight', async () => {
   expect(Keychain.resetGenericPassword).toHaveBeenCalledTimes(1);
 });
 
-test('signOut clears memory even when the keychain refuses to reset', async () => {
+test('a keychain reset that fails once is retried, and the token is gone', async () => {
   mount();
   await screen.findByText('signedOut|-|ok');
   await act(() => session.signIn(TOKEN, USER));
@@ -254,9 +254,73 @@ test('signOut clears memory even when the keychain refuses to reset', async () =
   await writeCache(USER, 'me', 'x');
   (Keychain.resetGenericPassword as jest.Mock).mockRejectedValueOnce(new Error('keystore busy'));
   await act(() => session.signOut());
+  expect(Keychain.resetGenericPassword).toHaveBeenCalledTimes(2);
+  expect(Keychain.setGenericPassword).toHaveBeenCalledTimes(1); // the sign-in only: nothing was overwritten
+  expect(await Keychain.getGenericPassword()).toBe(false);
   expect(screen.getByText('signedOut|-|ok')).toBeTruthy();
   expect(client.getQueryData(['me'])).toBeUndefined();
   expect(await readCache(USER, 'me')).toBeUndefined();
+});
+
+test.each([
+  ['rejects', () => (Keychain.resetGenericPassword as jest.Mock).mockRejectedValueOnce(new Error('busy')).mockRejectedValueOnce(new Error('busy'))],
+  ['answers false', () => (Keychain.resetGenericPassword as jest.Mock).mockResolvedValueOnce(false).mockResolvedValueOnce(false)],
+])('a keychain reset that %s twice: the token is overwritten, and the next cold start is signed out', async (_name, arrange) => {
+  mount();
+  await screen.findByText('signedOut|-|ok');
+  await act(() => session.signIn(TOKEN, USER));
+  client.setQueryData(['me'], { user: { id: USER } });
+  arrange();
+  await act(() => session.signOut());
+  expect(Keychain.resetGenericPassword).toHaveBeenCalledTimes(2);
+  expect(Keychain.setGenericPassword).toHaveBeenLastCalledWith('signed-out', '');
+  expect(JSON.stringify(await Keychain.getGenericPassword())).not.toContain(TOKEN);
+  expect(screen.getByText('signedOut|-|ok')).toBeTruthy();
+  expect(client.getQueryData(['me'])).toBeUndefined();
+
+  // a shared phone, restarted: the leftover credential signs nobody in
+  screen.unmount();
+  mount();
+  expect(await screen.findByText('signedOut|-|ok')).toBeTruthy();
+  await api.get('/me');
+  expect(bearers().at(-1)).toEqual(['/me', undefined]);
+});
+
+test('a stored credential with an empty password is not a session', async () => {
+  await Keychain.setGenericPassword(USER, '');
+  mount();
+  expect(await screen.findByText('signedOut|-|ok')).toBeTruthy();
+});
+
+test('signOut aborts a query that is in flight and passed its signal to the client', async () => {
+  let sent: AbortSignal | undefined;
+  function Loading() {
+    useQuery({ queryKey: ['day'], queryFn: ({ signal }) => api.get('/day', undefined, { signal }) });
+    return null;
+  }
+  // GET /day never answers; it only ends when its signal is aborted
+  fetchMock.mockImplementation((url, init) => {
+    if (url.endsWith('/auth/logout')) return Promise.resolve(respond(204));
+    const signal = (init as unknown as { signal: AbortSignal }).signal;
+    sent = signal;
+    return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('Aborted'))));
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <SessionProvider>
+        <Probe />
+        <Loading />
+      </SessionProvider>
+    </QueryClientProvider>,
+  );
+  await screen.findByText('signedOut|-|ok');
+  await act(() => session.signIn(TOKEN, USER));
+  await waitFor(() => expect(sent).toBeDefined());
+  const flight = sent as AbortSignal;
+  expect(flight.aborted).toBe(false);
+  await act(() => session.signOut());
+  expect(flight.aborted).toBe(true);
+  expect(screen.getByText('signedOut|-|ok')).toBeTruthy();
 });
 
 test('three parallel 401 SESSION_INVALID answers clear the session exactly once and mark it expired', async () => {

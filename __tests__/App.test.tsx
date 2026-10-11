@@ -62,7 +62,7 @@ afterEach(async () => {
 
 test('signed out: Welcome is visible and nothing is requested', async () => {
   render(<App />);
-  expect(await screen.findByRole('button', { name: 'Tạo tài khoản' })).toBeTruthy();
+  expect(await screen.findByRole('button', { name: 'Bắt đầu hành trình' })).toBeTruthy();
   expect(screen.getByRole('header', { name: 'Hồi Máu' })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Tôi đã có tài khoản' })).toBeTruthy();
   expect(fetchMock).not.toHaveBeenCalled();
@@ -71,7 +71,10 @@ test('signed out: Welcome is visible and nothing is requested', async () => {
 
 test('while the session and GET /me load: the S39 loading state', async () => {
   await signedIn();
-  fetchMock.mockImplementation(() => new Promise(() => undefined));
+  // never answers, and ends when its signal is aborted (as a real fetch does) so no timer outlives the test
+  fetchMock.mockImplementation(
+    (_url, init) => new Promise((_resolve, reject) => (init as unknown as { signal: AbortSignal }).signal.addEventListener('abort', () => reject(new Error('Aborted')))),
+  );
   render(<App />);
   expect(screen.getByRole('header', { name: 'Đang lấy hành trình' })).toBeTruthy();
   expect(screen.getByRole('progressbar', { name: 'Đang tải' }).props.accessibilityState).toMatchObject({ busy: true });
@@ -91,7 +94,7 @@ test('signed in and not onboarded: the onboarding group (its notice until Task 1
 
   fetchMock.mockResolvedValue(respond(204));
   fireEvent.press(screen.getByRole('button', { name: 'Đăng xuất' }));
-  expect(await screen.findByRole('button', { name: 'Tạo tài khoản' })).toBeTruthy();
+  expect(await screen.findByRole('button', { name: 'Bắt đầu hành trình' })).toBeTruthy();
   expect(requests()).toEqual(['GET /me', 'POST /auth/logout']);
   expect(await Keychain.getGenericPassword()).toBe(false);
   screen.unmount();
@@ -111,9 +114,8 @@ test('GET /me 500: the error state, "Thử lại" refetches, "Đăng xuất" is 
   fetchMock.mockResolvedValue(respond(500, { error: { code: 'INTERNAL', message: 'boom' } }));
   render(<App />);
   expect(await screen.findByText('Chưa tải được dữ liệu')).toBeTruthy();
-  expect(
-    screen.getByText('Hệ thống đang gặp sự cố. Bạn thử lại sau ít phút nhé. Những ghi nhận đã lưu vẫn còn.'),
-  ).toBeTruthy();
+  expect(screen.getByRole('header', { name: 'Đang lấy hành trình' })).toBeTruthy();
+  expect(screen.getByText('Hệ thống đang gặp sự cố. Bạn thử lại sau ít phút nhé.')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Đăng xuất' })).toBeTruthy();
   expect(requests()).toEqual(['GET /me']);
 
@@ -135,15 +137,33 @@ test('offline start with a cached Me: the user gets in from the cache', async ()
   screen.unmount();
 });
 
-test('offline start without a cache, or with another user cache: the error state names the network', async () => {
+test.each([
+  ['the network is down', () => fetchMock.mockRejectedValue(new TypeError('Network request failed'))],
+  [
+    'the server does not answer in 10 s',
+    () => fetchMock.mockImplementation((_url, init) => new Promise((_resolve, reject) => (init as unknown as { signal: AbortSignal }).signal.addEventListener('abort', () => reject(new Error('Aborted'))))),
+  ],
+])('start-up without a cache when %s: the frame wording of S39', async (name, arrange) => {
+  await signedIn();
+  arrange();
+  // under fake timers the query waits through the client's 10 s in no real time
+  if (name.includes('10 s')) jest.useFakeTimers();
+  render(<App />);
+  expect(await screen.findByText('Kiểm tra kết nối rồi thử lại.', {}, { timeout: 12_000 })).toBeTruthy();
+  expect(screen.getByText('Chưa tải được dữ liệu')).toBeTruthy();
+  expect(screen.getByRole('header', { name: 'Đang lấy hành trình' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Thử lại' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Đăng xuất' })).toBeTruthy();
+  screen.unmount();
+});
+
+test('offline start with another user cache on disk: that cache is not used', async () => {
   await signedIn();
   await writeCache('someone-else', 'me', meOf(true));
   await AsyncStorage.setItem(`cache:v1:${USER}:me`, JSON.stringify({ ...meOf(true), user: { ...meOf(true).user, id: 'someone-else' } }));
   fetchMock.mockRejectedValue(new TypeError('Network request failed'));
   render(<App />);
-  expect(
-    await screen.findByText('Không kết nối được mạng. Bạn kiểm tra kết nối rồi thử lại nhé. Những ghi nhận đã lưu vẫn còn.'),
-  ).toBeTruthy();
+  expect(await screen.findByText('Kiểm tra kết nối rồi thử lại.')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Thử lại' })).toBeTruthy();
   screen.unmount();
 });

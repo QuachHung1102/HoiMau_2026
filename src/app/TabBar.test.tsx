@@ -31,10 +31,14 @@ function bar(index: number, motion: 'REDUCED' | 'FULL' = 'REDUCED', bottom = 0) 
   );
 }
 const flat = (style: unknown) => StyleSheet.flatten(style as never) as Record<string, unknown>;
-/** Current opacity (an Animated.Value serialises to its number) of the soft pill behind a tab. */
-const pillOpacity = (name: string) => {
-  const pill = screen.getByRole('tab', { name }).findAll(node => flat(node.props.style)?.backgroundColor === colors.soft)[0];
-  return Number(JSON.stringify(flat(pill.props.style).opacity));
+const row = () => screen.UNSAFE_getByProps({ accessibilityRole: 'tablist' });
+/** The row of four items reports its width: 360 dp, so one item is 90 dp wide. */
+const measure = (width = 360) => fireEvent(row(), 'layout', { nativeEvent: { layout: { x: 0, y: 0, width, height: 60 } } });
+const pills = () => row().findAll(node => typeof node.type === 'string' && flat(node.props.style)?.backgroundColor === colors.soft);
+/** Where the pill is (an Animated.Value serialises to its number) and how wide. */
+const pill = () => {
+  const style = flat(pills()[0].props.style) as { width: number; transform: { translateX: unknown }[] };
+  return { width: style.width, x: Number(JSON.stringify(style.transform[0].translateX)) };
 };
 
 afterEach(() => {
@@ -54,29 +58,37 @@ test('the selected tab is exposed to assistive technology, not only by colour', 
   for (const name of ['Hôm nay', 'Lộ trình', 'Cá nhân']) {
     expect(screen.getByRole('tab', { name }).props.accessibilityState).toMatchObject({ selected: false });
   }
-  // and to the eye by more than the tint: a soft pill behind it and a heavier label
-  expect(flat(screen.getByText('Tổ đội').props.style).fontFamily).toBe(fontFamilies.bold);
-  expect(flat(screen.getByText('Hôm nay').props.style).fontFamily).toBe(fontFamilies.medium);
 });
 
-test('selected = soft pill, primary icon and text; the others are muted without a pill', () => {
+test('the selection is readable without the pill: before the bar is measured there is none', () => {
+  render(bar(2));
+  expect(pills()).toHaveLength(0);
+  expect(flat(screen.getByText('Tổ đội').props.style)).toMatchObject({ fontFamily: fontFamilies.bold, color: colors.primary });
+  expect(flat(screen.getByText('Hôm nay').props.style)).toMatchObject({ fontFamily: fontFamilies.medium, color: colors.muted });
+  expect(screen.getByRole('tab', { name: 'Tổ đội', selected: true })).toBeTruthy();
+});
+
+test('icons are 22 dp: primary on the selected item, muted on the others', () => {
   render(bar(0));
-  expect(pillOpacity('Hôm nay')).toBe(1);
-  expect(pillOpacity('Lộ trình')).toBe(0);
-  expect(flat(screen.getByText('Hôm nay').props.style).color).toBe(colors.primary);
-  expect(flat(screen.getByText('Lộ trình').props.style).color).toBe(colors.muted);
   expect(screen.UNSAFE_getByType(lucide.Sun).props).toMatchObject({ size: 22, color: colors.primary });
   expect(screen.UNSAFE_getByType(lucide.Route).props).toMatchObject({ size: 22, color: colors.muted });
   expect(screen.UNSAFE_getByType(lucide.Users).props.size).toBe(22);
   expect(screen.UNSAFE_getByType(lucide.User).props.size).toBe(22);
 });
 
+test('one soft pill, one item wide, sits behind the selected item', () => {
+  render(bar(2));
+  measure();
+  expect(pills()).toHaveLength(1);
+  expect(pill()).toEqual({ width: 90, x: 180 });
+  expect(pills()[0].props.pointerEvents).toBe('none');
+});
+
 test('an item is 60 dp high and the bar adds the bottom safe-area inset below it', () => {
   render(bar(0, 'REDUCED', 24));
   for (const tab of screen.getAllByRole('tab')) expect(flat(tab.props.style).minHeight).toBe(60);
-  const list = screen.UNSAFE_getByProps({ accessibilityRole: 'tablist' });
-  expect(list.props.accessibilityLabel).toBe('Điều hướng chính');
-  const style = flat(list.props.style);
+  expect(row().props.accessibilityLabel).toBe('Điều hướng chính');
+  const style = flat(row().parent!.props.style);
   expect([style.paddingTop, style.paddingBottom]).toEqual([8, 8 + 24]);
   expect(TAB_BAR_HEIGHT).toBe(60 + 8 + 8);
 });
@@ -111,22 +123,35 @@ test('a prevented tabPress does not navigate', () => {
   expect(navigation.navigate).not.toHaveBeenCalled();
 });
 
-test('tab-pill: a selection change fades the pill over 220 ms; nothing animates on first render', () => {
+test('tab-pill: a selection change slides the pill to the new item in 320 ms on the enter curve', () => {
   const timing = jest.spyOn(Animated, 'timing');
-  const fades = () => timing.mock.calls.filter(([, config]) => config.duration === 220);
+  const bezier = jest.spyOn(require('react-native').Easing, 'bezier');
   render(bar(0, 'FULL'));
-  expect(fades()).toHaveLength(0);
-  screen.rerender(bar(1, 'FULL'));
-  // one fade out (Hôm nay) and one fade in (Lộ trình)
-  expect(fades().map(([, config]) => config.toValue).sort()).toEqual([0, 1]);
-  for (const [, config] of fades()) expect(config.useNativeDriver).toBe(true);
+  measure();
+  // putting the pill in place after the first measurement is not a motion
+  expect(timing).not.toHaveBeenCalled();
+  expect(pill()).toEqual({ width: 90, x: 0 });
+
+  screen.rerender(bar(3, 'FULL'));
+  expect(timing).toHaveBeenCalledTimes(1);
+  expect(timing.mock.calls[0][1]).toMatchObject({ toValue: 270, duration: 320, useNativeDriver: true });
+  expect(bezier).toHaveBeenCalledWith(0.2, 0, 0, 1);
 });
 
-test('tab-pill under reduced motion: the pill changes at once, with no animation', () => {
+test('tab-pill: a new measurement moves the pill without animating', () => {
+  const timing = jest.spyOn(Animated, 'timing');
+  render(bar(1, 'FULL'));
+  measure(360);
+  measure(600);
+  expect(timing).not.toHaveBeenCalled();
+  expect(pill()).toEqual({ width: 150, x: 150 });
+});
+
+test('tab-pill under reduced motion: the pill is behind the new item at once, with no slide', () => {
   const timing = jest.spyOn(Animated, 'timing');
   render(bar(0, 'REDUCED'));
+  measure();
   screen.rerender(bar(1, 'REDUCED'));
-  expect(timing.mock.calls.filter(([, config]) => config.duration === 220)).toHaveLength(0);
-  expect(pillOpacity('Lộ trình')).toBe(1);
-  expect(pillOpacity('Hôm nay')).toBe(0);
+  expect(timing).not.toHaveBeenCalled();
+  expect(pill()).toEqual({ width: 90, x: 90 });
 });

@@ -5,7 +5,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * measurements, journal text or a token; do not widen this list without checking P1.0's "never cache" rule.
  */
 export type CacheKey = 'me' | 'day';
-const KEYS: readonly CacheKey[] = ['me', 'day'];
+// `satisfies` makes tsc fail when a key is added to the union but not here, so sign-out cannot forget it.
+const KEYS = Object.keys({ me: true, day: true } satisfies Record<CacheKey, true>) as CacheKey[];
 
 const storageKey = (userId: string, key: CacheKey) => `cache:v1:${userId}:${key}`;
 
