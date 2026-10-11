@@ -392,13 +392,13 @@ Server là `node:http` trần: không framework, không middleware. Mọi route 
 |---|---|
 | `app.ts` | Kiểu `Route`, `Ctx`; nạp `src/routes/*.ts`; đường đi của một request (`createApp`). |
 | `http.ts` | Đọc body, khớp đường dẫn, ghi phản hồi. |
-| `db.ts` | `withRole`: transaction có chuyển vai. `createPool`. |
+| `db.ts` | `withRole`: transaction có chuyển vai, nơi duy nhất điều khiển transaction. `createPool` và các giới hạn thời gian. |
 | `session.ts` | Token phiên, băm token, đọc header `Authorization`. |
 | `idempotency.ts` | Khóa idempotency: băm request, giữ khóa, lưu phản hồi. |
 | `rateLimit.ts` | Bộ giới hạn tần suất trong bộ nhớ. |
 | `errors.ts` | Bảng mã lỗi → mã HTTP, `AppError`, `errorResponse`. |
 | `log.ts` | Log JSON, `log.ledger`. |
-| `config.ts`, `main.ts` | Đọc môi trường; tiến trình server. |
+| `config.ts`, `main.ts` | Đọc môi trường (`DATABASE_URL`, `JOURNAL_KEY`, `HOST`, `PORT`); tiến trình server. |
 | `routes/meta.ts` | `GET /healthz`, `GET /meta/timezones`. |
 
 ### Chạy
@@ -411,36 +411,59 @@ node server/src/main.ts   # tiến trình thật: cần DATABASE_URL và JOURNAL
 - `server:dev` khởi động cụm phát triển, tạo cơ sở dữ liệu `hoimau` nếu chưa có, chạy `migrate` (gồm seeder và `90-verify.sql`), đặt mật khẩu dev cho `app_conn`, rồi mở API trên `127.0.0.1`. Nó luôn nối vào cụm nó vừa khởi động, bất kể `DATABASE_URL` trong môi trường; `JOURNAL_KEY` lấy từ môi trường hoặc `server/.env`, thiếu thì dùng một khóa cố định chỉ dành cho máy phát triển. Nó không bao giờ chạm cụm test (54329) hay dịch vụ hệ thống (5432).
 - **Dừng bằng Ctrl+C** (`SIGINT`; `SIGTERM` cũng vậy): API thôi nhận kết nối và chờ request đang chạy, đóng pool, rồi dừng cụm. Đã chạy thử trên Windows: sau Ctrl+C, `npm run db:cleanup` báo `nothing running`. Script gỡ các handler tín hiệu của `embedded-postgres` (chúng dừng cụm ngay dưới chân API rồi gọi `process.exit`). Diệt cưỡng bức tiến trình thì cụm bị bỏ lại: dùng `npm run db:cleanup`.
 - `main.ts` đọc `server/.env` nếu có (biến đã có trong môi trường thắng). `config.ts` dừng ngay với thông báo nêu **tên biến** và điều sai, không bao giờ in giá trị: `DATABASE_URL` phải là URL `postgres://` có người dùng, máy chủ và tên cơ sở dữ liệu (vai trò `app_conn`); `JOURNAL_KEY` là đúng 32 byte viết bằng base64 (44 ký tự); `PORT` mặc định 8787.
+- **`HOST` mặc định là `127.0.0.1`**: API chỉ nghe trên chính máy đó. Server thật nhận request từ mạng phải đặt `HOST` (địa chỉ của nó, hoặc `0.0.0.0` cho mọi giao diện); mở API ra mạng là một quyết định, không phải mặc định.
+- Lỗi không ai bắt (`unhandledRejection`) được ghi một dòng log và server chạy tiếp. Exception không ai bắt (`uncaughtException`) được ghi log, server được dừng như khi nhận tín hiệu, và tiến trình thoát với mã 1. Cả hai dòng log đều không có thông báo của lỗi (xem "Log").
 - Chưa có mailer: cho tới nhiệm vụ về xác thực, `ctx.mailer` của tiến trình thật ném `mail is not configured`.
 
 ### Đường đi của một request
 
 Theo đúng thứ tự; bước nào trả lời thì các bước sau không chạy.
 
-1. Tìm route theo phương thức và đường dẫn dưới `/api/v1`. Không có: `404 NOT_FOUND`. Tham số đường dẫn được giải mã `%`; chuỗi `%` hỏng, tham số rỗng hoặc chứa U+0000 cũng là `404`. Tham số query chứa U+0000: `422 VALIDATION_FAILED`.
-2. Giới hạn theo địa chỉ (xem "Giới hạn tần suất").
+1. Tìm route theo phương thức và đường dẫn dưới `/api/v1`. Không có: `404 NOT_FOUND`. Tham số đường dẫn được giải mã `%` (handler nhận giá trị đã giải mã); chuỗi `%` hỏng, tham số rỗng hoặc chứa U+0000 cũng là `404`. Tham số query chứa U+0000: `422 VALIDATION_FAILED`.
+2. Giới hạn theo địa chỉ (xem "Giới hạn tần suất"): trước body, trước `prepare`, trước cơ sở dữ liệu.
 3. Route `session` / `user`: header phải là đúng `Authorization: Bearer <token>` với token 43 ký tự base64url, nếu không `401 SESSION_INVALID` mà không chạm cơ sở dữ liệu. **Route `anon` không đọc header này**, kể cả khi nó mang một phiên còn sống: route đó luôn chạy bằng `app_anon` (các hàm `auth_*` chỉ mở cho `app_anon`).
-4. Route `idempotent`: `Idempotency-Key` phải là UUID, nếu không `400 IDEMPOTENCY_KEY_REQUIRED`.
-5. Đọc body (mọi phương thức trừ `GET`): quá 64 KiB là `413 PAYLOAD_TOO_LARGE`; có body mà không khai `Content-Type: application/json`, không phải JSON UTF-8, có U+0000 trong một chuỗi hay tên thuộc tính, hoặc lồng sâu quá 32 tầng là `400 BAD_JSON`. Không có body thì `ctx.body` là `undefined`. Thuộc tính lạ không bị từ chối: route tự kiểm tra hình dạng.
-6. `prepare` của route, nếu có: chạy **trước khi mở transaction**, lúc request chưa giữ kết nối nào.
-7. Lấy một kết nối, `BEGIN`, `SET LOCAL ROLE app_anon`, đặt `app.user_id` rỗng.
-8. Có token: `auth_session(sha256(token))`. Không ra người dùng: `401 SESSION_INVALID`. Ra: `SET LOCAL ROLE app_auth`, đặt `app.user_id`, rồi giới hạn theo tài khoản; route `user` còn đòi `users.onboarded_at`, thiếu là `409 ONBOARDING_REQUIRED`.
+4. Route `idempotent`: thiếu `Idempotency-Key` là `400 IDEMPOTENCY_KEY_REQUIRED`; có mà không phải UUID là `422 VALIDATION_FAILED` với `details.fields = [{ field: "Idempotency-Key", rule: "format" }]`.
+5. Đọc body (mọi phương thức trừ `GET`): quá 64 KiB là `413 PAYLOAD_TOO_LARGE`; có body mà không khai `Content-Type: application/json`, không phải JSON UTF-8, có U+0000 hoặc một nửa cặp surrogate trong một chuỗi hay tên thuộc tính (PostgreSQL không lưu được cả hai), hoặc lồng sâu quá 32 tầng là `400 BAD_JSON`. Không có body thì `ctx.body` là `undefined`. Thuộc tính lạ không bị từ chối: route tự kiểm tra hình dạng.
+6. `prepare` của route, nếu có (chỉ route `anon`): chạy **trước khi mở transaction**, lúc request chưa giữ kết nối nào.
+7. Lấy một kết nối, mở transaction, chuyển sang `app_anon`, đặt `app.user_id` rỗng.
+8. Có token: `auth_session(sha256(token))`. Không ra người dùng: `401 SESSION_INVALID`. Ra: chuyển sang `app_auth`, đặt `app.user_id`, rồi giới hạn theo tài khoản; route `user` còn đòi `users.onboarded_at`, thiếu là `409 ONBOARDING_REQUIRED`.
 9. Route `idempotent`: giữ khóa (xem "Idempotency").
 10. `SELECT app.now()` thành `ctx.now`, rồi gọi `handler(ctx)`.
-11. `COMMIT`, trả kết nối về pool, ghi phản hồi, ghi một dòng log.
+11. Kết thúc transaction, trả kết nối về pool, ghi phản hồi, ghi một dòng log.
+
+Một request bị trả lời **trước khi body của nó được đọc hết** (404, 401, 413, một `GET` có body…) nhận `Connection: close` và kết nối bị đóng ngay sau phản hồi: phần body còn lại không được đọc, dù client khai nó dài bao nhiêu.
 
 Quy tắc của transaction:
 
-- **`COMMIT` khi handler trả về, bất kể mã HTTP; `ROLLBACK` chỉ khi nó ném lỗi.** Vì vậy thất bại cần được giữ lại (một lần đăng nhập sai đã đếm, một lượt nhập mã đã tiêu) phải được **trả về** bằng `errorResponse(code)`; `throw new AppError(code)` là từ chối và xóa sạch mọi thứ request đã ghi. Có test cho cả hai chiều, gồm cả bộ đếm của `auth_login`.
+- **Commit khi handler trả về, bất kể mã HTTP; rollback chỉ khi nó ném lỗi.** Vì vậy thất bại cần được giữ lại (một lần đăng nhập sai đã đếm, một lượt nhập mã đã tiêu) phải được **trả về** bằng `errorResponse(code)`; `throw new AppError(code)` là từ chối và xóa sạch mọi thứ request đã ghi. Có test cho cả hai chiều, gồm cả bộ đếm của `auth_login`.
+- **Đừng bắt lỗi của cơ sở dữ liệu rồi đi tiếp.** Sau một câu lệnh hỏng, transaction đã hỏng theo, và PostgreSQL trả lời lệnh commit của nó bằng `ROLLBACK`. `withRole` kiểm tra câu trả lời đó: handler nuốt lỗi rồi trả về (kể cả trả về `errorResponse`) thì request kết thúc bằng `500 INTERNAL` có ghi log, không bao giờ bằng một "thành công" không ghi được gì.
 - **Mức cô lập là `READ COMMITTED`** (mặc định), không đặt `REPEATABLE READ` hay `SERIALIZABLE` ở đâu cả. Đã đo với `auth_login`: dưới `REPEATABLE READ`, chín trong mười lần đăng nhập gửi cùng lúc hỏng với `40001` và bộ đếm đếm thiếu. Các hàm của dự án tự tuần tự hóa bằng khóa dòng và khóa advisory, và cần thấy dữ liệu vừa được commit sau khi chờ khóa.
-- **Chuyển vai** chỉ bằng `SET LOCAL ROLE <hằng số>` và `set_config('app.user_id', $1, true)`. `app.user_id` **luôn** được đặt, rỗng với request ẩn danh, nên giá trị ai đó để lại trên kết nối không bao giờ thành danh tính. Sau request (kể cả request ném lỗi) kết nối trở về `app_conn` trắng tay; có test trên pool một kết nối.
-- **Không giữ transaction qua việc chậm.** scrypt, gọi mạng, gửi thư đặt trong `prepare` (chạy trước `BEGIN`; cần đọc cơ sở dữ liệu thì dùng `withRole(pre.pool, …)` cho một transaction ngắn riêng). Có test: trong lúc `prepare` chạy, pool không có kết nối nào đang được mượn.
-- Câu lệnh chạy **ngoài** transaction (`ctx.pool.query(…)`) chạy bằng `app_conn` trần và hỏng với `42501` / `42P01` / `42883`. Đó là hàng rào; đừng bao giờ "sửa" nó bằng một GRANT. Việc ngoài transaction của request đi qua `withRole(ctx.pool, vai trò, userId, fn)`.
+- **Chuyển vai và điều khiển transaction chỉ nằm trong `db.ts`.** `app.user_id` **luôn** được đặt, rỗng với request ẩn danh, nên giá trị ai đó để lại trên kết nối không bao giờ thành danh tính. Một test đọc toàn bộ `server/src` (trừ `db.ts` và `migrate.ts`) và đỏ khi thấy lệnh mở, kết thúc transaction hay đổi vai ở bất kỳ file nào khác: route không bao giờ tự quản transaction.
+- **Kết nối bẩn không quay lại pool.** Khi kết thúc transaction, `withRole` hỏi luôn (cùng một lượt gửi) kết nối còn là `app_conn` trần không có `app.user_id` hay không. Không phải (ai đó đã kết thúc transaction giữa chừng và đặt vai trò cho cả phiên), hoặc kết nối đã chết, hoặc không rollback được: kết nối bị hủy thay vì trả về pool.
+- **Không giữ transaction qua việc chậm.** scrypt, gọi mạng, gửi thư đặt trong `prepare`. Có test: trong lúc `prepare` chạy, pool không có kết nối nào đang được mượn.
+- **Mỗi request giữ nhiều nhất một kết nối.** Handler đã giữ một kết nối (`ctx.db`) và **không bao giờ được lấy kết nối thứ hai**: đủ số request làm vậy là mọi kết nối cùng chờ một kết nối không bao giờ tới. `ctx.pool` trong handler ném lỗi ngay khi bị chạm vào. Kết nối thứ hai chỉ có trong `prepare` (và trong `direct`): `withRole(pre.pool, vai trò, userId, fn)`, một transaction ngắn kết thúc trước khi transaction của request bắt đầu.
+- Câu lệnh chạy **ngoài** `withRole` chạy bằng `app_conn` trần và hỏng với `42501` / `42P01` / `42883`. Đó là hàng rào; đừng bao giờ "sửa" nó bằng một GRANT.
 - Client ngắt kết nối giữa chừng không hủy việc đang chạy: handler chạy hết, transaction được commit và kết nối trở về pool (có test). Với request ghi, lần gửi lại cùng khóa nhận đúng phản hồi đã lưu.
+
+### Giới hạn thời gian
+
+Không gì chờ mãi. `createPool` (`db.ts`) đặt bốn giới hạn; ba giới hạn phía PostgreSQL đi theo gói mở kết nối nên có hiệu lực với **mọi** kết nối của pool từ câu lệnh đầu tiên (có test đọc lại bằng `SHOW` trên ba kết nối).
+
+| Giới hạn | Giá trị | Khi vượt |
+|---|---|---|
+| Chờ một kết nối rảnh của pool, hoặc chờ nối | 5 giây | request nhận `500` |
+| Một câu lệnh (`statement_timeout`) | 10 giây | PostgreSQL hủy câu lệnh (`57014`), request nhận `500` |
+| Chờ một khóa (`lock_timeout`) | 5 giây | `55P03`, request nhận `500`; riêng chờ khóa idempotency thì `429` (xem dưới) |
+| Transaction mở mà không gửi gì (`idle_in_transaction_session_timeout`) | 15 giây | PostgreSQL ngắt phiên (`25P03`), request nhận `500`, kết nối bị hủy |
+
+- Mọi trường hợp đều là `500 INTERNAL` (hợp đồng API không có mã riêng cho "server đang bận"), không lộ thông báo SQL, transaction được rollback, kết nối được trả về pool (hoặc bị hủy nếu đã hỏng), và đúng một dòng log ghi lại với `code` là SQLSTATE.
+- Handler không bao giờ kết thúc (chờ một thứ không tới) cũng không giữ kết nối mãi: sau 15 giây PostgreSQL ngắt phiên, `withRole` thôi chờ handler, request nhận `500` và kết nối bị hủy.
+- `GET /healthz` trả lời trong 2 giây dù pool ở trạng thái nào: hết kết nối rảnh, cơ sở dữ liệu im lặng hay không nối được đều là `200` với `ok: false`.
+- **Job cần câu lệnh dài hơn 10 giây** thì nói rõ trong transaction của chính nó: `SET LOCAL statement_timeout = '60s'` (chỉ có hiệu lực tới hết transaction đó). Không nới giới hạn của pool.
 
 ### Viết một route
 
-Mỗi file trong `server/src/routes/` export mặc định một `Route[]`; `app.ts` tự nạp mọi file (trừ `*.test.ts`), không có sổ đăng ký nào để sửa. Trùng `phương thức + đường dẫn` là lỗi lúc khởi động. Một test đối chiếu mọi route với `OPERATIONS` của `domain/contract/operations.ts` (cùng `auth`, cùng `idempotent`). File route chỉ `import type` từ `app.ts`; giá trị (`errorResponse`, `AppError`, `withRole`) lấy từ `errors.ts`, `db.ts`.
+Mỗi file trong `server/src/routes/` export mặc định một `Route[]`; `app.ts` tự nạp mọi file (trừ `*.test.ts`), không có sổ đăng ký nào để sửa. Một test đối chiếu mọi route với `OPERATIONS` của `domain/contract/operations.ts` (cùng `auth`, cùng `idempotent`). File route chỉ `import type` từ `app.ts`; giá trị (`errorResponse`, `AppError`, `withRole`) lấy từ `errors.ts`, `db.ts`.
 
 ```ts
 import type { Route } from '../app.ts';
@@ -465,30 +488,38 @@ export default routes;
 ```
 
 - `auth`: `anon` (chạy bằng `app_anon`, `ctx.userId` là `null`), `session` (phiên hợp lệ), `user` (phiên và đã onboarding).
-- `ctx.db` là kết nối **đang ở trong** transaction của request, đã chuyển vai: mọi truy vấn của handler đi qua nó. `ctx.tokenHash` là SHA-256 của token (cho đăng xuất); token gốc không rời khỏi tầng HTTP và không có trên `ctx`.
+- `ctx.db` là kết nối **đang ở trong** transaction của request, đã chuyển vai: mọi truy vấn của handler đi qua nó, và chỉ qua nó. `ctx.tokenHash` là SHA-256 của token (cho đăng xuất); token gốc không rời khỏi tầng HTTP và không có trên `ctx`.
 - `ctx.body` là `unknown`: route kiểm tra từng trường. Mọi giá trị đi vào SQL qua tham số.
 - Lỗi do hàm SQL ném với `SQLSTATE HM000` tự thành phản hồi: `MESSAGE` là mã lỗi của API, `DETAIL` là JSON của `details`. Mọi lỗi khác là `500 INTERNAL`, không lộ gì trong phản hồi.
+- `status` phải là số nguyên từ 200 tới 599. Giá trị khác là lỗi lập trình: transaction được rollback, request nhận `500` và được ghi log.
+- **`prepare` chỉ dành cho route `anon`** (nó chạy trước khi phiên được xác nhận, nên trên route khác nó sẽ làm việc cho bất kỳ ai gửi một token đúng hình dạng). Kết quả của nó là `ctx.prepared`; ném `AppError` trong đó để từ chối mà không mở transaction.
 - `direct` thay cho `handler`: route `anon` không cần transaction của request (hai route `meta`). Nó tự lo việc đọc cơ sở dữ liệu của mình.
-- Đừng đưa dữ liệu của request vào thông báo của một `Error`: stack của lỗi lạ được ghi vào log.
+- Lỗi lúc khởi động: trùng `phương thức + đường dẫn` (không kể tên tham số); route `idempotent` mà là `anon` hoặc `GET`; route có cả `handler` lẫn `direct`, hoặc không có cái nào; `direct` kèm `prepare`; `direct` hoặc `prepare` trên route không phải `anon`.
 
 ### Idempotency
 
-Bảng `idempotency_keys` (lớp `internal`): khóa chính `(user_id, key)`, `request_hash` (SHA-256 của phương thức, đường dẫn kèm query, và body đã chuẩn hóa thứ tự thuộc tính), `status`, `response`, `created_at` (từ `app.now()`). Phản hồi đã lưu có thể chứa dữ liệu cá nhân nên **không vai trò nào đọc được bảng**; tầng HTTP chỉ chạm nó qua hai hàm `SECURITY DEFINER` cấp cho `app_auth`, và cả hai lấy người dùng từ `app.current_user_id()`:
+**Một khóa là một thao tác của người dùng, và chỉ phản hồi 2xx được ghi nhớ.**
+
+Bảng `idempotency_keys` (lớp `internal`): khóa chính `(user_id, key)`, `request_hash`, `status`, `response`, `created_at` (từ `app.now()`). Phản hồi đã lưu có thể chứa dữ liệu cá nhân nên **không vai trò nào đọc được bảng**; tầng HTTP chỉ chạm nó qua ba hàm `SECURITY DEFINER` cấp cho `app_auth`, và cả ba lấy người dùng từ `app.current_user_id()`:
 
 | Hàm | Việc |
 |---|---|
-| `idempotency_begin(key, request_hash)` | Chèn dòng nếu chưa có, rồi trả về trạng thái của dòng và **khóa dòng đó tới hết transaction**. |
+| `idempotency_begin(key, request_hash)` | Chèn dòng nếu chưa có, rồi trả về trạng thái của dòng. Request thứ hai cùng khóa chờ ngay ở lệnh chèn tới khi request thứ nhất kết thúc. |
 | `idempotency_store(key, status, response)` | Lưu phản hồi 2xx vào dòng đang giữ. Không bao giờ ghi đè phản hồi đã lưu. |
+| `idempotency_release(key)` | Trả khóa lại (xóa dòng chưa có phản hồi). Không bao giờ xóa phản hồi đã lưu. |
 
 - Cùng khóa, cùng request, đã có phản hồi: trả lại đúng mã và body đã lưu, handler không chạy.
-- Cùng khóa, request khác (body, đường dẫn hay query khác): `409 IDEMPOTENCY_KEY_REUSED`.
-- **Chỉ phản hồi 2xx được lưu.** Handler trả về lỗi thì dòng khóa ở lại không có phản hồi và lần gửi lại chạy lại; handler ném lỗi thì dòng khóa mất theo `ROLLBACK`.
-- Hai request cùng khóa gửi cùng lúc: request sau chờ ở khóa dòng tới khi request trước commit, rồi nhận phản hồi đã lưu. Có test với 20 request song song (một lần chạy, 20 phản hồi giống nhau), và với các lần gửi lại song song của một request từng bị từ chối.
-- **Khóa thuộc về người dùng.** Người khác gửi đúng khóa và đúng request đó thì chạy mới trên dòng của chính họ và không bao giờ thấy phản hồi của người kia (có test). Route ẩn danh không thể idempotent: khai báo như vậy là lỗi lúc khởi động.
+- Cùng khóa, request khác (phương thức, đường dẫn, query hay body khác): `409 IDEMPOTENCY_KEY_REUSED`.
+- **Phản hồi không phải 2xx không để lại gì**, dù handler *trả về* lỗi hay *ném* lỗi: khóa được trả lại trong chính transaction đó, và lần gửi sau với khóa ấy chạy từ đầu, với cùng body hoặc với body đã sửa. Vì vậy không dòng nào đã commit mà thiếu `status`.
+- Hai request cùng khóa gửi cùng lúc: request sau chờ tới khi request trước commit, rồi nhận phản hồi đã lưu. Có test với 20 request song song (một lần chạy, 20 phản hồi giống nhau), và với các lần gửi lại song song của một request từng bị từ chối.
+- **Request sau không chờ quá `lock_timeout` (5 giây).** Hết hạn mà request đầu vẫn đang chạy thì nó trả kết nối về pool và nhận `429 RATE_LIMITED` với `Retry-After: 1`. Hợp đồng API không có mã cho "chính request này đang được xử lý"; `429` được chọn vì đó là mã mà app **giữ** thao tác lại để gửi lại (với `409` app sẽ bỏ thao tác đi, và mất nó nếu request đầu rốt cuộc hỏng). Lần gửi lại nhận phản hồi đã lưu.
+- **Khóa thuộc về người dùng.** Người khác gửi đúng khóa và đúng request đó thì chạy mới trên dòng của chính họ và không bao giờ thấy phản hồi của người kia (có test). Route ẩn danh không thể idempotent.
+- **`request_hash` là HMAC-SHA-256**, không phải SHA-256 trần, của phương thức, đường dẫn kèm query, và body đã chuẩn hóa thứ tự thuộc tính. Body có thể chứa mật khẩu (xóa tài khoản); một bản băm trần của nó nằm trong bảng nhiều ngày sẽ cho phép dò mật khẩu với tốc độ hàng trăm nghìn lần thử mỗi giây. Khóa của HMAC được dẫn xuất từ `JOURNAL_KEY` với nhãn riêng (`HMAC(JOURNAL_KEY, "idempotency-request-hash-v1")`); bản thân `JOURNAL_KEY` không bao giờ được dùng trực tiếp. Hệ quả: **đổi `JOURNAL_KEY` thì mọi bản băm đã lưu không còn khớp**, và một lần gửi lại với khóa cũ nhận `409 IDEMPOTENCY_KEY_REUSED` thay vì phản hồi đã lưu.
+- **Phản hồi được lưu dài nhất 256 KiB.** Handler của route `idempotent` trả body lớn hơn là lỗi lập trình: rollback, `500`, có ghi log. Không bao giờ "trả lời mà không lưu": lần gửi lại sẽ chạy handler lần thứ hai.
 - `ctx.actionId` là chính khóa đó, viết thường. Body trả lại từ `jsonb` có thể khác thứ tự thuộc tính so với lần đầu; giá trị thì như nhau.
 - Chưa có gì xóa dòng cũ: job dọn dẹp (nhiệm vụ về quyền riêng tư) xóa theo `created_at` sau 7 ngày. Dòng mất theo người dùng (`ON DELETE CASCADE`).
 
-Cổng 1 không đọc thân hai hàm này: bỏ `FOR UPDATE`, hay bỏ điều kiện `user_id`, không làm nó đỏ. `server/src/idempotency.test.ts` giữ chúng.
+Cổng 1 không đọc thân ba hàm này: bỏ điều kiện `user_id`, hay bỏ `status IS NULL`, không làm nó đỏ. `server/src/idempotency.test.ts` giữ chúng.
 
 ### Giới hạn tần suất
 
@@ -499,20 +530,23 @@ Cửa sổ cố định, trong bộ nhớ của tiến trình (một tiến trì
 | Mọi request ghi (không phải `GET`) | 300 / phút | địa chỉ client |
 | Mọi request ghi có phiên | 120 / phút | tài khoản |
 | Route có `rateLimit: { perMinute, perHour }` | như khai báo | tài khoản; địa chỉ client với route `anon` |
+| Phản hồi `401 SESSION_INVALID` trên route cần phiên | 60 / phút | địa chỉ client |
 
 - **Địa chỉ client là địa chỉ của socket. `X-Forwarded-For` không được đọc**: bản triển khai này không có proxy phía trước, nên header đó là thứ client tự viết (có test). Đặt một proxy phía trước thì mọi client sẽ chung một địa chỉ: khi đó phải sửa chỗ này một cách có chủ ý.
-- Giới hạn theo địa chỉ được xét trước mọi việc khác (trước `prepare`, trước cơ sở dữ liệu); giới hạn theo tài khoản được xét ngay sau khi phiên được xác nhận. Request bị từ chối vẫn được đếm.
+- **IPv4 đếm theo đúng địa chỉ; IPv6 đếm theo dải `/64`** (một thuê bao giữ cả một dải `/64`, nên đếm theo từng địa chỉ là không đếm gì). IPv4 đi trong vỏ IPv6 (`::ffff:a.b.c.d`) được coi là IPv4.
+- **Mọi giới hạn theo địa chỉ được xét trước mọi việc khác**: trước khi đọc body, trước `prepare` (một trận lũ ẩn danh không mua được thời gian scrypt; có test về thứ tự), trước cơ sở dữ liệu. Giới hạn theo tài khoản được xét ngay sau khi phiên được xác nhận. Request bị từ chối vẫn được đếm.
+- **Dò phiên.** Mỗi `401` trên route cần phiên được đếm cho địa chỉ đó; tới 60 trong một phút thì các request sau tới route cần phiên nhận `429` **trước khi** cơ sở dữ liệu được hỏi gì (có test đếm số lần mượn kết nối). Cái giá: trong phút đó một phiên thật từ cùng địa chỉ cũng phải chờ. Route `anon` không bị ảnh hưởng.
 - Cửa sổ đã hết được thay khi khóa của nó quay lại, và một lượt quét mỗi phút gỡ cửa sổ của những client không quay lại, nên bảng đếm không lớn mãi. Bộ hẹn giờ của lượt quét không giữ tiến trình sống và mất theo `server.close()`.
-- Chưa làm: với IPv6, mỗi địa chỉ đầy đủ có cửa sổ riêng, nên một client đổi địa chỉ trong cùng dải `/64` lách được giới hạn theo địa chỉ.
+- Cửa sổ cố định cho phép dồn request quanh ranh giới của hai cửa sổ (tới gấp đôi giới hạn trong một khoảng ngắn): đó là bản chất của cách đếm này.
 - `startTestApp` tắt giới hạn trừ khi truyền `rateLimits: true`.
 
 ### Log
 
 Mỗi request một dòng JSON trên stdout: `ts`, `level`, `method`, `route`, `status`, `ms`, `userId`. `route` là **mẫu** của route (`/day/quests/:questCode/progress`), `null` với đường dẫn lạ; đường dẫn thật, query, header và body không bao giờ được ghi. Trạng thái `499` là client đã ngắt trong lúc gửi body.
 
-- Lỗi `500` thêm vào dòng đó mô tả lỗi, chỉ ở phía server. Lỗi của PostgreSQL trích nguyên giá trị sai trong thông báo (`invalid input syntax for type uuid: "…"`) và cả dòng trong `detail`, nên với chúng log chỉ giữ `sqlstate`, tên bảng / cột / ràng buộc / routine và các khung stack; thông báo chỉ được giữ với `P0001` (`RAISE EXCEPTION` do SQL của dự án viết, vốn không chứa giá trị). Lỗi khác được ghi cả stack.
+- Lỗi `500` thêm vào dòng đó mô tả lỗi, chỉ ở phía server: `error` (tên lớp của lỗi), `code` (SQLSTATE hoặc tên errno), với lỗi của PostgreSQL thêm tên bảng / cột / ràng buộc / routine, và `stack` chỉ gồm các khung (`at … file:dòng:cột`). **Thông báo của lỗi không bao giờ được ghi, với mọi loại lỗi**: thông báo trích nguyên dữ liệu đầu vào (`invalid input syntax for type uuid: "…"`, `Invalid time zone specified: …`, câu trả lời của máy chủ thư kèm địa chỉ nhận), và `detail` của PostgreSQL in cả dòng. Thông báo nhiều dòng bị cắt nguyên khối, không cắt theo dòng, nên không dòng nào của nó lọt vào `stack`.
 - `ctx.log.ledger({ kind: 'xp' | 'coin', userId, amount, reason, refId })` ghi `{"evt":"ledger", …}`: route gọi nó cho **mỗi** dòng sổ cái mà một hàm báo về.
-- `ctx.log.line({...})` cho dòng khác. Không bao giờ đưa vào log: body, giá trị query hay đường dẫn, token, bản băm token, email, mật khẩu, nội dung nhật ký, số đo cơ thể, số calo. Có test: token, bản băm của nó và email trong body không xuất hiện ở dòng log nào, kể cả khi request kết thúc bằng `500`.
+- `ctx.log.line({...})` cho dòng khác. Không bao giờ đưa vào log: body, giá trị query hay đường dẫn, token, bản băm token, email, mật khẩu, nội dung nhật ký, số đo cơ thể, số calo. Có test: token, bản băm của nó và email không xuất hiện ở dòng log nào, kể cả khi request kết thúc bằng `500` vì lỗi của cơ sở dữ liệu, của JavaScript hay của mailer.
 
 ### Request Node không đọc được
 
@@ -520,7 +554,7 @@ Khối header (gồm cả URL) quá 16 KiB, giới hạn mặc định của Nod
 
 ### `GET /healthz` và `GET /meta/timezones`
 
-- `healthz` luôn trả `200`: `{ ok, db, jobs }`, `ok` sai đúng khi `db` sai. `db` là kết quả của một transaction thật bằng `app_anon`, nên nó cũng sai khi chuyển vai hỏng. `jobs` rỗng cho tới khi có bộ lập lịch.
+- `healthz` luôn trả `200`, trong 2 giây: `{ ok, db, jobs }`, `ok` sai đúng khi `db` sai. `db` là kết quả của một transaction thật bằng `app_anon`, nên nó cũng sai khi chuyển vai hỏng, khi pool hết kết nối rảnh và khi cơ sở dữ liệu không trả lời kịp. `jobs` rỗng cho tới khi có bộ lập lịch.
 - `meta/timezones` trả các tên có trong bảng `timezones` **mà** `Intl.DateTimeFormat` của Node nhận, đã sắp xếp: đúng những tên `users.timezone` chứa được và hai bên đọc giống nhau. Bảng là lớp `content`, chỉ `app_auth` đọc được, và route thì ẩn danh, nên danh sách được đọc **một lần mỗi tiến trình** bằng một transaction `app_auth` không có người dùng rồi giữ trong bộ nhớ. Sau một lần migrate thêm tên mới, khởi động lại server.
 
 ### Test cho route
@@ -551,6 +585,7 @@ test('GET /me cần một phiên', async () => {
 });
 ```
 
-- `startTestApp(db, { mailer?, rateLimits?, routes? })` chạy app thật trên một cổng trống, qua pool `app_conn` của cơ sở dữ liệu test; `routes` thêm route thăm dò vào các route thật. Luôn `await app.close()` trong `after`.
+- `startTestApp(db, { mailer?, rateLimits?, routes?, journalKey? })` chạy app thật trên một cổng trống, qua pool `app_conn` của cơ sở dữ liệu test; `routes` thêm route thăm dò vào các route thật. Luôn `await app.close()` trong `after`.
+- `db.app` không có giới hạn thời gian nào. Test về giới hạn thời gian hay về kích thước pool dùng `serverPool(db, { lockMs: 300, … })`: một pool tạo bằng chính `createPool` của server, rồi `startTestApp({ ...db, app: pool })`; test tự `pool.end()`.
 - `app.call(method, path, { token?, body?, key?, headers?, rawBody?, signal? })` trả `{ status, body, headers }`. `app.logs` / `app.logText()` là log đã ghi, `app.mail` là thư đã "gửi".
 - `newUser(db)` trả `{ userId, token, email }`: một tài khoản có phiên, **chưa onboarding**, tạo thẳng qua `auth_register` bằng `app_anon`.

@@ -15,9 +15,13 @@ import {
   unstorableQueryParam,
 } from './http.ts';
 import {
+  KeyBusy,
+  MAX_STORED_BYTES,
   beginKey,
   idempotencyKey,
+  releaseKey,
   requestHash,
+  requestHashKey,
   storeKey,
 } from './idempotency.ts';
 import { createLogger, describeError } from './log.ts';
@@ -25,7 +29,10 @@ import type { Logger } from './log.ts';
 import {
   HOUR_MS,
   MINUTE_MS,
+  UNAUTHORIZED_PER_MINUTE,
   WRITES_PER_MINUTE,
+  addressKey,
+  clientAddress,
   createRateLimiter,
 } from './rateLimit.ts';
 import { bearerTokenHash, sessionUser } from './session.ts';
@@ -50,11 +57,18 @@ export type Ctx = {
   actionId: string | null;
   /** SHA-256 of the bearer token (for logout); null on an `anon` route. The token itself is not kept. */
   tokenHash: Buffer | null;
-  /** For work outside the request transaction, through `withRole` of db.ts. */
+  /**
+   * For `prepare` and `direct` only, through `withRole` of db.ts. A handler already holds one
+   * pooled client (`db`) and must never take a second: enough requests doing that leave every
+   * client waiting for one that will not come. In a handler, touching this throws.
+   */
   pool: Pool;
   mailer: Mailer;
   journalKey: Buffer;
-  /** The address of the socket. No proxy is trusted: X-Forwarded-For is never read. */
+  /**
+   * The address of the socket, IPv4 also when it arrives mapped into IPv6. No proxy is trusted:
+   * X-Forwarded-For is never read.
+   */
   ip: string;
   log: Logger;
   /** What the route's `prepare` returned; `undefined` without one. */
@@ -79,20 +93,26 @@ type RouteBase = {
 export type Route =
   | (RouteBase & {
       /**
-       * Runs before the request transaction is opened, while the request holds no pooled client:
-       * the place for slow work (scrypt). The session is not resolved yet. Throw `AppError` to
-       * refuse; use `withRole(pre.pool, …)` for a short transaction of its own.
+       * On an `anon` route only. Runs before the request transaction is opened, while the
+       * request holds no pooled client: the place for slow work (scrypt), and the only place
+       * that may take a pooled client of its own (`withRole(pre.pool, …)`, a short transaction
+       * that is over before the request transaction starts). Throw `AppError` to refuse.
        */
       prepare?: (pre: PreCtx) => Promise<unknown>;
       /**
-       * Runs inside the request transaction: COMMIT when it returns, whatever the status;
-       * ROLLBACK when it throws. Return `errorResponse(code)` when what was written must stay.
+       * Runs inside the request transaction, which is committed when it returns, whatever the
+       * status, and rolled back when it throws. Return `errorResponse(code)` when what was
+       * written must stay. Never catch a database error and carry on: the transaction is lost
+       * by then, and the request ends in 500.
        */
       handler: (ctx: Ctx) => Promise<RouteResponse>;
+      direct?: never;
     })
   | (RouteBase & {
       /** Instead of `handler`, for an `anon` route that needs no request transaction at all. */
       direct: (pre: PreCtx) => Promise<RouteResponse>;
+      handler?: never;
+      prepare?: never;
     });
 
 /** The default-exported `Route[]` of every `*.ts` in `dir` that is not a test, in name order. */
@@ -127,10 +147,11 @@ type Found = { route: Route; params: Record<string, string> };
 function compile(all: Route[]): (method: string, path: string) => Found | null {
   const seen = new Set<string>();
   for (const route of all) {
+    const name = `${route.method} ${route.path}`;
     // two patterns that differ only in the name of a parameter answer the same paths
     const id = `${route.method} ${route.path.replace(/:[^/]+/g, ':')}`;
     if (seen.has(id)) {
-      throw new Error(`duplicate route ${route.method} ${route.path}`);
+      throw new Error(`duplicate route ${name}`);
     }
     seen.add(id);
     if (!route.path.startsWith('/')) {
@@ -138,14 +159,25 @@ function compile(all: Route[]): (method: string, path: string) => Found | null {
     }
     // a key belongs to a user (R-D05), and a stored answer is only ever served to that user
     if (route.idempotent && (route.auth === 'anon' || route.method === 'GET')) {
-      throw new Error(
-        `${route.method} ${route.path}: only a write with a session can be idempotent`,
-      );
+      throw new Error(`${name}: only a write with a session can be idempotent`);
     }
-    if ('direct' in route && route.auth !== 'anon') {
-      throw new Error(
-        `${route.method} ${route.path}: a route without a transaction must be anon`,
-      );
+    // a cast gets past the type, and then one of the two would silently never run
+    const { direct, handler, prepare } = route as Partial<
+      Record<'direct' | 'handler' | 'prepare', unknown>
+    >;
+    if ((direct === undefined) === (handler === undefined)) {
+      throw new Error(`${name}: a route has either a handler or direct`);
+    }
+    if (direct !== undefined && prepare !== undefined) {
+      throw new Error(`${name}: prepare belongs to a handler, not to direct`);
+    }
+    if (direct !== undefined && route.auth !== 'anon') {
+      throw new Error(`${name}: a route without a transaction must be anon`);
+    }
+    // prepare runs before the session is looked up: on any other route it would work for
+    // whoever sends a well-formed token
+    if (prepare !== undefined && route.auth !== 'anon') {
+      throw new Error(`${name}: prepare is for anon routes only`);
     }
   }
   // literal paths first, so that '/guilds/me' is never taken for '/guilds/:id'
@@ -170,17 +202,38 @@ type Out = { status: number; text?: string; headers?: Record<string, string> };
 /** One fixed window to count a request on; no limit, no counting. */
 type Window = [key: string, limit: number | undefined, ms: number];
 
-const out = ({ status, body }: RouteResponse): Out => ({
-  status,
-  text: body === undefined ? undefined : JSON.stringify(body),
-});
+/**
+ * The answer of a route, serialised. A status that is no HTTP status is a bug of the route:
+ * thrown here, inside the transaction when there is one, so that nothing of it is kept.
+ */
+function out({ status, body }: RouteResponse): Out {
+  if (!Number.isInteger(status) || status < 200 || status > 599) {
+    throw new Error('a route answered with a status outside 200-599');
+  }
+  return {
+    status,
+    text: body === undefined ? undefined : JSON.stringify(body),
+  };
+}
 
-const rateLimited = (seconds: number): Out => ({
+const retryAfter = (seconds: number): Out => ({
   ...out(errorResponse('RATE_LIMITED')),
   headers: { 'retry-after': String(seconds) },
 });
 
 const CRLF = String.fromCharCode(13, 10);
+
+/** What a handler finds in `ctx.pool`: a second pooled client per request starves the pool. */
+const noPoolInHandler = new Proxy(
+  {},
+  {
+    get() {
+      throw new Error(
+        'a handler must not use ctx.pool: it already holds a pooled client (ctx.db)',
+      );
+    },
+  },
+) as Pool;
 
 export type AppDeps = {
   pool: Pool;
@@ -200,6 +253,7 @@ export function createApp(deps: AppDeps): Server {
   const log = deps.log ?? createLogger();
   const find = compile(deps.routes ?? routes);
   const limiter = deps.rateLimits ?? true ? createRateLimiter() : null;
+  const hashKey = requestHashKey(journalKey);
 
   /**
    * Counts the request on each window that has a limit: the longest wait in seconds, 0 when
@@ -236,10 +290,10 @@ export function createApp(deps: AppDeps): Server {
     }
 
     // The address of the socket, never X-Forwarded-For: this deployment has no proxy in front,
-    // so that header would be whatever the client wrote.
-    // ponytail: one window per full address; a client that rotates inside an IPv6 /64 gets a
-    // window per address. Key IPv6 by its /64 prefix if that is ever abused.
-    const ip = req.socket.remoteAddress ?? '';
+    // so that header would be whatever the client wrote. Counted per IPv4 address and per
+    // IPv6 /64.
+    const ip = clientAddress(req.socket.remoteAddress);
+    const from = `ip ${addressKey(ip)}`;
     const write = route.method !== 'GET';
     /** The limits of the route itself, counted for `who`. */
     const ownWindows = (who: string): Window[] => [
@@ -254,26 +308,50 @@ export function createApp(deps: AppDeps): Server {
         HOUR_MS,
       ],
     ];
-    const byIp = overLimit([
-      [`ip ${ip}`, write ? WRITES_PER_MINUTE.ip : undefined, MINUTE_MS],
-      ...(route.auth === 'anon' ? ownWindows(`ip ${ip}`) : []),
+    // Everything counted per address is settled here, before the body is read, before prepare
+    // and before the database: a flood from one address buys no work.
+    const byAddress = overLimit([
+      [from, write ? WRITES_PER_MINUTE.ip : undefined, MINUTE_MS],
+      ...(route.auth === 'anon' ? ownWindows(from) : []),
     ]);
-    if (byIp > 0) {
-      return rateLimited(byIp);
+    if (byAddress > 0) {
+      return retryAfter(byAddress);
     }
 
+    // A missing or unknown session is counted per address: looking a token up costs a
+    // transaction, and an address that collected enough refusals is not looked up any more.
+    const unauthorized = (): Out => {
+      limiter?.hit(`401 ${from}`, UNAUTHORIZED_PER_MINUTE, MINUTE_MS);
+      return out(errorResponse('SESSION_INVALID'));
+    };
     // An anon route runs as app_anon whatever the client sent: its Authorization header is
     // not read.
-    const tokenHash =
-      route.auth === 'anon' ? null : bearerTokenHash(req.headers.authorization);
-    if (route.auth !== 'anon' && tokenHash === null) {
-      return out(errorResponse('SESSION_INVALID'));
+    let tokenHash: Buffer | null = null;
+    if (route.auth !== 'anon') {
+      const refused =
+        limiter?.full(`401 ${from}`, UNAUTHORIZED_PER_MINUTE, MINUTE_MS) ?? 0;
+      if (refused > 0) {
+        return retryAfter(refused);
+      }
+      tokenHash = bearerTokenHash(req.headers.authorization);
+      if (tokenHash === null) {
+        return unauthorized();
+      }
     }
-    const actionId = route.idempotent
-      ? idempotencyKey(req.headers['idempotency-key'])
-      : null;
-    if (route.idempotent && actionId === null) {
-      return out(errorResponse('IDEMPOTENCY_KEY_REQUIRED'));
+    let actionId: string | null = null;
+    if (route.idempotent) {
+      const header = req.headers['idempotency-key'];
+      if (header === undefined || header === '') {
+        return out(errorResponse('IDEMPOTENCY_KEY_REQUIRED'));
+      }
+      actionId = idempotencyKey(header);
+      if (actionId === null) {
+        return out(
+          errorResponse('VALIDATION_FAILED', {
+            fields: [{ field: 'Idempotency-Key', rule: 'format' }],
+          }),
+        );
+      }
     }
     const body = write ? await readJsonBody(req) : undefined;
 
@@ -289,10 +367,11 @@ export function createApp(deps: AppDeps): Server {
       ip,
       log,
     };
-    if ('direct' in route) {
+    if (route.direct) {
       return out(await route.direct(pre));
     }
-    // before BEGIN: slow work must never hold a transaction or a pooled client
+    const { handler } = route;
+    // before the transaction opens: slow work must never hold it, or a pooled client
     const prepared = route.prepare ? await route.prepare(pre) : undefined;
 
     // ponytail: one round trip per step (role, session, key, clock): up to eleven for an
@@ -302,7 +381,7 @@ export function createApp(deps: AppDeps): Server {
       if (tokenHash !== null) {
         userId = await sessionUser(db, tokenHash);
         if (userId === null) {
-          return out(errorResponse('SESSION_INVALID'));
+          return unauthorized();
         }
         await setRole(db, 'app_auth', userId);
         seen.userId = userId;
@@ -315,7 +394,7 @@ export function createApp(deps: AppDeps): Server {
           ...ownWindows(`user ${userId}`),
         ]);
         if (byAccount > 0) {
-          return rateLimited(byAccount);
+          return retryAfter(byAccount);
         }
         if (route.auth === 'user') {
           const { rows } = await db.query<{ onboarded: boolean }>(
@@ -330,7 +409,7 @@ export function createApp(deps: AppDeps): Server {
         const key = await beginKey(
           db,
           actionId,
-          requestHash(route.method, req.url ?? '', body),
+          requestHash(hashKey, route.method, req.url ?? '', body),
         );
         if (key.state === 'reused') {
           return out(errorResponse('IDEMPOTENCY_KEY_REUSED'));
@@ -340,12 +419,27 @@ export function createApp(deps: AppDeps): Server {
         }
       }
       const { rows } = await db.query<{ now: Date }>('SELECT app.now() AS now');
-      // serialised here, so that an answer that cannot be sent is not committed either
+      // serialised here, so that an answer that cannot be sent is not kept either
       const answer = out(
-        await route.handler({ ...pre, db, userId, now: rows[0].now, prepared }),
+        await handler({
+          ...pre,
+          pool: noPoolInHandler,
+          db,
+          userId,
+          now: rows[0].now,
+          prepared,
+        }),
       );
-      if (actionId !== null && answer.status >= 200 && answer.status < 300) {
-        await storeKey(db, actionId, answer.status, answer.text);
+      if (actionId !== null) {
+        if (answer.status >= 300) {
+          // only a 2xx is remembered: the key is free again, for the same or a corrected request
+          await releaseKey(db, actionId);
+        } else if (Buffer.byteLength(answer.text ?? '') > MAX_STORED_BYTES) {
+          // answering without storing would let the retry run the handler a second time
+          throw new Error('the answer of an idempotent route is over 256 KiB');
+        } else {
+          await storeKey(db, actionId, answer.status, answer.text);
+        }
       }
       return answer;
     });
@@ -363,15 +457,22 @@ export function createApp(deps: AppDeps): Server {
     /** null: the client went away while sending; nobody is left to read an answer. */
     let answer: Out | null;
     let bug: unknown;
+    let note: string | undefined;
     try {
       answer = await respond(req, seen);
     } catch (thrown) {
       const refusal = refusalOf(thrown);
       if (thrown instanceof ClientGone) {
         answer = null;
+      } else if (thrown instanceof KeyBusy) {
+        // The contract has no code for "this very request is still running". 429 is the one
+        // a client keeps the action for and sends again; by then the first answer is stored.
+        answer = retryAfter(1);
+        note = 'idempotency key in use';
       } else if (refusal !== null) {
         answer = out(refusal);
       } else {
+        // also every database timeout: statement, lock, a lost connection, no free client
         bug = thrown;
         answer = out(errorResponse('INTERNAL'));
       }
@@ -379,10 +480,15 @@ export function createApp(deps: AppDeps): Server {
     if (answer === null) {
       res.destroy();
     } else {
-      // after a body that was not read to its end the connection cannot carry another request
-      const close: Record<string, string> =
-        answer.status === 413 ? { connection: 'close' } : {};
-      send(res, answer.status, answer.text, { ...answer.headers, ...close });
+      // Answered before the body was read to its end (404, 401, 413, a GET with a body ...):
+      // what the client still sends is not read. With "Connection: close" Node destroys the
+      // socket as soon as the answer is flushed; left alone, it would read the rest for the
+      // sake of the next request on that connection, however long the rest is.
+      const unread = !req.complete;
+      send(res, answer.status, answer.text, {
+        ...answer.headers,
+        ...(unread ? { connection: 'close' } : {}),
+      });
     }
     // The route pattern, never the path: a path and a query hold values.
     log.line({
@@ -392,6 +498,7 @@ export function createApp(deps: AppDeps): Server {
       status: answer?.status ?? 499, // 499: client closed the request
       ms: Math.round(performance.now() - started),
       userId: seen.userId,
+      ...(note === undefined ? {} : { note }),
       ...(bug === undefined ? {} : describeError(bug)),
     });
   }

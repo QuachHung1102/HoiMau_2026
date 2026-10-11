@@ -32,33 +32,51 @@ export function createLogger(
   };
 }
 
+const LF = String.fromCharCode(10);
+const CODE = /^[A-Za-z0-9_]{1,40}$/;
+
 /**
- * What the log keeps of a thrown value. A PostgreSQL error quotes the offending value in its
- * message (`invalid input syntax for type uuid: "…"`) and the whole row in its detail, so only
- * its identifiers are kept, plus the message of a plain RAISE EXCEPTION (P0001), which is text
- * our own SQL wrote and which never holds a value. Any other error is logged with its stack.
+ * The frames of a stack, without its first part: a stack starts with the name and the MESSAGE
+ * of the error, and a message can run over several lines, so it is cut off as a whole, not line
+ * by line. Empty when the message cannot be found in the stack.
+ */
+function frames(error: Error): string {
+  const stack = typeof error.stack === 'string' ? error.stack : '';
+  const message = String(error.message);
+  const at = message === '' ? stack.indexOf(LF) : stack.indexOf(message);
+  if (at < 0) {
+    return '';
+  }
+  return stack
+    .slice(at + message.length)
+    .split(LF)
+    .filter(row => row.startsWith('    at '))
+    .join(LF);
+}
+
+/**
+ * What the log keeps of a thrown value: the name of its class, its code (a SQLSTATE or an errno
+ * name), the catalog names a database error carries, and the frames of its stack. Never its
+ * message and never its detail: messages quote input (`invalid input syntax for type uuid:
+ * "…"`, `Invalid time zone specified: …`, the answer of a mail server), and a constraint
+ * violation prints the whole row.
  */
 export function describeError(thrown: unknown): Record<string, unknown> {
   if (!(thrown instanceof Error)) {
     return { error: typeof thrown };
   }
-  const frames = (thrown.stack ?? '')
-    .split('\n')
-    .filter(row => row.startsWith('    at '))
-    .join('\n');
-  const pg = thrown as Error & Record<string, unknown>;
-  if (typeof pg.severity !== 'string') {
-    return { error: thrown.name, stack: thrown.stack };
-  }
+  const { code, schema, table, column, constraint, routine } = thrown as Error &
+    Record<string, unknown>;
+  const name = (value: unknown) =>
+    typeof value === 'string' && CODE.test(value) ? value : undefined;
   return {
-    error: 'PostgresError',
-    sqlstate: pg.code,
-    ...(pg.code === 'P0001' ? { message: thrown.message } : {}),
-    schema: pg.schema,
-    table: pg.table,
-    column: pg.column,
-    constraint: pg.constraint,
-    routine: pg.routine,
-    stack: frames,
+    error: name(thrown.constructor?.name) ?? 'Error',
+    code: name(code),
+    schema: name(schema),
+    table: name(table),
+    column: name(column),
+    constraint: name(constraint),
+    routine: name(routine),
+    stack: frames(thrown),
   };
 }

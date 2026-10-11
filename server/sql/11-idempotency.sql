@@ -1,12 +1,17 @@
 -- Idempotent writes: one row per (user, Idempotency-Key). Re-runnable.
 --
 -- A stored response may carry personal data, so no request role reads the table: the HTTP layer
--- reaches it only through the two functions below, which take the user from
+-- reaches it only through the three functions below, which take the user from
 -- app.current_user_id(). A key therefore names a row of the caller only: somebody else's key is
 -- simply a new key.
 --
--- status is null while the request that claimed the key is running, and stays null when it ended
--- without a 2xx answer: only 2xx answers are stored and replayed.
+-- One key = one user action, and only a 2xx answer is remembered. A row without a status exists
+-- only inside the transaction of the request that claimed the key: that request either stores
+-- its 2xx answer, or gives the key back (any other answer), or rolls back. No committed row is
+-- ever without a status, which is why a reader needs no lock of its own.
+--
+-- request_hash is a keyed hash made by the server (HMAC): a request body can hold a password,
+-- and a plain hash of it would be a fast oracle for whoever reads this table.
 
 CREATE TABLE IF NOT EXISTS idempotency_keys (
   user_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
@@ -23,13 +28,15 @@ ALTER TABLE idempotency_keys ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON idempotency_keys FROM PUBLIC, app_anon, app_auth, app_job;
 SELECT meta.expect_table('idempotency_keys', 'internal', '{}', '{}', NULL);
 
--- Claims p_key for the caller and returns the state of the row, locked until the end of the
--- transaction. A second request with the same key waits here until the first one commits or
--- rolls back, and then reads what the first one left: that is what makes two requests sent at
--- the same moment run the handler once.
+-- Claims p_key for the caller and returns the state of its row. A second request with the same
+-- key waits in the INSERT until the first one commits or rolls back (for at most lock_timeout:
+-- then it fails with 55P03 and the server tells the client to retry), and then reads what the
+-- first one left: that is what makes two requests sent at the same moment run the handler once.
 --   same_request false              -> the key belongs to another request of this user
---   same_request true, status null  -> run the request, then call idempotency_store
+--   same_request true, status null  -> the caller holds the key: run the request, then call
+--                                      idempotency_store or idempotency_release
 --   same_request true, status set   -> answer with status and response, run nothing
+--   no row                          -> the stored row was deleted meanwhile: retry
 CREATE OR REPLACE FUNCTION idempotency_begin(p_key uuid, p_request_hash bytea)
 RETURNS TABLE (same_request boolean, status int, response jsonb)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
@@ -46,8 +53,7 @@ BEGIN
   RETURN QUERY
     SELECT k.request_hash = p_request_hash, k.status, k.response
       FROM idempotency_keys k
-     WHERE k.user_id = v_user AND k.key = p_key
-       FOR UPDATE;
+     WHERE k.user_id = v_user AND k.key = p_key;
 END $$;
 
 -- Stores the 2xx answer of the request that holds p_key. Never replaces a stored answer.
@@ -62,10 +68,23 @@ BEGIN
   END IF;
 END $$;
 
-REVOKE ALL ON FUNCTION idempotency_begin(uuid, bytea), idempotency_store(uuid, int, jsonb)
+-- Gives p_key back when the request that holds it ends without a 2xx answer: the next request
+-- with this key starts from nothing, with the same or with a corrected body. Never removes a
+-- stored answer.
+CREATE OR REPLACE FUNCTION idempotency_release(p_key uuid) RETURNS void
+LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp
+AS $$
+  DELETE FROM idempotency_keys k
+   WHERE k.user_id = app.current_user_id() AND k.key = p_key AND k.status IS NULL
+$$;
+
+REVOKE ALL ON FUNCTION
+  idempotency_begin(uuid, bytea), idempotency_store(uuid, int, jsonb), idempotency_release(uuid)
   FROM PUBLIC, app_anon, app_auth, app_job;
-GRANT EXECUTE ON FUNCTION idempotency_begin(uuid, bytea), idempotency_store(uuid, int, jsonb)
+GRANT EXECUTE ON FUNCTION
+  idempotency_begin(uuid, bytea), idempotency_store(uuid, int, jsonb), idempotency_release(uuid)
   TO app_auth;
 
 SELECT meta.expect_function('idempotency_begin(uuid, bytea)', '{app_auth}');
 SELECT meta.expect_function('idempotency_store(uuid, int, jsonb)', '{app_auth}');
+SELECT meta.expect_function('idempotency_release(uuid)', '{app_auth}');

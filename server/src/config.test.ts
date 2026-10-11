@@ -8,12 +8,28 @@ const DATABASE_URL = `postgres://app_conn:${PASSWORD}@127.0.0.1:54330/hoimau`;
 const key = randomBytes(32);
 const JOURNAL_KEY = key.toString('base64');
 
-test('a complete environment is read; PORT defaults to 8787', () => {
+test('a complete environment is read; HOST defaults to this machine only, PORT to 8787', () => {
   assert.deepEqual(loadConfig({ DATABASE_URL, JOURNAL_KEY }), {
     databaseUrl: DATABASE_URL,
     journalKey: key,
+    host: '127.0.0.1',
     port: 8787,
   });
+  // an empty value is "not set", never "every interface"
+  assert.equal(
+    loadConfig({ DATABASE_URL, JOURNAL_KEY, HOST: '' }).host,
+    '127.0.0.1',
+  );
+  for (const HOST of ['0.0.0.0', '::', '192.0.2.10', 'api.example.org']) {
+    assert.equal(loadConfig({ DATABASE_URL, JOURNAL_KEY, HOST }).host, HOST);
+  }
+  for (const HOST of ['0.0.0.0 ', 'a b', 'http://x', 'x/y']) {
+    assert.throws(
+      () => loadConfig({ DATABASE_URL, JOURNAL_KEY, HOST }),
+      /HOST is not an address or a host name/,
+      HOST,
+    );
+  }
   assert.equal(
     loadConfig({ DATABASE_URL, JOURNAL_KEY, PORT: '9000' }).port,
     9000,

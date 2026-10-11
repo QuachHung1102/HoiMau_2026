@@ -3,15 +3,37 @@
 import { randomBytes } from 'node:crypto';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import type { Pool } from 'pg';
+import { APP_CONN, TEST } from '../scripts/cluster.ts';
 import { createApp, routes as realRoutes } from '../src/app.ts';
 import type { Mailer, Route } from '../src/app.ts';
-import { withRole } from '../src/db.ts';
+import { POOL_DEFAULTS, createPool, withRole } from '../src/db.ts';
+import type { PoolOptions } from '../src/db.ts';
 import { BASE_PATH } from '../src/http.ts';
 import { createLogger } from '../src/log.ts';
 import { hashToken, newToken } from '../src/session.ts';
 import type { TestDb } from './testdb.ts';
 
 type Mail = Parameters<Mailer>[0];
+
+/** The journal key of every test app, unless a test passes its own. */
+export const TEST_JOURNAL_KEY = Buffer.alloc(32, 1);
+
+/**
+ * A pool on the test database made exactly as the server makes its own (`createPool`: the
+ * time-outs of production unless overridden), for tests about time-outs and pool size. The
+ * caller ends it. `db.app` has no time-outs.
+ */
+export function serverPool(
+  db: TestDb,
+  options: Partial<PoolOptions> = {},
+): Pool {
+  return createPool(
+    `postgres://${APP_CONN.user}:${APP_CONN.password}@127.0.0.1:${TEST.port}/${db.name}`,
+    () => {},
+    { ...POOL_DEFAULTS, ...options },
+  );
+}
 
 export type CallOptions = {
   /** Sent as `Authorization: Bearer <token>`. */
@@ -59,7 +81,12 @@ export type TestApp = {
  */
 export async function startTestApp(
   db: TestDb,
-  opts: { mailer?: Mailer; rateLimits?: boolean; routes?: Route[] } = {},
+  opts: {
+    mailer?: Mailer;
+    rateLimits?: boolean;
+    routes?: Route[];
+    journalKey?: Buffer;
+  } = {},
 ): Promise<TestApp> {
   const mail: Mail[] = [];
   const lines: string[] = [];
@@ -70,7 +97,7 @@ export async function startTestApp(
       (async message => {
         mail.push(message);
       }),
-    journalKey: Buffer.alloc(32, 1),
+    journalKey: opts.journalKey ?? TEST_JOURNAL_KEY,
     rateLimits: opts.rateLimits ?? false,
     routes: [...realRoutes, ...(opts.routes ?? [])],
     log: createLogger(line => lines.push(line)),

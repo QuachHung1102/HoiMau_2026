@@ -39,12 +39,20 @@ function readBytes(req: IncomingMessage): Promise<Buffer> {
   });
 }
 
-/** True for a string or member name holding U+0000 anywhere in `value`, or nesting beyond the limit. */
+/**
+ * False for text PostgreSQL would refuse: U+0000, or a surrogate without its pair (JSON can
+ * spell one as an escape; jsonb answers it with 22P02).
+ */
+const storableText = (text: string): boolean =>
+  !text.includes(NUL) &&
+  (text as unknown as { isWellFormed(): boolean }).isWellFormed();
+
+/** True for a string or member name that cannot be stored anywhere in `value`, or nesting beyond the limit. */
 function unstorable(value: unknown): boolean {
   const pending: { value: unknown; depth: number }[] = [{ value, depth: 0 }];
   for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
     if (typeof next.value === 'string') {
-      if (next.value.includes(NUL)) {
+      if (!storableText(next.value)) {
         return true;
       }
     } else if (next.value !== null && typeof next.value === 'object') {
@@ -52,7 +60,7 @@ function unstorable(value: unknown): boolean {
         return true;
       }
       for (const [name, member] of Object.entries(next.value)) {
-        if (name.includes(NUL)) {
+        if (!storableText(name)) {
           return true;
         }
         pending.push({ value: member, depth: next.depth + 1 });
@@ -65,7 +73,8 @@ function unstorable(value: unknown): boolean {
 /**
  * The JSON body of a request, `undefined` when it has none. Throws PAYLOAD_TOO_LARGE over
  * 64 KiB, and BAD_JSON for a body that is not declared `application/json`, is not UTF-8 JSON,
- * holds U+0000 in a string or is nested deeper than 32 levels.
+ * holds U+0000 or a lone surrogate in a string or a member name, or is nested deeper than 32
+ * levels.
  */
 export async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   const bytes = await readBytes(req);

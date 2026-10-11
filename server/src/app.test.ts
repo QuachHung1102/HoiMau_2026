@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import type { AddressInfo, Socket } from 'node:net';
 import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -158,12 +158,85 @@ const probes: Route[] = [
     },
   },
   {
-    // a statement outside the request transaction runs as plain app_conn
+    // a statement outside a transaction runs as plain app_conn
     method: 'GET',
     path: '/probe/outside',
     auth: 'anon',
+    prepare: async pre => {
+      await pre.pool.query('SELECT app.now()');
+    },
+    handler: async () => ({ status: 200 }),
+  },
+  {
+    // a handler reaching for a second pooled client
+    method: 'GET',
+    path: '/probe/handler-pool',
+    auth: 'anon',
     handler: async ctx => {
-      await ctx.pool.query('SELECT app.now()');
+      await ctx.pool.query('SELECT 1');
+      return { status: 200 };
+    },
+  },
+  {
+    // writes, runs a statement that fails, swallows the error and reports success
+    method: 'POST',
+    path: '/probe/swallow',
+    auth: 'anon',
+    handler: async ctx => {
+      await hit(ctx, bodyOf(ctx).name);
+      await ctx.db.query('SELECT 1 / 0').catch(() => {});
+      return { status: 200, body: { saved: true } };
+    },
+  },
+  {
+    // the same with a counted failure that is returned: the count would be lost in silence
+    method: 'POST',
+    path: '/probe/swallow-login',
+    auth: 'anon',
+    handler: async ctx => {
+      await ctx.db.query('SELECT auth_login($1, $2, $3)', [
+        bodyOf(ctx).email,
+        randomBytes(32),
+        randomBytes(32),
+      ]);
+      await ctx.db.query('SELECT 1 / 0').catch(() => {});
+      return errorResponse('INVALID_CREDENTIALS');
+    },
+  },
+  {
+    // answers with whatever status the body names
+    method: 'POST',
+    path: '/probe/status',
+    auth: 'anon',
+    handler: async ctx => {
+      const { name, status } = (ctx.body ?? {}) as {
+        name: string;
+        status: unknown;
+      };
+      await hit(ctx, name);
+      return { status: status as number, body: {} };
+    },
+  },
+  {
+    // errors that are not database errors, with input of the request in their message
+    method: 'POST',
+    path: '/probe/throw',
+    auth: 'session',
+    handler: async ctx => {
+      const { kind, email, secret } = bodyOf(ctx);
+      if (kind === 'zone') {
+        new Intl.DateTimeFormat('en', { timeZone: email }).format(0);
+      } else if (kind === 'bigint') {
+        BigInt(email);
+      } else if (kind === 'mail') {
+        await ctx.mailer({ to: email, subject: 's', text: 't' });
+      } else {
+        // a message of several lines, the later ones dressed up as stack frames
+        const lf = String.fromCharCode(10);
+        throw new Error(
+          `first line${lf}    at ${secret} (${email}:1:1)${lf}    at ${email}`,
+        );
+      }
       return { status: 200 };
     },
   },
@@ -181,7 +254,7 @@ const probes: Route[] = [
   {
     method: 'POST',
     path: '/probe/prepare',
-    auth: 'session',
+    auth: 'anon',
     prepare: async pre => {
       const body = (pre.body ?? {}) as { refuse?: boolean };
       if (body.refuse) {
@@ -355,6 +428,46 @@ test('a route table that cannot be served as declared is refused at startup', as
         ],
       }),
     /a route without a transaction must be anon/,
+  );
+  // prepare runs before the session is known: only an anon route may have one
+  for (const auth of ['session', 'user'] as const) {
+    assert.throws(
+      () =>
+        createApp({
+          ...deps,
+          routes: [route({ auth, prepare: async () => {} })],
+        }),
+      /^Error: POST \/x: prepare is for anon routes only$/,
+    );
+  }
+  createApp({
+    ...deps,
+    routes: [route({ auth: 'anon', prepare: async () => {} })],
+  });
+  // handler and direct exclude each other; tsc says so too, a cast gets past it
+  const direct = async () => ({ status: 200 });
+  const anonymous = { method: 'GET', path: '/x', auth: 'anon' };
+  assert.throws(
+    () =>
+      createApp({
+        ...deps,
+        routes: [{ ...anonymous, direct, handler: seen } as unknown as Route],
+      }),
+    /^Error: GET \/x: a route has either a handler or direct$/,
+  );
+  assert.throws(
+    () => createApp({ ...deps, routes: [anonymous as unknown as Route] }),
+    /^Error: GET \/x: a route has either a handler or direct$/,
+  );
+  assert.throws(
+    () =>
+      createApp({
+        ...deps,
+        routes: [
+          { ...anonymous, direct, prepare: async () => {} } as unknown as Route,
+        ],
+      }),
+    /^Error: GET \/x: prepare belongs to a handler, not to direct$/,
   );
 });
 
@@ -604,18 +717,36 @@ test('a user id left on the connection never becomes the identity of a request',
     assert.equal(anonymous.body.uid, null);
     const own = await single.call('GET', '/probe/session', { token });
     assert.equal(own.body.uid, userId);
+    // and a connection found with a user id on it does not go back to the pool: the second
+    // request ran on a new one, which is clean
+    assert.notEqual(own.body.pid, anonymous.body.pid);
+    const { rows: now } = await pool.query(
+      "SELECT coalesce(current_setting('app.user_id', true), '') AS uid, pg_backend_pid() AS pid",
+    );
+    assert.deepEqual(now[0], { uid: '', pid: own.body.pid });
   } finally {
     await single.close();
     await pool.end();
   }
 });
 
-test('a statement outside the request transaction runs as plain app_conn and is refused', async () => {
+test('a statement outside a transaction runs as plain app_conn and is refused', async () => {
   const result = await app.call('GET', '/probe/outside');
   assert.equal(result.status, 500);
   const line = requestLines().at(-1);
   assert.equal(line?.route, '/probe/outside');
-  assert.equal(line?.sqlstate, '42501');
+  assert.equal(line?.code, '42501');
+});
+
+test('a handler cannot take a second pooled client: ctx.pool throws there', async () => {
+  const checkedOut = () => db.app.totalCount - db.app.idleCount;
+  const result = await app.call('GET', '/probe/handler-pool');
+  assert.equal(result.status, 500);
+  const line = requestLines().at(-1);
+  assert.equal(line?.route, '/probe/handler-pool');
+  assert.equal(line?.error, 'Error');
+  assert.equal(line?.code, undefined); // not an answer of the database: the guard itself
+  assert.equal(checkedOut(), 0);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -717,8 +848,61 @@ test('any other failure is 500 INTERNAL with nothing of it in the response', asy
   });
   const line = requestLines().at(-1);
   assert.equal(line?.level, 'error');
-  assert.equal(line?.sqlstate, '22012');
-  assert.match(String(line?.stack), /app\.test\.ts/); // the stack stays on the server
+  assert.equal(line?.error, 'DatabaseError');
+  assert.equal(line?.code, '22012');
+  assert.ok(String(line?.stack).includes('app.test.ts')); // the stack stays on the server
+});
+
+test('a handler that swallows a database error and returns is not answered as a success', async () => {
+  // PostgreSQL answers the COMMIT of a failed transaction with ROLLBACK
+  const name = randomUUID();
+  const swallowed = await app.call('POST', '/probe/swallow', {
+    body: { name },
+  });
+  assert.equal(swallowed.status, 500);
+  assert.equal(errorCode(swallowed), 'INTERNAL');
+  assert.equal(await hits(name), 0);
+  const line = requestLines().at(-1);
+  assert.equal(line?.level, 'error');
+  assert.equal(line?.route, '/probe/swallow');
+
+  // a returned error that counts on being committed: the count is gone, and the answer says so
+  const email = `${randomUUID()}@example.com`;
+  const counted = await app.call('POST', '/probe/swallow-login', {
+    body: { email },
+  });
+  assert.equal(counted.status, 500);
+  assert.equal(errorCode(counted), 'INTERNAL');
+  const { rows } = await db.admin.query(
+    'SELECT count FROM auth_throttle WHERE key = $1',
+    [`login:${email}`],
+  );
+  assert.deepEqual(rows, []);
+  // the connections are fine afterwards
+  assert.equal((await app.call('GET', '/probe/anon')).status, 200);
+  assert.equal(db.app.totalCount - db.app.idleCount, 0);
+});
+
+test('a status that is no HTTP status is a bug of the route: rolled back, 500, logged', async () => {
+  for (const status of [99, 199, 600, 200.5, '200', null, -1]) {
+    const name = randomUUID();
+    const result = await app.call('POST', '/probe/status', {
+      body: { name, status },
+    });
+    assert.equal(result.status, 500, String(status));
+    assert.equal(errorCode(result), 'INTERNAL');
+    assert.equal(await hits(name), 0, String(status));
+    const line = requestLines().at(-1);
+    assert.equal(line?.level, 'error');
+    assert.equal(line?.status, 500);
+  }
+  // the control: the probe does commit with a real status
+  const name = randomUUID();
+  const fine = await app.call('POST', '/probe/status', {
+    body: { name, status: 418 },
+  });
+  assert.equal(fine.status, 418);
+  assert.equal(await hits(name), 1);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -759,6 +943,19 @@ test('a body must be declared JSON and be JSON: otherwise 400 BAD_JSON', async (
     [
       'U+0000 in a member name',
       { rawBody: `{"a${NUL_ESCAPE}":1}`, headers: json },
+    ],
+    // half of a surrogate pair: JSON may spell it, jsonb cannot store it
+    [
+      'a lone high surrogate',
+      { rawBody: `{"a":"x${BACKSLASH}ud83dy"}`, headers: json },
+    ],
+    [
+      'a lone low surrogate, nested',
+      { rawBody: `[[{"a":"${BACKSLASH}ude00"}]]`, headers: json },
+    ],
+    [
+      'a lone surrogate in a member name',
+      { rawBody: `{"${BACKSLASH}ud800":1}`, headers: json },
     ],
     [
       'nested 33 deep',
@@ -945,12 +1142,11 @@ test('a client that goes away while sending its body takes no pooled client and 
 // prepare: work before the transaction
 
 test('prepare runs before the transaction, with no pooled client held, and hands its result on', async () => {
-  const { token, userId } = await newUser(db);
   await app.call('GET', '/probe/anon'); // the pool is not empty, so "nothing out" is not vacuous
   assert.ok(db.app.totalCount > 0);
   prepareSaw.length = 0;
 
-  const result = await app.call('POST', '/probe/prepare', { token, body: {} });
+  const result = await app.call('POST', '/probe/prepare', { body: {} });
   assert.equal(result.status, 200);
   assert.deepEqual(prepareSaw, [{ checkedOut: 0, waiting: 0 }]);
   assert.deepEqual(result.body.prepared, {
@@ -969,12 +1165,11 @@ test('prepare runs before the transaction, with no pooled client held, and hands
       'tokenHash',
     ],
   });
-  assert.equal(result.body.uid, userId);
+  assert.equal(result.body.role, 'app_anon');
 
-  // a refusal thrown by prepare is answered without the handler
+  // a refusal thrown by prepare is answered without the handler, and without a transaction
   const runs = handlerRuns;
   const refused = await app.call('POST', '/probe/prepare', {
-    token,
     body: { refuse: true },
   });
   assert.equal(refused.status, 422);
@@ -982,13 +1177,6 @@ test('prepare runs before the transaction, with no pooled client held, and hands
     fields: [{ field: 'refuse', rule: 'enum' }],
   });
   assert.equal(handlerRuns, runs);
-  // and a request without a session does not get as far as prepare
-  prepareSaw.length = 0;
-  assert.equal(
-    (await app.call('POST', '/probe/prepare', { body: {} })).status,
-    401,
-  );
-  assert.deepEqual(prepareSaw, []);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -1064,7 +1252,7 @@ test('no token, token hash or email reaches the log, on a 500 and on a 401 eithe
   assert.ok(!JSON.stringify(crash.body).includes(email));
   const line = requestLines().at(-1);
   assert.equal(line?.level, 'error');
-  assert.equal(line?.sqlstate, '22P02');
+  assert.equal(line?.code, '22P02');
   assert.equal(line?.message, undefined);
 
   await app.call('GET', '/probe/session', { token: stranger });
@@ -1086,4 +1274,142 @@ test('no token, token hash or email reaches the log, on a 500 and on a 401 eithe
   ]) {
     assert.ok(!text.includes(value), what);
   }
+});
+
+test('the message of an error that is not a database error is not logged either', async () => {
+  const { token, email } = await newUser(db);
+  const secret = newToken();
+  // a mail server answers with the address it refused
+  const rejecting = await startTestApp(db, {
+    routes: probes,
+    mailer: async message => {
+      throw new Error(`550 5.1.1 <${message.to}>: Recipient address rejected`);
+    },
+  });
+  try {
+    // the control: each of these errors really carries the address in its message
+    assert.throws(
+      () => new Intl.DateTimeFormat('en', { timeZone: email }),
+      (e: Error) => e instanceof RangeError && e.message.includes(email),
+    );
+    assert.throws(
+      () => BigInt(email),
+      (e: Error) => e instanceof SyntaxError && e.message.includes(email),
+    );
+
+    const expected: Record<string, string> = {
+      zone: 'RangeError',
+      bigint: 'SyntaxError',
+      mail: 'Error',
+      lines: 'Error',
+    };
+    for (const [kind, error] of Object.entries(expected)) {
+      const result = await rejecting.call('POST', '/probe/throw', {
+        token,
+        body: { kind, email, secret },
+      });
+      assert.equal(result.status, 500, kind);
+      assert.ok(!JSON.stringify(result.body).includes(email), kind);
+      const line = rejecting.logs.at(-1);
+      assert.equal(line?.level, 'error', kind);
+      assert.equal(line?.error, error, kind);
+      assert.equal(line?.message, undefined, kind);
+      // what is kept of the stack: where it was thrown, every row a frame
+      const rows = String(line?.stack).split(String.fromCharCode(10));
+      assert.ok(
+        rows.some(row => row.includes('app.test.ts')),
+        kind,
+      );
+      assert.ok(
+        rows.every(row => row.startsWith('    at ')),
+        kind,
+      );
+    }
+    const text = rejecting.logText();
+    assert.ok(!text.includes(email));
+    assert.ok(!text.includes(secret));
+    assert.ok(!text.includes('Recipient'));
+    assert.ok(!text.includes('first line'));
+  } finally {
+    await rejecting.close();
+  }
+});
+
+test('a body the server does not read is not swallowed: the answer closes the connection', async () => {
+  const { port } = app.server.address() as AddressInfo;
+  const { token } = await newUser(db);
+  const crlf = String.fromCharCode(13, 10);
+  const megabyte = Buffer.alloc(1024 * 1024, 'x');
+  const announced = 20 * megabyte.length;
+
+  for (const [why, requestLine, extra, status] of [
+    ['an unknown route', 'POST /api/v1/nowhere HTTP/1.1', [], 404],
+    ['no session', 'POST /api/v1/probe/crash HTTP/1.1', [], 401],
+    [
+      'a GET, which has no body to read',
+      'GET /api/v1/probe/session HTTP/1.1',
+      [`authorization: Bearer ${token}`],
+      200,
+    ],
+    ['over the limit', 'POST /api/v1/probe/echo HTTP/1.1', [], 413],
+  ] as const) {
+    // the server's end of the next connection
+    const accepted = new Promise<Socket>(resolve =>
+      app.server.once('connection', resolve),
+    );
+    const answer = await new Promise<string>((resolve, reject) => {
+      const socket = connect(port, '127.0.0.1');
+      let received = '';
+      let sent = 0;
+      const more = () => {
+        // keep sending for as long as the server takes it, up to what was announced
+        while (sent < announced) {
+          sent += megabyte.length;
+          if (!socket.write(megabyte)) {
+            break;
+          }
+        }
+      };
+      socket.on('drain', more);
+      socket.on('data', chunk => {
+        received += chunk;
+        more();
+      });
+      socket.on('error', () => {}); // a reset is one way the server may say "enough"
+      socket.on('close', () => resolve(received));
+      setTimeout(() => reject(new Error(`${why}: still open`)), 5000).unref();
+      socket.write(
+        [
+          requestLine,
+          'host: x',
+          'content-type: application/json',
+          `content-length: ${announced}`,
+          ...extra,
+          '',
+          '',
+        ].join(crlf),
+      );
+    });
+    const server = await accepted;
+    assert.ok(answer.startsWith(`HTTP/1.1 ${status} `), `${why}: ${answer}`);
+    assert.ok(answer.toLowerCase().includes('connection: close'), why);
+    assert.ok(server.destroyed, why);
+    // 20 MB were announced and on offer; the server took a small part of them
+    assert.ok(
+      server.bytesRead < 4 * megabyte.length,
+      `${why}: read ${server.bytesRead} bytes`,
+    );
+  }
+  // a request whose body was read, or that has none, keeps its connection
+  const kept = await fetch(`${app.baseUrl}/probe/echo`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"a":1}',
+  });
+  assert.notEqual(kept.headers.get('connection'), 'close');
+  await kept.arrayBuffer();
+  const bodyless = await fetch(`${app.baseUrl}/nowhere`);
+  assert.equal(bodyless.status, 404);
+  assert.notEqual(bodyless.headers.get('connection'), 'close');
+  await bodyless.arrayBuffer();
 });
