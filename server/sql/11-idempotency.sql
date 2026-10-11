@@ -1,0 +1,71 @@
+-- Idempotent writes: one row per (user, Idempotency-Key). Re-runnable.
+--
+-- A stored response may carry personal data, so no request role reads the table: the HTTP layer
+-- reaches it only through the two functions below, which take the user from
+-- app.current_user_id(). A key therefore names a row of the caller only: somebody else's key is
+-- simply a new key.
+--
+-- status is null while the request that claimed the key is running, and stays null when it ended
+-- without a 2xx answer: only 2xx answers are stored and replayed.
+
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+  user_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  key uuid NOT NULL,
+  request_hash bytea NOT NULL CHECK (octet_length(request_hash) = 32),
+  status int CHECK (status BETWEEN 200 AND 299),
+  response jsonb,
+  -- the purge job deletes by this
+  created_at timestamptz NOT NULL DEFAULT app.now(),
+  PRIMARY KEY (user_id, key)
+);
+
+ALTER TABLE idempotency_keys ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON idempotency_keys FROM PUBLIC, app_anon, app_auth, app_job;
+SELECT meta.expect_table('idempotency_keys', 'internal', '{}', '{}', NULL);
+
+-- Claims p_key for the caller and returns the state of the row, locked until the end of the
+-- transaction. A second request with the same key waits here until the first one commits or
+-- rolls back, and then reads what the first one left: that is what makes two requests sent at
+-- the same moment run the handler once.
+--   same_request false              -> the key belongs to another request of this user
+--   same_request true, status null  -> run the request, then call idempotency_store
+--   same_request true, status set   -> answer with status and response, run nothing
+CREATE OR REPLACE FUNCTION idempotency_begin(p_key uuid, p_request_hash bytea)
+RETURNS TABLE (same_request boolean, status int, response jsonb)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_user uuid := app.current_user_id();
+BEGIN
+  IF v_user IS NULL OR p_key IS NULL OR octet_length(p_request_hash) IS DISTINCT FROM 32 THEN
+    RAISE EXCEPTION 'idempotency_begin: needs a user, a key and a 32-byte request hash';
+  END IF;
+  INSERT INTO idempotency_keys (user_id, key, request_hash)
+  VALUES (v_user, p_key, p_request_hash)
+  ON CONFLICT (user_id, key) DO NOTHING;
+  RETURN QUERY
+    SELECT k.request_hash = p_request_hash, k.status, k.response
+      FROM idempotency_keys k
+     WHERE k.user_id = v_user AND k.key = p_key
+       FOR UPDATE;
+END $$;
+
+-- Stores the 2xx answer of the request that holds p_key. Never replaces a stored answer.
+CREATE OR REPLACE FUNCTION idempotency_store(p_key uuid, p_status int, p_response jsonb) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $$
+BEGIN
+  UPDATE idempotency_keys k SET status = p_status, response = p_response
+   WHERE k.user_id = app.current_user_id() AND k.key = p_key AND k.status IS NULL;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'idempotency_store: the caller holds no open key';
+  END IF;
+END $$;
+
+REVOKE ALL ON FUNCTION idempotency_begin(uuid, bytea), idempotency_store(uuid, int, jsonb)
+  FROM PUBLIC, app_anon, app_auth, app_job;
+GRANT EXECUTE ON FUNCTION idempotency_begin(uuid, bytea), idempotency_store(uuid, int, jsonb)
+  TO app_auth;
+
+SELECT meta.expect_function('idempotency_begin(uuid, bytea)', '{app_auth}');
+SELECT meta.expect_function('idempotency_store(uuid, int, jsonb)', '{app_auth}');
