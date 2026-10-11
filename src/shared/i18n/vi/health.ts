@@ -55,7 +55,7 @@ export const healthVi = {
   // When macroAdjusted: the energy target is unchanged, only the protein/fat/carb split was redone (R-D06).
   macroAdjusted: {
     title: 'Vì sao phân bổ này?',
-    body: 'Mục tiêu năng lượng của bạn vẫn giữ nguyên; mình chỉ chia lại đạm, béo và carb để chất béo chiếm ít nhất 20% năng lượng và carb không bị đẩy xuống quá thấp. Đây là ước tính, không phải chỉ định y tế. Nếu bạn cần tư vấn dinh dưỡng cá nhân, hãy trao đổi với chuyên gia.',
+    body: 'Mục tiêu năng lượng của bạn vẫn giữ nguyên; mình chỉ chia lại đạm, béo và carb để chất béo chiếm ít nhất 20% năng lượng và carb được giữ ở mức cao nhất có thể. Đây là ước tính, không phải chỉ định y tế. Nếu bạn cần tư vấn dinh dưỡng cá nhân, hãy trao đổi với chuyên gia.',
   },
 
   // S43: a reduce-fat profile is not applied; the two allowed directions are TANKER and SUPPORTER.
@@ -91,7 +91,7 @@ export const healthVi = {
       },
       {
         title: 'Mức nền an toàn',
-        body: 'Mục tiêu năng lượng không xuống dưới 1.200 kcal mỗi ngày với nữ, 1.500 kcal mỗi ngày với nam, và không thấp hơn mức năng lượng nghỉ của bạn. Mục tiêu cũng chỉ thấp hơn mức năng lượng bạn dùng mỗi ngày tối đa 20%.',
+        body: 'Mục tiêu năng lượng không xuống dưới 1.200 kcal mỗi ngày với nữ, 1.500 kcal mỗi ngày với nam, và không thấp hơn mức năng lượng nghỉ của bạn. Mục tiêu cũng thấp hơn mức năng lượng bạn dùng mỗi ngày không quá 20%.',
       },
       {
         title: 'Cân nặng chỉ là đầu vào',
@@ -135,17 +135,14 @@ export const CRISIS_LINES = [
 ] as const;
 
 // First-person words that may precede a direct statement (toi = tôi, minh = mình, chau = cháu, ...).
-const SELF = [
-  'toi',
-  'minh',
-  'em',
-  'con',
-  'chau',
-  'to',
-  'tao',
-  'tui',
-  'anh',
-  'chi',
+const SELF = ['minh', 'em', 'chau', 'tao', 'tui', 'anh', 'chi'];
+
+// Pronouns whose toneless form collides with an everyday word: tôi / tới / tối, còn / con, tớ / to.
+// Their phrases are tier B entries, in the accented spelling and in raw ASCII.
+const TONED_SELF: readonly (readonly [string, string])[] = [
+  ['tôi', 'toi'],
+  ['con', 'con'],
+  ['tớ', 'to'],
 ];
 
 // Tier A, tone-insensitive: already normalised with normalizeVi (lower case, no diacritics) apart from the
@@ -154,22 +151,31 @@ const SELF = [
 // they fire on routine writing once tones are gone or the idiom is a suffix: bare and suffix forms of
 // "muon chet" (mệt/đói/đau muốn chết), "tu tu" (từ từ), "tu van" (tư vấn), "ngu mai khong day" (ngủ mãi
 // không dậy nổi), "uong het lo thuoc" (lọ thuốc ho), "nhay lau" (nhảy lâu hơn), "chan song" (chân sống lưng),
-// "rach tay" (rách tay áo), "cat tay" (cắt tay áo), "het chiu noi" (nóng hết chịu nổi).
+// "rach tay" (rách tay áo), "cat tay" (cắt tay áo), "het chiu noi" (nóng hết chịu nổi), bare "khong tinh day
+// nua" and "khong thuc day nua" (sleep tracking: ngủ ngon, không tỉnh dậy nữa giữa đêm), "muon buong xuoi",
+// "uong ca vi thuoc" (a course of antibiotics). "toi", "con" and "to" as speaker are tier B (see there).
 export const CRISIS_KEYWORDS: readonly string[] = [
   // wanting to die: clause-initial, or after a first-person word, or with an intent continuation
   '^muon chet',
   ...SELF.map(who => `${who} muon chet`),
-  'muon chet cho xong',
-  'muon chet cho roi',
   'tha chet',
   'chet quach',
   'chet di cho',
   'chet cho roi',
   'chet cho xong',
   'muon duoc chet',
-  'chet di thi moi nguoi',
+  'chet di thi',
   'chet di moi nguoi',
   'chet di cung khong ai',
+  'uoc gi minh chet',
+  'uoc gi toi chet',
+  'that su muon chet',
+  'thuc su muon chet',
+  'lai muon chet',
+  'doi khi muon chet',
+  'thinh thoang muon chet',
+  'luc nao cung muon chet',
+  '^gio muon chet',
   // not wanting to live, no way out
   'khong muon song',
   'chang muon song',
@@ -183,7 +189,6 @@ export const CRISIS_KEYWORDS: readonly string[] = [
   'chan song qua',
   'chan song roi',
   'chan song nua',
-  'toi chan song',
   'minh chan song',
   'khong con ly do de song',
   'khong thay ly do de song',
@@ -197,20 +202,23 @@ export const CRISIS_KEYWORDS: readonly string[] = [
   'chang con loi thoat',
   'khong con duong thoat',
   'buong xuoi tat ca',
-  'muon buong xuoi',
   '^het chiu noi$',
   '^het chiu noi roi$',
   ...SELF.flatMap(who => [`${who} het chiu noi$`, `${who} het chiu noi roi$`]),
   // hoping not to wake up, disappearing
-  'khong tinh day nua',
+  'gia nhu minh khong tinh day',
+  'gia nhu toi khong tinh day',
+  'uoc gi minh khong tinh day',
+  'uoc gi toi khong tinh day',
   'khong muon tinh day nua',
-  'khong thuc day nua',
-  'muon ngu mai',
+  'muon ngu mai mai',
+  'muon ngu mai khong day nua',
+  'muon ngu mai khong tinh',
   'khong bao gio day nua',
   'dung bao gio day nua',
   'khong bao gio tinh lai',
   'dung bao gio tinh lai',
-  'khong bao gio tinh day',
+  'khong bao gio tinh day nua',
   'muon bien mat',
   'bien mat khoi the gioi',
   'bien mat khoi cuoc doi',
@@ -227,7 +235,6 @@ export const CRISIS_KEYWORDS: readonly string[] = [
   'muon ket thuc tat ca',
   'nhay tu tang',
   'muon nhay cau',
-  'muon nhay xuong song',
   'muon nhay xuong bien',
   'nhay xuong song',
   // harming oneself
@@ -259,10 +266,10 @@ export const CRISIS_KEYWORDS: readonly string[] = [
   'uong thuoc ngu cho het',
   'uong thuoc ngu het lo',
   'uong thuoc ngu that nhieu',
-  'uong thuoc ngu de chet',
+  'thuoc ngu de chet',
   'uong thuoc de chet',
   'uong het thuoc ngu',
-  'uong ca vi thuoc',
+  'uong ca vi thuoc ngu',
   'uong thuoc diet co',
   'uong thuoc tru sau',
   'uong thuoc chuot',
@@ -279,14 +286,28 @@ export const CRISIS_KEYWORDS: readonly string[] = [
 // can never match. Accented entries are words that collide with everyday ones once tones are stripped
 // (tự tử / từ từ, tự vẫn / tư vấn, nhảy lầu / nhảy lâu, treo cổ / treo cờ, đáng sống / đang sống). The
 // raw-ASCII entries are intent phrases for people who type without diacritics; "tu tu" there needs a clause
-// end or an unambiguous continuation, because "muon tu tu giam can" is the everyday "từ từ".
+// end or an unambiguous continuation, because "muon tu tu giam can" is the everyday "từ từ". The
+// first-person phrases with tôi, con and tớ are here too (TONED_SELF): toneless "toi" is also tới and
+// tối ("mệt tới muốn chết"), "con" is còn, "to" is the adjective ("to muốn chết"). Only text typed fully
+// without diacritics can still fire on them.
 export const CRISIS_PHRASES_EXACT: readonly string[] = [
+  ...TONED_SELF.flatMap(([accented, ascii]) => [
+    `${accented} muốn chết`,
+    `${ascii} muon chet`,
+    `${accented} hết chịu nổi$`,
+    `${accented} hết chịu nổi rồi$`,
+    `${ascii} het chiu noi$`,
+    `${ascii} het chiu noi roi$`,
+  ]),
+  'tôi chán sống',
+  'toi chan song',
+  'cho tôi chết đi',
+  'cho toi chet di',
   'tự tử',
   'tự vẫn',
   'nhảy lầu',
   'treo cổ',
   'cứa tay',
-  'cứa vào tay',
   'cứa cổ tay',
   'không đáng sống',
   'chẳng đáng sống',
@@ -301,6 +322,7 @@ export const CRISIS_PHRASES_EXACT: readonly string[] = [
   'tu tu cho xong',
   'tu tu de giai thoat',
   'muon treo co',
+  'nhay lau tu tang',
   'muon nhay lau',
   'dinh nhay lau',
   'khong dang song nua',

@@ -106,6 +106,26 @@ const mustMatch: string[] = [
   'Minh muon tu tu, te nhi ma noi thi dung vay',
   'Mình lại cắt tay. Áo dính máu',
   'Minh lai cat tay. Ao dinh mau',
+  // review round 3
+  'Tôi sẽ uống thật nhiều thuốc ngủ để chết.',
+  'minh cu nghi gia ma minh chet di thi tot',
+  'Ước gì mình chết đi',
+  'Uoc gi minh chet di',
+  'Cho tôi chết đi',
+  'Cho toi chet di',
+  'minh se nhay lau tu tang 10',
+  'Tôi muốn chết',
+  'Toi muon chet',
+  'Tôi hết chịu nổi rồi',
+  'Toi het chiu noi roi',
+  'Thật sự muốn chết',
+  'That su muon chet',
+  'Thực sự muốn chết lắm',
+  'Hôm nay lại muốn chết',
+  'Dạo này lúc nào cũng muốn chết',
+  'Đôi khi muốn chết',
+  'Thỉnh thoảng lại muốn chết',
+  'Giờ muốn chết quá',
   // punctuation, newlines, upper case, odd spacing
   'TÔI KHÔNG MUỐN SỐNG!!!',
   'Hôm nay mệt lắm...\nMình không thiết sống nữa.\nKhông biết nói với ai',
@@ -168,6 +188,20 @@ const mustNotMatch: string[] = [
   'Nóng hết chịu nổi',
   'Nóng hết chịu nổi rồi',
   'Đau cơ hết chịu nổi sau buổi tập',
+  'Nóng tới hết chịu nổi',
+  'Mệt tới muốn chết',
+  'Mệt tối muốn chết',
+  'Đói tới muốn chết',
+  'Buồn ngủ tới muốn chết',
+  'Cái bánh to muốn chết',
+  'Tập 2 giờ muốn chết',
+  'Đêm qua ngủ một mạch, không tỉnh dậy nữa giữa đêm',
+  'Hôm qua ngủ sâu, không thức dậy nữa cho tới sáng',
+  'Đêm qua mình ngủ ngon, không tỉnh dậy nữa',
+  'Trời lạnh muốn ngủ mãi',
+  'Cuối tuần mình muốn ngủ mãi cho đã',
+  'Hôm nay muốn buông xuôi, ăn bừa cho xong',
+  'Mình uống cả vỉ thuốc kháng sinh rồi',
   'Hôm nay mình hết chịu nổi cái nóng',
   // ordinary tired, stressed, sad-but-not-crisis lines
   'Hôm nay mình ngủ muộn nên hơi mệt',
@@ -211,13 +245,21 @@ const acceptedFalsePositives: string[] = [
   'Nóng quá, em hết chịu nổi rồi',
   'Mình thà chết đói còn hơn ăn món này',
   'Mình không muốn sống ở thành phố này nữa',
-  'Cuối tuần mình muốn ngủ mãi cho đã',
   'Mình muốn nhảy cầu ở hồ bơi',
-  'Mình uống cả vỉ thuốc kháng sinh rồi',
   // "tử tế" is a word of its own, so a word boundary cannot tell it from "tự tử"
   'Anh ấy muốn tự tử tế hơn',
   // unaccented "se tu tu" at a clause end is "sẽ tự tử" or "sẽ từ từ"; recall wins
   'Ok, minh se tu tu.',
+  'Mình mệt, muốn chết luôn nhưng vẫn cố tập xong',
+  'Dao cứa vào tay khi thái hành',
+  'Hôm nay lại cắt tay khi thái rau',
+  'Mình hay cắt tay khi nấu ăn',
+  'Hôm nay mình nhảy xuống sông bơi, nước mát',
+  'Cái áo lại rách tay',
+  'Mình uống hết thuốc ngủ bác sĩ kê rồi, cần tái khám',
+  'Mình không muốn sống khổ vì ăn kiêng',
+  'Met toi muon chet',
+  'Mệt chỉ muốn chết',
 ];
 
 // Not caught, asserted so the reviewer sees the edge. Indirect signals are not chased.
@@ -232,6 +274,10 @@ const knownMisses: string[] = [
   // unaccented, identical to everyday text ("định từ từ", "tư vấn")
   'Minh dinh tu tu toi nay',
   'Minh muon tu van',
+  'Toi dang nghi cach tu tu bang thuoc ngu',
+  'Em hay nghĩ đến cái chết',
+  // a dash is not a clause break, so this clause starts at 'Mệt', not at 'muốn'
+  'Mệt - muốn chết',
 ];
 
 describe('matchesCrisis', () => {

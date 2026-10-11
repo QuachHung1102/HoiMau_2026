@@ -62,7 +62,7 @@ test('the estimate notes use the "ước tính, không phải chẩn đoán" wor
 
 test('the macro explanation says the energy target is unchanged and only the split moved', () => {
   expect(healthVi.macroAdjusted.body).toContain(
-    'Mục tiêu năng lượng của bạn vẫn giữ nguyên; mình chỉ chia lại đạm, béo và carb để chất béo chiếm ít nhất 20% năng lượng và carb không bị đẩy xuống quá thấp.',
+    'Mục tiêu năng lượng của bạn vẫn giữ nguyên; mình chỉ chia lại đạm, béo và carb để chất béo chiếm ít nhất 20% năng lượng và carb được giữ ở mức cao nhất có thể.',
   );
   expect(healthVi.macroAdjusted.body).not.toContain('50 g');
 });
@@ -72,6 +72,6 @@ test('the info paragraph about the floor states the 20 % rule as a maximum', () 
     p => p.title === 'Mức nền an toàn',
   );
   expect(floor?.body).toContain(
-    'chỉ thấp hơn mức năng lượng bạn dùng mỗi ngày tối đa 20%',
+    'thấp hơn mức năng lượng bạn dùng mỗi ngày không quá 20%',
   );
 });
