@@ -300,3 +300,82 @@ after(() => db.drop());
 - Gói `embedded-postgres` cài một exit hook quyết định mã thoát của cả tiến trình: lượt test đỏ sẽ thoát với mã 0. `server/scripts/cluster.ts` gỡ hai handler gây ra việc đó (`beforeExit`, `exit`) và để nguyên các handler tín hiệu của gói; có test giữ mã thoát đúng. Việc Ctrl+C dừng được cụm chưa được kiểm chứng: nếu cụm còn lại sau khi ngắt, dùng `npm run db:cleanup`. Khi nâng phiên bản gói, chạy lại `npm run server:test` và kiểm tra một test cố ý đỏ vẫn cho mã thoát khác 0.
 - Trên Windows gói dừng cụm bằng cách diệt cây tiến trình; postmaster có thể kịp sinh lại một tiến trình con trong lúc đó, và tiến trình sót lại giữ thư mục dữ liệu. Vì vậy sau khi dừng, `cluster.ts` quét và diệt nốt các tiến trình con của đúng postmaster đó. Nếu postmaster đã chết từ trước (bị diệt giữa chừng), `stop()` bỏ qua lệnh dừng của gói: lệnh đó sẽ chờ mãi một sự kiện không bao giờ tới.
 - Phiên bản được ghim chính xác trong `server/package.json` (gói `embedded-postgres` luôn mang hậu tố `-beta`; đó là hậu tố của gói bọc, bộ nhị phân là PostgreSQL 18 gốc).
+
+## Xác thực (`10-auth.sql`)
+
+Tài khoản, khóa mật khẩu, phiên và mã đặt lại mật khẩu. Mọi luật (giới hạn số lần thử, câu trả lời đồng nhất, hiệu lực của phiên) nằm trong bảy hàm `auth_*`. Route chỉ băm mật khẩu, sinh token, gửi thư và đổi kết quả thành mã HTTP; nó không lách được luật nào vì không vai trò request nào chạm được vào các bảng bên dưới.
+
+### Bảng
+
+| Bảng | Lớp | Ghi chú |
+|---|---|---|
+| `users` | `own_rw`: đọc dòng của mình, sửa `display_name` và `timezone` | `email` luôn ở dạng đã chuẩn hóa (có `CHECK`), duy nhất theo `lower(email)`, và vẫn bị giữ chỗ khi tài khoản đã xóa mềm, cho tới lúc dòng bị xóa hẳn. `display_name` 1–40 ký tự. `terms_accepted_at` bắt buộc. |
+| `credentials` | `internal` | `salt` 16 byte, `key` 32 byte (kết quả scrypt tính ở Node). Không bao giờ rời cơ sở dữ liệu. |
+| `sessions` | `internal` | Chỉ lưu SHA-256 của token (32 byte, duy nhất), `expires_at`, `revoked_at`. |
+| `reset_codes` | `internal` | Chỉ lưu bản băm của mã, hạn 10 phút, `attempts`, `used_at`. |
+| `auth_throttle` | `internal` | Bộ đếm theo khóa: `login:<email>` (15 phút), `reset:<email>` (1 giờ). |
+| `app_secrets` | `internal` | Dòng `fake_salt_pepper`: 32 byte ngẫu nhiên, tạo một lần; chạy lại migrate không ghi đè. |
+| `timezones` | `content` | Tên múi giờ PostgreSQL biết, chép từ `pg_timezone_names` ở mỗi lần migrate. |
+
+Năm bảng `internal` đóng với cả ba vai trò request ở tầng GRANT (`42501 permission denied for table …`). Trên `users`, người dùng khác không hiện ra (policy, 0 dòng), và mọi cột ngoài hai cột được phép đều bị chặn ở tầng GRANT, kể cả `email`, `archetype` và `deleted_at`: các cột đó chỉ đổi qua hàm `SECURITY DEFINER` của nhiệm vụ sở hữu chúng.
+
+### Múi giờ của người dùng
+
+`users.timezone` là khóa ngoại tới `timezones(name)`, nên cơ sở dữ liệu từ chối mọi giá trị không phải một tên trong `pg_timezone_names`, trên mọi đường ghi (người dùng tự sửa qua GRANT theo cột, hàm, seeder, dòng mồi nhử): `'+07:00'`, `'ICT'`, `'UTC+7'`, chuỗi rỗng, tên không tồn tại, và cả tên viết sai hoa thường. Lỗi là `23503 insert or update on table "users" violates foreign key constraint "users_timezone_fkey"`; route phải kiểm tra trước (bằng validator của `domain/`) để người dùng nhận `422` chứ không phải `500`.
+
+- Vì sao là một bảng chứ không hỏi thẳng `pg_timezone_names`: view đó đọc lại các tệp múi giờ ở mỗi truy vấn (đo được khoảng 250 ms trên máy phát triển), còn khóa ngoại là một lần tra chỉ mục.
+- Sau khi PostgreSQL được cập nhật tzdata, chạy migrate để bảng nhận thêm tên mới. Tên cũ không bao giờ bị gỡ khỏi bảng.
+- Bảng liệt kê đúng những gì PostgreSQL liệt kê, trong đó có vài tên `Intl` của JavaScript có thể không nhận (ví dụ `Factory`). Danh sách server công bố cho app phải là phần chung của hai bên; `app_auth` đọc được bảng này để làm việc đó.
+
+### Bảy hàm
+
+Tất cả là `SECURITY DEFINER` với `SET search_path = public, pg_temp`. `app_anon` gọi được cả bảy; `app_auth` chỉ gọi được `auth_logout` (route đăng xuất chạy khi đã có phiên); `app_job` không gọi được hàm nào.
+
+| Hàm | Trả về | Luật |
+|---|---|---|
+| `auth_salt(email)` | `bytea` 16 byte | Salt đã lưu, hoặc 16 byte đầu của `sha256(pepper ‖ email)` với email không có tài khoản đang hoạt động. Cùng một email luôn cho cùng một kết quả. |
+| `auth_register(email, display_name, salt, key, token_hash)` | id người dùng | Tạo người dùng, khóa mật khẩu và phiên đầu tiên trong một lần; ghi `terms_accepted_at`. |
+| `auth_login(email, key, token_hash)` | id người dùng hoặc `NULL` | So khóa trong cơ sở dữ liệu và mở phiên mới. `NULL` cho email lạ, khóa sai, tài khoản đã xóa, email đang bị khóa. |
+| `auth_session(token_hash)` | id người dùng hoặc `NULL` | `NULL` nếu phiên không có, đã thu hồi, đã hết hạn, hoặc người dùng đã xóa. Còn dưới 29 ngày thì gia hạn thành 30 ngày, nên mỗi phiên bị ghi nhiều nhất một lần mỗi ngày. |
+| `auth_logout(token_hash)` | – | Thu hồi đúng phiên đó. Token lạ hay phiên đã thu hồi: không làm gì, không báo lỗi. |
+| `auth_reset_request(email, code_hash)` | `boolean` | `true`: đã lưu mã mới (hạn 10 phút) và vô hiệu mọi mã cũ chưa dùng; route gửi thư. `false`: không lưu gì. |
+| `auth_reset_confirm(email, code_hash, salt, key)` | `boolean` | So với mã mới nhất còn hạn và chưa dùng. Khớp: thay salt và khóa, đánh dấu mã đã dùng, thu hồi **mọi** phiên, gỡ khóa đăng nhập. |
+
+Giới hạn, tất cả tính trong hàm:
+
+- **Đăng nhập**: mỗi lần gọi `auth_login` được đếm vào `login:<email>` *trước khi* so khóa, kể cả với email lạ. Trong một cửa sổ 15 phút (tính từ lần gọi đầu, các lần sau không dời cửa sổ), từ lần gọi thứ 6 trở đi câu trả lời là `NULL` bất kể khóa đúng hay sai; tức là sau 5 lần sai, khóa đúng cũng bị từ chối cho tới hết cửa sổ. Một lần đăng nhập thành công xóa bộ đếm. Đếm trước nên nhiều lần thử gửi cùng lúc cũng không vượt được giới hạn.
+- **Xin mã**: nhiều nhất 3 lần mỗi email mỗi giờ (`reset:<email>`), đếm cả email lạ. Lần thứ 4 trả `false` và không đụng tới mã đang có.
+- **Nhập mã**: mỗi lần gọi `auth_reset_confirm` tiêu một lượt của mã hiện hành; mã sai, hoặc bất kỳ lần gọi nào từ lần thứ 6, đều trả `false`. Mã hết hạn sau 10 phút và chỉ dùng được một lần.
+
+### Điều route phải làm đúng
+
+- **Thất bại là giá trị trả về, không phải exception.** `auth_login` trả `NULL`, hai hàm đặt lại trả `false`, và lần thử vừa đếm nằm trong transaction của request. Route phải **trả** phản hồi lỗi (`401`, `400`) để transaction được `COMMIT`; ném lỗi là `ROLLBACK`, và lần thử sai biến mất khỏi bộ đếm (có test).
+- **Lỗi được ném ra** chỉ có các loại sau. Hai loại đầu xảy ra trước khi hàm ghi bất cứ thứ gì; hai loại cuối là lỗi vận hành của server, không phải một lần thử sai, nên không có gì cần được đếm:
+  - `auth_register` ném `HM000` với `MESSAGE` là mã lỗi của API: `REGISTRATION_UNAVAILABLE` (email đã có, kể cả của tài khoản đã xóa mềm; `DETAIL` là `{}`), hoặc `VALIDATION_FAILED` kèm `DETAIL` dạng `{"fields":[{"field":"email","rule":"format"}]}` (`email`: `format`; `displayName`: `min`, `max`) khi route quên kiểm tra;
+  - mọi hàm ném `P0001` khi một tham số nhị phân sai kích thước (salt 16 byte; khóa, bản băm token, bản băm mã 32 byte). Đó là lỗi của server, không phải của người dùng: thông báo nêu kích thước mong đợi và không bao giờ chứa giá trị;
+  - `auth_login` và `auth_register` ném `P0001` (`auth: this token hash already names a session`) nếu bản băm token đã thuộc về một phiên khác; thông báo không lặp lại bản băm;
+  - `auth_salt` ném `P0001` (`auth_salt: app_secrets has no fake_salt_pepper`) nếu dòng pepper bị mất: trả `NULL` cho email lạ sẽ vừa làm route hỏng vừa để lộ email nào có tài khoản.
+- **Email được chuẩn hóa trong hàm**, không phải ở nơi gọi: cắt dấu cách hai đầu rồi `lower()` theo collation ICU của cơ sở dữ liệu, tức đổi chữ thường theo Unicode đầy đủ, cho cùng kết quả với `toLowerCase()` của JavaScript (`ĐẶNG@…` và `đặng@…` là một). Không chuẩn hóa Unicode (dạng dựng sẵn và dạng tổ hợp là hai email khác nhau) và không kiểm tra cú pháp: đó là việc của `isEmail`. Email rỗng hoặc dài quá 254 ký tự sau chuẩn hóa không là tài khoản nào: các hàm trả đúng câu trả lời thất bại chung và không tạo dòng đếm; riêng `auth_register` ném `VALIDATION_FAILED`.
+- **Bản băm của mã đặt lại do route tính** (`sha256(email + ':' + mã)`). Cơ sở dữ liệu so nguyên văn, nên route phải dùng cùng một cách viết email ở cả hai lần gọi: cắt dấu cách và đổi chữ thường trước khi băm.
+- **Tên hiển thị** chỉ được kiểm tra độ dài (1–40 ký tự). Cắt dấu cách và lọc từ cấm là việc của route.
+- **Salt chỉ dùng trong server.** `auth_salt` tồn tại để server luôn chạy đúng một lần scrypt cho mọi email; kết quả của nó không được trả cho client.
+- Khóa, bản băm và salt luôn đi qua tham số (`$1`), không bao giờ nằm trong chuỗi SQL.
+
+### Câu trả lời đồng nhất tới đâu
+
+`auth_login` chạy cùng các câu lệnh cho mọi email: khóa theo email, tăng bộ đếm, tra người dùng, tính một khóa giả từ pepper, rồi so 32 byte bằng phép so không dừng ở byte khác đầu tiên; với email lạ, thứ được so là khóa giả. `auth_salt` cũng tính cả salt thật lẫn salt giả ở mọi lần gọi. Đo trên máy phát triển, trung vị của email có thật (khóa sai) và email lạ lệch nhau vài micro giây.
+
+Đó không phải là "thời gian hằng": lần tra người dùng trúng hay trượt vẫn khác nhau ở mức đọc thêm một dòng, và nhánh thành công ghi thêm (xóa bộ đếm, tạo phiên). Thứ che phần còn lại là route: luôn một lần scrypt, cùng một thân phản hồi. Đăng ký thì cố ý để lộ email đã dùng (không có bước xác minh email), và được chặn bằng giới hạn theo IP của tầng HTTP.
+
+Một đăng nhập và một lần đặt lại mật khẩu của cùng email không bao giờ chạy chồng nhau (khóa advisory theo email, giữ tới hết transaction): đặt lại mật khẩu thu hồi cả phiên của lần đăng nhập đang dở bằng mật khẩu cũ.
+
+### Dọn dữ liệu cũ
+
+File này không tự xóa gì. Những dòng sau là rác an toàn để xóa, và job dọn dẹp (nhiệm vụ về quyền riêng tư) cần xóa chúng:
+
+- `auth_throttle`: dòng có `window_start` cũ hơn 1 giờ (cửa sổ dài nhất). Bảng này có một dòng cho **mỗi email từng được thử**, kể cả email không có tài khoản, và khóa của dòng chứa chính email đó: không dọn thì bảng lớn mãi và giữ lại email của cả tài khoản đã xóa hẳn.
+- `sessions`: dòng đã hết hạn hoặc đã thu hồi. `reset_codes`: dòng đã dùng hoặc đã hết hạn. Cả hai tự mất theo người dùng khi tài khoản bị xóa hẳn (`ON DELETE CASCADE`).
+
+### Phần cổng 1 không nhìn thấy
+
+Cổng 1 đối chiếu vai trò, GRANT, RLS, policy và `search_path`. Nó không đọc **thân hàm**, **ràng buộc** hay **dữ liệu**: thay thân `auth_login` bằng một bản không so khóa, gỡ khóa ngoại `users_timezone_fkey`, gỡ `CHECK` của `email`, xóa chỉ mục duy nhất của email hay xóa dòng pepper đều không làm nó đỏ. Những thứ đó do `server/test/auth.sql.test.ts` giữ: mỗi luật ở trên có một test đỏ khi luật bị phá. Sửa `10-auth.sql` thì chạy `npm run server:test`, không chỉ `npm run db:verify`.
