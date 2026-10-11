@@ -22,7 +22,9 @@ const CODE_INVALID = 'Mã chưa đúng hoặc đã hết hạn. Bạn có thể 
 test('S55 shows the code field (8 digits), the two password fields and both actions; the subtitle says the code came by email', async () => {
   open();
   expect(await ready()).toBeTruthy();
-  expect(screen.getByText('Nhập mã chúng tôi đã gửi qua email của bạn.')).toBeTruthy();
+  // the address the code went to is shown, so a typo made on S04 is visible
+  expect(screen.getByText('Nhập mã đã gửi đến an@example.vn.')).toBeTruthy();
+  expect(screen.getByText('Mã mới sẽ thay mã cũ. Bạn có thể gửi lại tối đa 3 lần mỗi giờ.')).toBeTruthy();
   expect(screen.queryByText(/liên kết/)).toBeNull();
   for (const label of ['Mã 8 chữ số', 'Mật khẩu mới', 'Nhập lại mật khẩu']) expect(screen.getByLabelText(label)).toBeTruthy();
   expect(screen.getByText('Ít nhất 8 ký tự')).toBeTruthy();
@@ -36,11 +38,14 @@ test('the keyboard: a number pad for the code, new-password hints for the passwo
   await ready();
   expect(screen.getByLabelText('Mã 8 chữ số').props).toMatchObject({
     keyboardType: 'number-pad',
-    maxLength: 8,
     autoComplete: 'one-time-code',
     textContentType: 'oneTimeCode',
     returnKeyType: 'next',
+    // as long as the code, built from LIMITS
+    placeholder: '••••••••',
   });
+  // no native maxLength: it would cut a pasted "1234 5678" before the space could be stripped
+  expect(screen.getByLabelText('Mã 8 chữ số').props.maxLength).toBeUndefined();
   for (const label of ['Mật khẩu mới', 'Nhập lại mật khẩu']) {
     expect(screen.getByLabelText(label).props).toMatchObject({ autoComplete: 'new-password', secureTextEntry: true, autoCapitalize: 'none' });
   }
@@ -92,9 +97,8 @@ test('happy path: POST /auth/password/reset with the email of the route, the cod
 describe('client validation blocks the request and names the field', () => {
   test.each([
     ['a 7-digit code', '1234567'],
-    ['a 9-digit code', '123456789'],
-    ['letters in the code', '1234567a'],
-    ['a code with a space', '1234 567'],
+    ['a 7-digit code with a letter after it', '1234567a'],
+    ['a 7-digit code with a space inside', '1234 567'],
     ['no code', ''],
   ])('%s', async (_what, code) => {
     open();
@@ -106,6 +110,23 @@ describe('client validation blocks the request and names the field', () => {
     expect(screen.getByLabelText('Mã 8 chữ số, lỗi: Mã gồm 8 chữ số.')).toBeTruthy();
     expect(focusCode).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ['a pasted code with a space', '1234 5678', '12345678'],
+    ['a pasted code with dashes and a trailing newline', '1234-5678\n', '12345678'],
+    ['a code longer than 8 digits is cut to 8', '1234567890', '12345678'],
+    ['letters and fullwidth digits are dropped', 'a1b2c3d4e5f6g7h8１２', '12345678'],
+  ])('%s: the field keeps only ASCII digits, at most 8', async (_what, pasted, kept) => {
+    answer('/auth/password/reset', respond(204));
+    open();
+    await ready();
+    type('Mã 8 chữ số', pasted);
+    expect(screen.getByLabelText('Mã 8 chữ số').props.value).toBe(kept);
+    fill({ code: pasted });
+    save();
+    await waitFor(() => expect(resets()).toHaveLength(1));
+    expect(resets()[0].body?.code).toBe(kept);
   });
 
   test('exactly 8 digits pass', async () => {
@@ -191,6 +212,24 @@ describe('failed requests', () => {
     await waitFor(() => expect(queryClient().getMutationCache().getAll()).toEqual([]));
   });
 
+  test('a VALIDATION_FAILED that also names a field this screen has no place for (email) still says something else is wrong', async () => {
+    answer(
+      '/auth/password/reset',
+      refuse(422, 'VALIDATION_FAILED', {
+        fields: [
+          { field: 'email', rule: 'format' },
+          { field: 'code', rule: 'format' },
+        ],
+      }),
+    );
+    open();
+    await ready();
+    fill();
+    save();
+    expect(await screen.findByLabelText('Mã 8 chữ số, lỗi: Mã gồm 8 chữ số.')).toBeTruthy();
+    expect(screen.getByText('Có lỗi xảy ra. Bạn thử lại nhé.')).toBeTruthy();
+  });
+
   test('VALIDATION_FAILED maps details.fields to the code and the new password', async () => {
     answer(
       '/auth/password/reset',
@@ -270,7 +309,8 @@ describe('"Gửi lại mã"', () => {
       await ready();
       resend();
       await screen.findByText(NEUTRAL);
-      shown.push(JSON.stringify(screen.toJSON()).replace(/"screenId":"[^"]*"/g, '"screenId":"-"'));
+      // only the address in the subtitle and the navigator ids are masked: nothing else may differ
+      shown.push(JSON.stringify(screen.toJSON()).split(email).join('<email>').replace(/"screenId":"[^"]*"/g, '"screenId":"-"'));
       view.unmount();
     }
     expect(shown[0]).toBe(shown[1]);

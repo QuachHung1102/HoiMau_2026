@@ -71,18 +71,19 @@ export function NewPasswordScreen({ navigation, route }: ScreenProps<'NewPasswor
   };
 
   return (
-    <Screen title={vi.newPasswordTitle} subtitle={vi.newPasswordSubtitle} onBack={navigation.canGoBack() ? navigation.goBack : undefined} hasInputs>
+    <Screen title={vi.newPasswordTitle} subtitle={vi.newPasswordSubtitle(email)} onBack={navigation.canGoBack() ? navigation.goBack : undefined} hasInputs>
       <TextField
         ref={inputs.code}
         label={vi.codeLabel(LIMITS.resetCode.length)}
+        placeholder={vi.codePlaceholder(LIMITS.resetCode.length)}
         value={code}
         onChangeText={text => {
-          setCode(text);
+          // Pasting "1234 5678" must work: keep the digits and cut to the length (a native maxLength would cut first).
+          setCode(text.replace(/[^0-9]/g, '').slice(0, LIMITS.resetCode.length));
           edit('code');
         }}
         error={errors.fields.code}
         keyboardType="number-pad"
-        maxLength={LIMITS.resetCode.length}
         autoComplete="one-time-code"
         textContentType="oneTimeCode"
         returnKeyType="next"
@@ -126,6 +127,7 @@ export function NewPasswordScreen({ navigation, route }: ScreenProps<'NewPasswor
         <Button label={vi.newPasswordAction} loading={reset.isPending} onPress={submit} />
         <AppText variant="secondary">{vi.resendHint}</AppText>
         <Button variant="secondary" label={vi.resendAction} loading={resend.isPending} onPress={sendAgain} />
+        <AppText variant="caption">{vi.resendNote}</AppText>
       </Actions>
     </Screen>
   );

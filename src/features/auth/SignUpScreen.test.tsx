@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import * as Keychain from 'react-native-keychain';
 import { legalVi } from '../../shared/i18n/vi/legal';
 import { answer, fetchMock, mount, pendingRequest, queryClient, refuse, respond, sent, session, TOKEN, USER, installAuthTestEnv, watchFocus } from './authTestKit';
@@ -78,7 +79,7 @@ test('happy path: POST /auth/register with the contract body and no Idempotency-
   expect(Keychain.setGenericPassword).toHaveBeenCalledWith(USER, TOKEN);
 });
 
-test('the password leaves the field as soon as the request succeeds, and the mutation cache never keeps it', async () => {
+test('the password stays in the field until the sign-in has succeeded, and the mutation cache never keeps it', async () => {
   answer('/auth/register', respond(201, session));
   let finishKeychain!: () => void;
   jest.mocked(Keychain.setGenericPassword).mockImplementationOnce(() => new Promise(resolve => (finishKeychain = () => resolve({ service: 'x', storage: 'x' } as never))));
@@ -87,13 +88,38 @@ test('the password leaves the field as soon as the request succeeds, and the mut
   fill();
   create();
   await waitFor(() => expect(Keychain.setGenericPassword).toHaveBeenCalled());
-  expect(screen.getByLabelText('Mật khẩu').props.value).toBe('');
+  // not cleared before signIn resolved: a failing keychain write must not make the person retype it
+  expect(screen.getByLabelText('Mật khẩu').props.value).toBe('mat-khau-dung');
   await waitFor(() => expect(queryClient().getMutationCache().getAll()).toEqual([]));
   await act(async () => finishKeychain());
   await screen.findByText('Phần này đang được hoàn thiện');
 });
 
+test('the keychain failing after the account was created: the form keeps its values and says the account exists', async () => {
+  answer('/auth/register', respond(201, session));
+  jest.mocked(Keychain.setGenericPassword).mockRejectedValueOnce(new Error('keystore unavailable'));
+  mount('SignUp');
+  await ready();
+  fill();
+  create();
+  expect(await screen.findByText('Tài khoản đã được tạo nhưng chưa đăng nhập được. Bạn thử đăng nhập bằng email vừa dùng nhé.')).toBeTruthy();
+  expect(screen.queryByText('Phần này đang được hoàn thiện')).toBeNull();
+  expect(screen.getByLabelText('Mật khẩu').props.value).toBe('mat-khau-dung');
+  expect(screen.getByLabelText('Email').props.value).toBe('an@example.vn');
+  expect(screen.getByLabelText('Tên hiển thị').props.value).toBe('An');
+});
+
 describe('the terms', () => {
+  test('the link is a 48 dp row of its own, with no negative margin pulling it into the checkbox row', async () => {
+    mount('SignUp');
+    await ready();
+    const link = screen.getByRole('link', { name: 'Đọc điều khoản và chính sách riêng tư' });
+    expect(StyleSheet.flatten(link.props.style)).toMatchObject({ minHeight: 48 });
+    const margins: unknown[] = [];
+    for (let node = link.parent; node; node = node.parent) margins.push(StyleSheet.flatten(node.props.style)?.marginTop);
+    expect(margins.filter(m => typeof m === 'number' && m < 0)).toEqual([]);
+  });
+
   test('the link opens a sheet with the plain-language summary, and closing it keeps the form as it was', async () => {
     mount('SignUp');
     await ready();

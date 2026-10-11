@@ -118,7 +118,7 @@ Các lý do khác dùng cùng bố cục S74: “Thành viên này đã tắt nh
 | S52 | Xác nhận xóa tài khoản | S44 → đọc hậu quả → giữ hoặc xác nhận xóa | §10 |
 | S53 | Trợ giúp & thông tin | S35 → hướng dẫn, thông tin sức khỏe, điều khoản và phản hồi | §9, §10 |
 | S54 | Quản lý tổ đội | S27 → chia sẻ mã, xem thành viên, yêu cầu rời nhóm | F-11 |
-| S55 | Mật khẩu mới | Liên kết khôi phục sau S04 → xác nhận mật khẩu mới → S02 | Xác thực |
+| S55 | Mật khẩu mới | Mã khôi phục 8 chữ số gửi qua email sau S04 → nhập mã và mật khẩu mới → S02 | Xác thực |
 | S56 | Nguồn hỗ trợ | Biến thể từ S32/S33 khi có tín hiệu cần hỗ trợ → nguồn đã duyệt hoặc quay lại nhật ký | F-13, D-10 |
 | S82 | Động tác mẫu | S18 (danh sách động tác) hoặc S19 ("Xem hướng dẫn") → xem động tác lặp, xem chậm, đọc 3 bước và lưu ý → quay lại | F-05; D-10 |
 | S68 | Hành trình lớn lên | S22 → xem 5 giai đoạn và tiến độ tới giai đoạn kế | F-09; D-07 |

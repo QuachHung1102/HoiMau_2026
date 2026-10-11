@@ -30,9 +30,13 @@ describe('failure', () => {
 
   test('VALIDATION_FAILED: known fields get their copy, unknown ones are skipped, none known falls back', () => {
     const details = { fields: [{ field: 'password', rule: 'required' }, { field: 'email', rule: 'format' }, { field: 'elsewhere', rule: 'min' }] };
+    // a field the form has no place for is not dropped silently: the form-level message says something else is wrong
     expect(failure(new ApiError(422, 'VALIDATION_FAILED', details), { known: FIELDS })).toEqual({
       fields: { password: 'Bạn nhập mật khẩu nhé.', email: 'Email chưa đúng định dạng, ví dụ ban@example.com.' },
+      form: 'Có lỗi xảy ra. Bạn thử lại nhé.',
     });
+    const known = { fields: [{ field: 'password', rule: 'required' }, { field: 'email', rule: 'format' }] };
+    expect(failure(new ApiError(422, 'VALIDATION_FAILED', known), { known: FIELDS }).form).toBeUndefined();
     expect(failure(new ApiError(422, 'VALIDATION_FAILED', { fields: [{ field: 'elsewhere', rule: 'min' }] }), { known: FIELDS }).form).toBe('Có lỗi xảy ra. Bạn thử lại nhé.');
     // details of another shape are not trusted
     expect(failure(new ApiError(422, 'VALIDATION_FAILED', { fields: 'email' }), { known: FIELDS }).form).toBe('Có lỗi xảy ra. Bạn thử lại nhé.');

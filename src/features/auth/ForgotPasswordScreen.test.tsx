@@ -14,7 +14,7 @@ const accepted = () => answer('/auth/password/forgot', respond(202, {}));
 test('S04 asks for the email and offers one action; the subtitle speaks of a code, not a link', async () => {
   mount('ForgotPassword');
   expect(await ready()).toBeTruthy();
-  expect(screen.getByText('Chúng tôi sẽ gửi mã đến email của bạn.')).toBeTruthy();
+  expect(screen.getByText('Mình sẽ gửi mã đến email của bạn.')).toBeTruthy();
   expect(screen.getByLabelText('Email').props).toMatchObject({ keyboardType: 'email-address', autoCapitalize: 'none', autoComplete: 'email', returnKeyType: 'send' });
   expect(screen.getByRole('button', { name: 'Gửi mã' })).toBeTruthy();
   expect(screen.queryByText(CONFIRMATION)).toBeNull();
