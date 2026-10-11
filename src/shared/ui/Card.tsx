@@ -29,13 +29,15 @@ type RowProps = {
   description?: string;
   icon?: IconName;
   thumbnail?: ImageSourcePropType;
-  /** Replaces the default chevron. */
+  /** Text state shown at the trailing edge and read by screen readers after the description (e.g. on / off). */
+  status?: string;
+  /** Non-text node that replaces the default chevron. */
   trailing?: ReactNode;
   /** Without it the row is plain (its trailing node is its own control). */
   onPress?: () => void;
 };
 
-export function ListRow({ title, description, icon, thumbnail, trailing, onPress }: RowProps) {
+export function ListRow({ title, description, icon, thumbnail, status, trailing, onPress }: RowProps) {
   const palette = useTheme();
   const content = (
     <View style={styles.row}>
@@ -45,6 +47,11 @@ export function ListRow({ title, description, icon, thumbnail, trailing, onPress
         <AppText weight="semibold">{title}</AppText>
         {description ? <AppText variant="caption">{description}</AppText> : null}
       </View>
+      {status ? (
+        <AppText variant="caption" weight="semibold">
+          {status}
+        </AppText>
+      ) : null}
       {trailing ?? (onPress ? <Icon name="ChevronRight" color={palette.muted} /> : null)}
     </View>
   );
@@ -52,7 +59,7 @@ export function ListRow({ title, description, icon, thumbnail, trailing, onPress
   return (
     <Touchable
       accessibilityRole="button"
-      accessibilityLabel={description ? `${title}. ${description}` : title}
+      accessibilityLabel={[title, description, status].filter(Boolean).join('. ')}
       onPress={onPress}
     >
       {content}

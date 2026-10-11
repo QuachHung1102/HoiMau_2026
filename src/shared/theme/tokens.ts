@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 // Mirrors the DESIGN.md frontmatter; __tests__/tokens.test.ts fails on drift.
 export const colors = {
   primary: '#2458D3',
@@ -33,14 +35,26 @@ export const themes: Record<ThemeCode, Pick<Palette, 'primary' | 'soft' | 'bg'>>
   sky: { primary: colors.skyPrimary, soft: colors.skySoft, bg: colors.skyBg },
 };
 
-// Android resolves a font by file name (one family per weight; fontWeight is ignored).
-export const fontFamilies = {
+// One family per weight (fontWeight is not used). Android resolves a font by file name, iOS by PostScript
+// name; the web preview declares @font-face rules named after the files, so it takes the file names too.
+export const fontFileNames = {
   headline: 'BeVietnamPro_700Bold',
   regular: 'Inter_400Regular',
   medium: 'Inter_500Medium',
   semibold: 'Inter_600SemiBold',
   bold: 'Inter_700Bold',
 } as const;
+export const fontPostScriptNames: Record<keyof typeof fontFileNames, string> = {
+  headline: 'BeVietnamPro-Bold',
+  regular: 'Inter-Regular',
+  medium: 'Inter-Medium',
+  semibold: 'Inter-SemiBold',
+  bold: 'Inter-Bold',
+};
+export const fontFamilies: Record<keyof typeof fontFileNames, string> = Platform.select({
+  ios: fontPostScriptNames,
+  default: fontFileNames,
+});
 
 export const typography = {
   headline: { fontFamily: fontFamilies.headline, fontSize: 28, lineHeight: 36 },

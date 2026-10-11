@@ -1,53 +1,93 @@
-import { act, render } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import { AccessibilityInfo, Text } from 'react-native';
-import { MotionPreferenceProvider, useReducedMotion, type MotionPreference } from './useReducedMotion';
+import { MotionPreferenceProvider, resetSystemMotionForTests, useReducedMotion, type MotionPreference } from './useReducedMotion';
+
+type Listener = (enabled: boolean) => void;
 
 function Probe() {
   return <Text testID="v">{String(useReducedMotion())}</Text>;
 }
-const flush = () => act(async () => undefined);
+const shown = () => screen.getByTestId('v').props.children;
 
-let listener: ((enabled: boolean) => void) | undefined;
-const remove = jest.fn();
+let listener: Listener | undefined;
+let resolve: (v: boolean) => void;
+let reject: (e: Error) => void;
+let addEventListener: jest.SpyInstance;
+
 beforeEach(() => {
+  resetSystemMotionForTests();
   listener = undefined;
-  remove.mockClear();
-  jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(true);
-  jest.spyOn(AccessibilityInfo, 'addEventListener').mockImplementation(((_: string, cb: (enabled: boolean) => void) => {
+  jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockImplementation(
+    () =>
+      new Promise<boolean>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      }),
+  );
+  addEventListener = jest.spyOn(AccessibilityInfo, 'addEventListener').mockImplementation(((_: string, cb: Listener) => {
     listener = cb;
-    return { remove };
+    return { remove: jest.fn() };
   }) as never);
+  addEventListener.mockClear(); // the preset's AccessibilityInfo is already a jest.fn, so counts would carry over
 });
 afterEach(() => jest.restoreAllMocks());
 
-async function mount(value: MotionPreference) {
-  const view = render(
+const mount = (value: MotionPreference, count = 1) =>
+  render(
     <MotionPreferenceProvider value={value}>
-      <Probe />
+      {Array.from({ length: count }, (_, i) => (
+        <Probe key={i} />
+      ))}
     </MotionPreferenceProvider>,
   );
-  await flush();
-  return view;
-}
 
-test('REDUCED -> true, whatever the system says', async () => {
-  (AccessibilityInfo.isReduceMotionEnabled as jest.Mock).mockResolvedValue(false);
-  const view = await mount('REDUCED');
-  expect(view.getByTestId('v').props.children).toBe('true');
-  view.unmount();
+test('REDUCED -> true and FULL -> false, whatever the system says, with no native listener', () => {
+  const a = mount('REDUCED');
+  expect(shown()).toBe('true');
+  a.unmount();
+  const b = mount('FULL');
+  expect(shown()).toBe('false');
+  b.unmount();
+  expect(addEventListener).not.toHaveBeenCalled();
 });
 
-test('FULL -> false, whatever the system says', async () => {
-  const view = await mount('FULL');
-  expect(view.getByTestId('v').props.children).toBe('false');
-  view.unmount();
+test('SYSTEM is reduced until the OS value is known', () => {
+  const v = mount('SYSTEM');
+  expect(shown()).toBe('true');
+  v.unmount();
 });
 
-test('SYSTEM follows the OS value and its change event, and unsubscribes on unmount', async () => {
-  const view = await mount('SYSTEM');
-  expect(view.getByTestId('v').props.children).toBe('true');
+test('SYSTEM follows the OS value once known, and later change events', async () => {
+  const v = mount('SYSTEM');
+  await act(async () => resolve(false));
+  expect(shown()).toBe('false');
+  act(() => listener?.(true));
+  expect(shown()).toBe('true');
+  v.unmount();
+});
+
+test('a change event that arrives before the initial read is not overwritten by it', async () => {
+  const v = mount('SYSTEM');
   act(() => listener?.(false));
-  expect(view.getByTestId('v').props.children).toBe('false');
-  view.unmount();
-  expect(remove).toHaveBeenCalledTimes(1);
+  expect(shown()).toBe('false');
+  await act(async () => resolve(true));
+  expect(shown()).toBe('false');
+  v.unmount();
+});
+
+test('a failed initial read leaves the value reduced', async () => {
+  const v = mount('SYSTEM');
+  await act(async () => reject(new Error('boom')));
+  expect(shown()).toBe('true');
+  v.unmount();
+});
+
+test('many hook instances, across mounts, register exactly one native listener', () => {
+  const v = mount('SYSTEM', 30);
+  expect(screen.getAllByTestId('v')).toHaveLength(30);
+  expect(addEventListener).toHaveBeenCalledTimes(1);
+  v.unmount();
+  const w = mount('SYSTEM', 5);
+  expect(addEventListener).toHaveBeenCalledTimes(1);
+  w.unmount();
 });

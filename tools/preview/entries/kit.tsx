@@ -1,7 +1,9 @@
+import type { ReactElement } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { AppText } from '../../../src/shared/ui/AppText';
 import { Button } from '../../../src/shared/ui/Button';
 import { Card, ListRow } from '../../../src/shared/ui/Card';
+import { Icon } from '../../../src/shared/ui/Icon';
 import { Screen } from '../../../src/shared/ui/Screen';
 import { withApp, type Entries, type EntryOptions } from '../harness';
 
@@ -39,9 +41,24 @@ function Primitives() {
   );
 }
 
-const make = (opts?: EntryOptions) => () => withApp(<Primitives />, opts);
+// ListRow: icon + title + description + chevron, with a text status, and a plain row with its own trailing node.
+function ListRows() {
+  return (
+    <Screen title="Cài đặt" onBack={noop}>
+      <Card>
+        <ListRow icon="User" title="Hồ sơ & mục tiêu" description="Cập nhật số đo hoặc hệ phái" onPress={noop} />
+        <ListRow icon="VolumeX" title="Âm thanh" description="Hiệu ứng trong ứng dụng" status="Đang tắt" onPress={noop} />
+        <ListRow icon="Accessibility" title="Hiển thị & chuyển động" description="Theo cài đặt hệ thống" onPress={noop} />
+        <ListRow icon="Bell" title="Thông báo" status="Đang bật" trailing={<Icon name="Check" accessibilityLabel="Đã chọn" />} />
+      </Card>
+    </Screen>
+  );
+}
+
+const make = (node: ReactElement, opts?: EntryOptions) => () => withApp(node, opts);
 
 export const entries: Entries = {
-  'kit-primitives': make(),
-  'kit-primitives-forest': make({ theme: 'forest' }),
+  'kit-primitives': make(<Primitives />),
+  'kit-primitives-forest': make(<Primitives />, { theme: 'forest' }),
+  'kit-list-rows': make(<ListRows />),
 };
