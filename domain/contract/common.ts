@@ -83,6 +83,18 @@ export type ApiErrorBody = {
   };
 };
 
+/**
+ * `error.details` of `VALIDATION_FAILED`; one element has the members of `FieldError` in
+ * domain/validation.ts. `field` is the body property, the query or path parameter name, or
+ * `Idempotency-Key` for that header.
+ */
+export type ValidationDetails = {
+  fields: {
+    field: string;
+    rule: 'required' | 'min' | 'max' | 'format' | 'enum';
+  }[];
+};
+
 /** Same members as `TitleKey` of domain/progression.ts. */
 export type TitleKey =
   | 'TAN_BINH'
@@ -106,4 +118,9 @@ export type GameEvent =
 /** Signed changes caused by this request. */
 export type Delta = { xp: number; coin: number; events: GameEvent[] };
 
+/**
+ * `actionId` is always the `Idempotency-Key` of this request. For a tick and a nutrition log it is
+ * also the id of the row created; an undo and a bedtime mark (first or repeated) create no row
+ * under it.
+ */
 export type ActionResult = { actionId: string; day: DayState; delta: Delta };

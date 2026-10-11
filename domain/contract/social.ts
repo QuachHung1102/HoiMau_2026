@@ -6,18 +6,32 @@ import type { Progression } from './core.ts';
 
 export type GuildRole = 'LEADER' | 'MEMBER';
 
+/** The refusals of `POST /guilds/nudge` that depend on the receiver, the sender and the clock. */
+export type NudgeBlockReason = Extract<
+  ErrorCode,
+  | 'NUDGE_OUTSIDE_WINDOW'
+  | 'NUDGE_RECEIVER_LIMIT'
+  | 'NUDGE_SENDER_LIMIT'
+  | 'NUDGE_RECEIVER_MUTED'
+  | 'NUDGE_NOT_NEEDED'
+>;
+
 export type GuildMember = {
   userId: string;
   displayName: string;
   level: number;
   role: GuildRole;
   isMe: boolean;
+  /** Both week counts use the Monday-based `Asia/Ho_Chi_Minh` week (AR-17), through today there. */
   daysCompletedThisWeek: number;
   daysCountedThisWeek: number;
-  /** The member has completed every STORY quest of their current logical day. */
+  /** The member has completed every STORY quest of their own current logical day. */
   storyDoneToday: boolean;
-  /** `reason`: why a nudge cannot be sent now; null when allowed. */
-  nudge: { allowed: boolean; reason: ErrorCode | null };
+  /**
+   * `reason` is null when `allowed`. `{ allowed: false, reason: null }` is the caller's own row
+   * and nothing else; every other refused row names its reason.
+   */
+  nudge: { allowed: boolean; reason: NudgeBlockReason | null };
 };
 
 export type GuildState = {
@@ -28,7 +42,7 @@ export type GuildState = {
     motto: string;
     inviteCode: string;
     myRole: GuildRole;
-    /** 0–1. */
+    /** 0–1, for the Monday-based `Asia/Ho_Chi_Minh` week through today there. */
     weekCompletion: number;
     inactive: boolean;
     inactiveDays: number;
@@ -41,6 +55,7 @@ export type TransferRequest = { userId: string };
 
 /** `avgCompletion` is 0–1. `mine` is null without a guild; its `rank` is null when unranked. */
 export type Leaderboard = {
+  /** Monday of the `Asia/Ho_Chi_Minh` week. */
   weekStart: DateLabel;
   final: boolean;
   updatedAt: IsoDateTime;
@@ -105,7 +120,8 @@ export type Tickets = {
   eligible: {
     date: DateLabel;
     target: 'TODAY' | 'YESTERDAY';
-    deadline: IsoDateTime | null;
+    /** 15:00 local of the day after `date`: the last instant a ticket can be applied to it. */
+    deadline: IsoDateTime;
     needed: boolean;
     withoutTicket: number;
     withTicket: number;

@@ -37,9 +37,11 @@ export type MealPlanState = {
   target: MacroTarget;
   caloriesIn: number;
   calorieWindow: CalorieWindow;
+  /** Always the four slots. */
   slots: {
     mealSlot: MealSlot;
-    meal: Meal;
+    /** Null when every candidate for the slot was excluded; the slot is still listed. */
+    meal: Meal | null;
     logged: boolean;
     swapsUsed: number;
     swapsAllowed: number;
@@ -55,13 +57,20 @@ export type SwapCandidates = {
 };
 export type SwapRequest = { mealSlot: MealSlot; mealId: string };
 
-/** Exactly one of `mealSlot` (the planned meal of that slot) or `kcal` (manual entry, optional `label`). */
-export type NutritionLogRequest = {
-  mealSlot?: MealSlot;
-  kcal?: number;
-  label?: string;
-  occurredAt?: IsoDateTime;
-};
+/** Either the planned meal of a slot, or a manual amount with an optional label — never both. */
+export type NutritionLogRequest =
+  | {
+      mealSlot: MealSlot;
+      kcal?: never;
+      label?: never;
+      occurredAt?: IsoDateTime;
+    }
+  | {
+      kcal: number;
+      label?: string;
+      mealSlot?: never;
+      occurredAt?: IsoDateTime;
+    };
 
 // Workout
 
