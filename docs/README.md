@@ -6,6 +6,7 @@
 | [Phạm vi mobile](product/mobile-scope.md) | Điều chỉnh từ web sang mobile và sổ quyết định D-01…D-10 | Chốt hoặc đổi một quyết định |
 | [Kiến trúc](architecture.md) | Thư mục và ranh giới client/server | Thêm module hoặc thay đổi luồng dữ liệu |
 | [Phát triển](development.md) | Cài đặt, chạy, quy ước đóng góp | Thay đổi môi trường hoặc lệnh |
+| [Backend](backend.md) | Cơ sở dữ liệu, mô hình vai trò, lược đồ SQL, ba cổng kiểm và cách khôi phục | Thêm file SQL, đổi vai trò, cổng kiểm hoặc cách chạy cơ sở dữ liệu |
 | [Quyết định kiến trúc](decisions/0001-nen-tang-va-backend.md) | Nền tảng, backend, xác thực và giới hạn phát hành | Đổi nền tảng, backend hoặc cách xác thực |
 | [Kiểm thử và phát hành](testing-and-release.md) | Ma trận kiểm chứng và cổng phát hành | Thêm nghiệp vụ hoặc tích hợp |
 | [Thiết kế nguồn](../design/hoiMau.pen) | Tệp thiết kế để đối chiếu khi triển khai | Duyệt thay đổi giao diện |

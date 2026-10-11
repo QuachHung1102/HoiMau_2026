@@ -1,0 +1,30 @@
+{
+  "name": "hoi-mau-server",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.8"
+  },
+  "scripts": {
+    "test": "node --test --test-global-setup=./test/global.ts \"src/**/*.test.ts\" \"test/**/*.test.ts\" \"scripts/**/*.test.ts\" \"content/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "db:verify": "node --test --test-global-setup=./test/global.ts checks/verify.test.ts",
+    "db:api-check": "node --test --test-global-setup=./test/global.ts checks/api-check.test.ts",
+    "db:mutation-check": "node --test --test-global-setup=./test/global.ts checks/mutation-check.test.ts",
+    "perf": "node --test --test-global-setup=./test/global.ts checks/perf.test.ts",
+    "db:cleanup": "node scripts/cleanup.ts",
+    "dev": "node scripts/dev.ts",
+    "jobs": "node src/jobs/run.ts",
+    "scenario": "node scripts/scenario.ts",
+    "content:count": "node scripts/count-content.ts"
+  },
+  "dependencies": {
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/pg": "8.23.1",
+    "embedded-postgres": "18.4.0-beta.17",
+    "typescript": "7.0.2"
+  }
+}
