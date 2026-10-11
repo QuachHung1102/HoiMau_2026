@@ -24,6 +24,9 @@ info:
     the user's time zone) and answers `409 DAY_CLOSED` when that day is closed or more than 48 h old,
     `422 OCCURRED_AT_INVALID` when the instant is more than 120 s in the future.
 
+    **Unknown properties.** The server ignores request body properties it does not know, so older and
+    newer app builds keep working; it never rejects a body for carrying one.
+
     **Errors.** Every error has the `ErrorResponse` body. `error.code` is the contract; `error.message`
     is an English diagnostic and is never shown to the user. Each operation lists, per status, exactly
     the codes it can return. The general ones are attached by rule: `BAD_JSON` and `PAYLOAD_TOO_LARGE`
@@ -1847,13 +1850,28 @@ components:
             code: { $ref: '#/components/schemas/ErrorCode' }
             message: { type: string, description: 'English diagnostic; never shown to the user.' }
             details:
-              type: object
-              additionalProperties: true
               description: |
-                Present for some codes: `VALIDATION_FAILED` has `fields: {field, rule}[]` with `rule` one
-                of `required`, `min`, `max`, `format`, `enum`; `ARCHETYPE_COOLDOWN` has `availableAt`
-                (instant); `ARCHETYPE_NOT_ALLOWED` has `allowed` (archetypes); `ITEM_LOCKED_LEVEL` on a
-                purchase has `minLevel`; `INSUFFICIENT_COINS` has `price` and `coin`.
+                Present for some codes: `VALIDATION_FAILED` has the members of `ValidationDetails`;
+                `ARCHETYPE_COOLDOWN` has `availableAt` (instant); `ARCHETYPE_NOT_ALLOWED` has `allowed`
+                (archetypes); `ITEM_LOCKED_LEVEL` on a purchase has `minLevel`; `INSUFFICIENT_COINS` has
+                `price` and `coin`.
+              anyOf:
+                - $ref: '#/components/schemas/ValidationDetails'
+                - type: object
+                  additionalProperties: true
+    ValidationDetails:
+      type: object
+      description: The `error.details` of `VALIDATION_FAILED`.
+      required: [fields]
+      properties:
+        fields:
+          type: array
+          items:
+            type: object
+            required: [field, rule]
+            properties:
+              field: { type: string, description: 'The body property that failed; for a query or path parameter its name (for example `from`); for the idempotency header the literal `Idempotency-Key`.' }
+              rule: { type: string, enum: [required, min, max, format, enum] }
     TitleKey:
       type: string
       enum: [TAN_BINH, NGUOI_KIEN_TRI, CHIEN_BINH_KY_LUAT, KIEN_TUONG, HUYEN_THOAI_THE_HINH]
@@ -1898,7 +1916,7 @@ components:
       type: object
       required: [actionId, day, delta]
       properties:
-        actionId: { $ref: '#/components/schemas/Uuid', description: 'Id of the recorded action; equals the `Idempotency-Key` of the request that created it.' }
+        actionId: { $ref: '#/components/schemas/Uuid', description: 'Always the `Idempotency-Key` of this request. For a tick and a nutrition log it is also the id of the row created. An undo and a bedtime mark (first or repeated) create no row under it; the undone tick is the `tickId` of the request.' }
         day: { $ref: '#/components/schemas/DayState' }
         delta: { $ref: '#/components/schemas/Delta' }
 
@@ -2007,8 +2025,8 @@ components:
         timezone: { type: string, description: 'IANA time zone name. Changing it never recomputes past days.' }
     PrescriptionResponse:
       type: object
-      description: The domain `Prescription` plus when it was computed and for which archetype.
-      required: [bmr, tdee, calorieTarget, proteinG, carbsG, fatG, waterMl, safetyClamped, macroAdjusted, computedAt, archetype]
+      description: The domain `Prescription`, when it was computed, for which archetype, and the latest biometrics of the caller.
+      required: [bmr, tdee, calorieTarget, proteinG, carbsG, fatG, waterMl, safetyClamped, macroAdjusted, computedAt, archetype, biometrics]
       properties:
         bmr: { type: number }
         tdee: { type: number }
@@ -2021,6 +2039,20 @@ components:
         macroAdjusted: { type: boolean, description: 'The macro fallback was used.' }
         computedAt: { $ref: '#/components/schemas/IsoDateTime' }
         archetype: { $ref: '#/components/schemas/Archetype' }
+        biometrics: { $ref: '#/components/schemas/Biometrics' }
+    Biometrics:
+      type: object
+      description: |
+        The latest biometric snapshot of the caller, returned so the edit form can be pre-filled (S37).
+        The app never caches this object to disk. It is part of `PrescriptionResponse` only: no other
+        response carries these values, and no guild, leaderboard, nudge or other social response ever does.
+      required: [heightCm, weightKg, birthYear, sex, activityLevel]
+      properties:
+        heightCm: { type: number, minimum: 120, maximum: 230 }
+        weightKg: { type: number, minimum: 30, maximum: 250 }
+        birthYear: { type: integer }
+        sex: { $ref: '#/components/schemas/Sex' }
+        activityLevel: { $ref: '#/components/schemas/ActivityLevel' }
     DeleteAccountRequest:
       type: object
       required: [password]
@@ -2208,8 +2240,8 @@ components:
         unreadCount: { type: integer, minimum: 0 }
         celebrations:
           type: array
-          description: Unread `STREAK_MILESTONE` inbox items.
-          items: { $ref: '#/components/schemas/InboxItem' }
+          description: The unread `STREAK_MILESTONE` inbox items.
+          items: { $ref: '#/components/schemas/InboxItemStreakMilestone' }
     ProgressRequest:
       type: object
       properties:
@@ -2251,11 +2283,16 @@ components:
           description: Recorded actions of the day, newest first.
           items:
             type: object
-            required: [id, kind, at, label, value, undone]
+            required: [id, kind, at, mealSlot, label, value, undone]
             properties:
-              id: { $ref: '#/components/schemas/Uuid' }
+              id: { $ref: '#/components/schemas/Uuid', description: 'The tick, nutrition log or workout session id. For `BEDTIME`, which has no row of its own, the id of the daily log of that day.' }
               kind: { type: string, enum: [TICK, NUTRITION, WORKOUT, BEDTIME] }
               at: { $ref: '#/components/schemas/IsoDateTime' }
+              mealSlot:
+                description: For a `NUTRITION` log of a planned meal, its slot; null for a manual entry and for every other kind.
+                oneOf:
+                  - $ref: '#/components/schemas/MealSlot'
+                  - type: 'null'
               label: { type: [string, 'null'], description: '`TICK`: the quest code. `NUTRITION`: the meal name, or the label of a manual entry (null without one). `WORKOUT`: the workout name. `BEDTIME`: null.' }
               value: { type: [number, 'null'], description: '`NUTRITION`: kcal. `WORKOUT`: elapsed seconds. `TICK` and `BEDTIME`: null.' }
               undone: { type: boolean, description: 'True only for a tick that was undone.' }
@@ -2277,7 +2314,7 @@ components:
             properties:
               code: { $ref: '#/components/schemas/PerkCode' }
               cost: { type: integer, minimum: 1 }
-              unlocked: { type: boolean }
+              unlocked: { type: boolean, description: 'The user has this perk. For the repeatable `THEME_UNLOCK`: true once at least one theme was unlocked with it; it can still be unlocked again.' }
               repeatable: { type: boolean, description: 'True only for `THEME_UNLOCK` (one theme per unlock).' }
     PerkUnlockRequest:
       type: object
@@ -2287,18 +2324,85 @@ components:
         itemCode: { type: string, description: 'The theme to unlock; required for `THEME_UNLOCK` only.' }
 
     # ---- core.ts: inbox ----
-    InboxItem:
+    InboxItemNudge:
       type: object
       required: [id, kind, payload, createdAt, readAt]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
-        kind: { type: string, enum: [NUDGE, STREAK_MILESTONE, PET_TIRED, GUILD_WEEKLY_RESULT, QUEST_REMINDER] }
+        kind: { const: NUDGE }
         payload:
           type: object
-          additionalProperties: true
-          description: Data of the notification; its members depend on `kind`.
+          required: [senderName, templateCode, text]
+          properties:
+            senderName: { type: string, description: 'Display name of the guild member who sent it.' }
+            templateCode: { type: string }
+            text: { type: string, description: 'The template text that was sent.' }
         createdAt: { $ref: '#/components/schemas/IsoDateTime' }
         readAt: { type: [string, 'null'], format: date-time }
+    InboxItemStreakMilestone:
+      type: object
+      required: [id, kind, payload, createdAt, readAt]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        kind: { const: STREAK_MILESTONE }
+        payload:
+          type: object
+          required: [days, coins, badgeCode]
+          properties:
+            days: { type: integer, enum: [7, 30, 100] }
+            coins: { type: integer, minimum: 0, description: 'Coins granted with the milestone.' }
+            badgeCode: { type: string, description: 'Item code of the badge granted.' }
+        createdAt: { $ref: '#/components/schemas/IsoDateTime' }
+        readAt: { type: [string, 'null'], format: date-time }
+    InboxItemPetTired:
+      type: object
+      required: [id, kind, payload, createdAt, readAt]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        kind: { const: PET_TIRED }
+        payload: { type: object, maxProperties: 0, description: 'Always an empty object.' }
+        createdAt: { $ref: '#/components/schemas/IsoDateTime' }
+        readAt: { type: [string, 'null'], format: date-time }
+    InboxItemGuildWeeklyResult:
+      type: object
+      required: [id, kind, payload, createdAt, readAt]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        kind: { const: GUILD_WEEKLY_RESULT }
+        payload:
+          type: object
+          required: [rank, coins, weekStart]
+          properties:
+            rank: { type: integer, minimum: 1 }
+            coins: { type: integer, minimum: 0, description: 'Coins granted for the week.' }
+            weekStart: { $ref: '#/components/schemas/DateLabel', description: 'Monday of the closed `Asia/Ho_Chi_Minh` week.' }
+        createdAt: { $ref: '#/components/schemas/IsoDateTime' }
+        readAt: { type: [string, 'null'], format: date-time }
+    InboxItemQuestReminder:
+      type: object
+      required: [id, kind, payload, createdAt, readAt]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        kind: { const: QUEST_REMINDER }
+        payload: { type: object, maxProperties: 0, description: 'Always an empty object.' }
+        createdAt: { $ref: '#/components/schemas/IsoDateTime' }
+        readAt: { type: [string, 'null'], format: date-time }
+    InboxItem:
+      description: One notification; `kind` decides the members of `payload`.
+      oneOf:
+        - $ref: '#/components/schemas/InboxItemNudge'
+        - $ref: '#/components/schemas/InboxItemStreakMilestone'
+        - $ref: '#/components/schemas/InboxItemPetTired'
+        - $ref: '#/components/schemas/InboxItemGuildWeeklyResult'
+        - $ref: '#/components/schemas/InboxItemQuestReminder'
+      discriminator:
+        propertyName: kind
+        mapping:
+          NUDGE: '#/components/schemas/InboxItemNudge'
+          STREAK_MILESTONE: '#/components/schemas/InboxItemStreakMilestone'
+          PET_TIRED: '#/components/schemas/InboxItemPetTired'
+          GUILD_WEEKLY_RESULT: '#/components/schemas/InboxItemGuildWeeklyResult'
+          QUEST_REMINDER: '#/components/schemas/InboxItemQuestReminder'
     Inbox:
       type: object
       required: [items, unreadCount, nextBefore]
@@ -2327,7 +2431,7 @@ components:
       type: object
       required: [ok, db, jobs]
       properties:
-        ok: { type: boolean }
+        ok: { type: boolean, description: 'False exactly when `db` is false; the status is `200` either way. A failed job shows only in its own `jobs[].ok`.' }
         db: { type: boolean, description: 'The database is reachable.' }
         jobs:
           type: array
@@ -2384,12 +2488,17 @@ components:
         calorieWindow: { $ref: '#/components/schemas/CalorieWindow' }
         slots:
           type: array
+          description: Always the four slots.
           items:
             type: object
             required: [mealSlot, meal, logged, swapsUsed, swapsAllowed, macroWarning]
             properties:
               mealSlot: { $ref: '#/components/schemas/MealSlot' }
-              meal: { $ref: '#/components/schemas/Meal' }
+              meal:
+                description: Null when every candidate for the slot was excluded (no meal could be picked); the slot is still listed.
+                oneOf:
+                  - $ref: '#/components/schemas/Meal'
+                  - type: 'null'
               logged: { type: boolean }
               swapsUsed: { type: integer, minimum: 0 }
               swapsAllowed: { type: integer, description: '3, or 5 with the perk `MEAL_SWAP_PLUS`.' }
@@ -2417,16 +2526,23 @@ components:
         mealSlot: { $ref: '#/components/schemas/MealSlot' }
         mealId: { $ref: '#/components/schemas/Uuid', description: 'One of the current candidates of that slot.' }
     NutritionLogRequest:
-      type: object
-      description: Exactly one of `mealSlot` (log the planned meal of that slot) or `kcal` (manual entry).
-      properties:
-        mealSlot: { $ref: '#/components/schemas/MealSlot' }
-        kcal: { type: number, minimum: 1, maximum: 5000 }
-        label: { type: string, maxLength: 60, description: 'Optional name of a manual entry.' }
-        occurredAt: { $ref: '#/components/schemas/IsoDateTime', description: 'When the action happened; only for a late write.' }
+      description: |
+        Either the planned meal of a slot, or a manual amount. A body with both `mealSlot` and `kcal`
+        matches both alternatives and is rejected with `VALIDATION_FAILED`.
       oneOf:
-        - required: [mealSlot]
-        - required: [kcal]
+        - type: object
+          description: Log the planned meal of that slot.
+          required: [mealSlot]
+          properties:
+            mealSlot: { $ref: '#/components/schemas/MealSlot' }
+            occurredAt: { $ref: '#/components/schemas/IsoDateTime', description: 'When the action happened; only for a late write.' }
+        - type: object
+          description: Manual entry.
+          required: [kcal]
+          properties:
+            kcal: { type: number, minimum: 1, maximum: 5000 }
+            label: { type: string, maxLength: 60, description: 'Optional name of the entry.' }
+            occurredAt: { $ref: '#/components/schemas/IsoDateTime', description: 'When the action happened; only for a late write.' }
 
     # ---- content.ts: workout ----
     WorkoutSummary:
@@ -2548,6 +2664,10 @@ components:
     GuildRole:
       type: string
       enum: [LEADER, MEMBER]
+    NudgeBlockReason:
+      type: string
+      enum: [NUDGE_OUTSIDE_WINDOW, NUDGE_RECEIVER_LIMIT, NUDGE_SENDER_LIMIT, NUDGE_RECEIVER_MUTED, NUDGE_NOT_NEEDED]
+      description: The refusals of `POST /guilds/nudge` that depend on the receiver, the sender and the clock; a subset of `ErrorCode`.
     GuildMember:
       type: object
       description: What guild members see of each other; never a biometric or calorie value.
@@ -2558,18 +2678,21 @@ components:
         level: { type: integer, minimum: 1 }
         role: { $ref: '#/components/schemas/GuildRole' }
         isMe: { type: boolean }
-        daysCompletedThisWeek: { type: integer, minimum: 0, maximum: 7 }
-        daysCountedThisWeek: { type: integer, minimum: 0, maximum: 7, description: 'Days of this week that count for the member (from the join date).' }
-        storyDoneToday: { type: boolean, description: 'The member completed every STORY quest of their current logical day.' }
+        daysCompletedThisWeek: { type: integer, minimum: 0, maximum: 7, description: 'Days with every STORY quest done, in the Monday-based `Asia/Ho_Chi_Minh` week through today there.' }
+        daysCountedThisWeek: { type: integer, minimum: 0, maximum: 7, description: 'Days of that same `Asia/Ho_Chi_Minh` week that count for the member: from Monday, or from the join date if later, through today there.' }
+        storyDoneToday: { type: boolean, description: 'The member completed every STORY quest of their own current logical day (their time zone, not the guild week).' }
         nudge:
           type: object
           required: [allowed, reason]
           properties:
             allowed: { type: boolean }
             reason:
-              description: Why a nudge cannot be sent now; null when allowed.
+              description: |
+                Why a nudge cannot be sent now. Null when `allowed` is true. `allowed: false` with
+                `reason: null` is legal on exactly one row, the row of the caller (nobody nudges
+                themselves); every other refused row names its reason.
               oneOf:
-                - $ref: '#/components/schemas/ErrorCode'
+                - $ref: '#/components/schemas/NudgeBlockReason'
                 - type: 'null'
     GuildState:
       type: object
@@ -2585,7 +2708,7 @@ components:
             motto: { type: string, description: 'Empty string when the guild has none.' }
             inviteCode: { type: string, pattern: '^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$' }
             myRole: { $ref: '#/components/schemas/GuildRole' }
-            weekCompletion: { type: number, minimum: 0, maximum: 1 }
+            weekCompletion: { type: number, minimum: 0, maximum: 1, description: 'Guild average for the Monday-based `Asia/Ho_Chi_Minh` week through today there.' }
             inactive: { type: boolean, description: 'No member recorded anything for 14 days.' }
             inactiveDays: { type: integer, minimum: 0 }
             members:
@@ -2612,7 +2735,7 @@ components:
       description: Guild names, completion ratios, counts and ranks only.
       required: [weekStart, final, updatedAt, entries, mine]
       properties:
-        weekStart: { $ref: '#/components/schemas/DateLabel', description: 'Monday of the week.' }
+        weekStart: { $ref: '#/components/schemas/DateLabel', description: 'Monday of the week; weeks run Monday to Sunday in `Asia/Ho_Chi_Minh` for every guild, whatever the time zones of its members.' }
         final: { type: boolean, description: 'True for a closed week.' }
         updatedAt: { $ref: '#/components/schemas/IsoDateTime' }
         entries:
@@ -2736,7 +2859,7 @@ components:
             properties:
               date: { $ref: '#/components/schemas/DateLabel' }
               target: { type: string, enum: [TODAY, YESTERDAY] }
-              deadline: { type: [string, 'null'], format: date-time, description: 'Last instant a ticket can still be applied to this date.' }
+              deadline: { $ref: '#/components/schemas/IsoDateTime', description: 'Last instant a ticket can still be applied to this date: 15:00 local of the day after `date`.' }
               needed: { type: boolean, description: 'A ticket would protect something on this date.' }
               withoutTicket: { type: integer, minimum: 0, description: 'The streak if no ticket is used.' }
               withTicket: { type: integer, minimum: 0, description: 'The streak if a ticket is used.' }

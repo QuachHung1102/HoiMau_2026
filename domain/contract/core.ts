@@ -5,6 +5,7 @@ import type {
   DateLabel,
   DayOutcome,
   IngredientTag,
+  MealSlot,
   PetMood,
   PetStage,
   QuestCategory,
@@ -27,28 +28,29 @@ export type ResetRequest = { email: string; code: string; newPassword: string };
 
 // Profile
 
-export type OnboardingRequest = {
+/** Same members as `BiometricsInput` of domain/validation.ts. */
+export type Biometrics = {
+  heightCm: number;
+  weightKg: number;
+  birthYear: number;
+  sex: Sex;
+  activityLevel: ActivityLevel;
+};
+export type OnboardingRequest = Biometrics & {
   timezone: string;
   archetype: Archetype;
-  heightCm: number;
-  weightKg: number;
-  birthYear: number;
-  sex: Sex;
-  activityLevel: ActivityLevel;
 };
-export type BiometricsRequest = {
-  heightCm: number;
-  weightKg: number;
-  birthYear: number;
-  sex: Sex;
-  activityLevel: ActivityLevel;
-  archetype?: Archetype;
-};
+export type BiometricsRequest = Biometrics & { archetype?: Archetype };
 export type ArchetypeRequest = { archetype: Archetype };
 export type MePatch = { displayName?: string; timezone?: string };
 export type PrescriptionResponse = Prescription & {
   computedAt: IsoDateTime;
   archetype: Archetype;
+  /**
+   * The caller's latest snapshot, to pre-fill the edit form (S37). Never cached to disk by the
+   * app; no other response carries these values, and no social response ever does.
+   */
+  biometrics: Biometrics;
 };
 export type DeleteAccountRequest = { password: string };
 
@@ -143,11 +145,11 @@ export type DayState = {
   story: { done: number; total: number };
   streak: { current: number; best: number };
   unreadCount: number;
-  /** Unread `STREAK_MILESTONE` items. */
-  celebrations: InboxItem[];
+  /** The unread `STREAK_MILESTONE` inbox items. */
+  celebrations: InboxItemStreakMilestone[];
 };
 
-/** `occurredAt`: sent only when the write leaves the device more than 60 s after the action (AR-08). */
+/** `occurredAt`: only when the write leaves the device more than 60 s after the action (AR-08). */
 export type ProgressRequest = { occurredAt?: IsoDateTime };
 export type UndoRequest = { tickId: string };
 export type BedtimeRequest = { occurredAt?: IsoDateTime };
@@ -167,10 +169,13 @@ export type DayDetail = {
   summary: DaySummary;
   /** Newest first. */
   actions: {
+    /** The tick, nutrition log or workout session id; for BEDTIME the id of the day's daily log. */
     id: string;
     kind: 'TICK' | 'NUTRITION' | 'WORKOUT' | 'BEDTIME';
     at: IsoDateTime;
-    /** TICK: quest code. NUTRITION: meal name, or the label of a manual entry. WORKOUT: its name. Else null. */
+    /** NUTRITION log of a planned meal: its slot. Manual entry and every other kind: null. */
+    mealSlot: MealSlot | null;
+    /** TICK: quest code. NUTRITION: meal name or manual label. WORKOUT: its name. Else null. */
     label: string | null;
     /** NUTRITION: kcal; WORKOUT: elapsed seconds; else null. */
     value: number | null;
@@ -188,7 +193,9 @@ export type Perks = {
   perks: {
     code: PerkCode;
     cost: number;
+    /** Repeatable perk: true once it was used at least once; it can still be unlocked again. */
     unlocked: boolean;
+    /** True only for `THEME_UNLOCK`. */
     repeatable: boolean;
   }[];
 };
@@ -197,18 +204,38 @@ export type PerkUnlockRequest = { perkCode: PerkCode; itemCode?: string };
 
 // Inbox
 
-export type InboxItem = {
+type InboxItemBase = {
   id: string;
-  kind:
-    | 'NUDGE'
-    | 'STREAK_MILESTONE'
-    | 'PET_TIRED'
-    | 'GUILD_WEEKLY_RESULT'
-    | 'QUEST_REMINDER';
-  payload: Record<string, unknown>;
   createdAt: IsoDateTime;
   readAt: IsoDateTime | null;
 };
+export type InboxItemNudge = InboxItemBase & {
+  kind: 'NUDGE';
+  payload: { senderName: string; templateCode: string; text: string };
+};
+export type InboxItemStreakMilestone = InboxItemBase & {
+  kind: 'STREAK_MILESTONE';
+  payload: { days: 7 | 30 | 100; coins: number; badgeCode: string };
+};
+export type InboxItemPetTired = InboxItemBase & {
+  kind: 'PET_TIRED';
+  payload: Record<string, never>;
+};
+export type InboxItemGuildWeeklyResult = InboxItemBase & {
+  kind: 'GUILD_WEEKLY_RESULT';
+  payload: { rank: number; coins: number; weekStart: DateLabel };
+};
+export type InboxItemQuestReminder = InboxItemBase & {
+  kind: 'QUEST_REMINDER';
+  payload: Record<string, never>;
+};
+/** Discriminated on `kind`; the payload of `PET_TIRED` and `QUEST_REMINDER` is an empty object. */
+export type InboxItem =
+  | InboxItemNudge
+  | InboxItemStreakMilestone
+  | InboxItemPetTired
+  | InboxItemGuildWeeklyResult
+  | InboxItemQuestReminder;
 /** `nextBefore`: pass as `before` to get the next page; null on the last page. */
 export type Inbox = {
   items: InboxItem[];
@@ -221,6 +248,7 @@ export type InboxReadResult = { unreadCount: number };
 
 // Service
 
+/** `ok` is false exactly when `db` is false; a failed job shows only in its own `jobs[].ok`. */
 export type Health = {
   ok: boolean;
   db: boolean;
