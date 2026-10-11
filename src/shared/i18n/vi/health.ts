@@ -9,7 +9,14 @@
 // (S56), through matchesCrisis in crisisMatch.ts. Matching runs on the device against the text the user
 // just wrote; the text and the match result are never logged, stored or sent anywhere (AR-20).
 // The lists trade false positives for recall: a false positive only shows a gentle support block, a miss
-// shows nothing to someone who needed it. crisisMatch.test.ts holds the examples a reviewer should read.
+// shows nothing to someone who needed it. crisisMatch.test.ts holds the examples a reviewer should read:
+// what must match, what must not, the accepted false positives and the known misses.
+//
+// How the lists are read (crisisMatch.ts): the text is split into clauses on . , ; : ! ? … and line breaks,
+// and every clause is matched on its own, so a phrase split by punctuation ("tự... tử") never matches.
+// Inside a clause an entry matches on word boundaries. An entry may start with ^ (the clause must begin
+// with it) and/or end with $ (the clause must end with it); there is no other syntax. This is what
+// separates "Muốn chết quá" (matches) from "Mệt muốn chết quá" (does not).
 
 /** 1500 -> "1.500" (Hermes may lack Intl locale data, so no toLocaleString). */
 const grouped = (n: number): string => {
@@ -48,7 +55,7 @@ export const healthVi = {
   // When macroAdjusted: the energy target is unchanged, only the protein/fat/carb split was redone (R-D06).
   macroAdjusted: {
     title: 'Vì sao phân bổ này?',
-    body: 'Mục tiêu năng lượng của bạn vẫn giữ nguyên. Mình chỉ chia lại đạm, béo và carb để carb không xuống dưới 50 g và chất béo không dưới 20% năng lượng. Đây là ước tính, không phải chỉ định y tế. Nếu bạn cần tư vấn dinh dưỡng cá nhân, hãy trao đổi với chuyên gia.',
+    body: 'Mục tiêu năng lượng của bạn vẫn giữ nguyên; mình chỉ chia lại đạm, béo và carb để chất béo chiếm ít nhất 20% năng lượng và carb không bị đẩy xuống quá thấp. Đây là ước tính, không phải chỉ định y tế. Nếu bạn cần tư vấn dinh dưỡng cá nhân, hãy trao đổi với chuyên gia.',
   },
 
   // S43: a reduce-fat profile is not applied; the two allowed directions are TANKER and SUPPORTER.
@@ -84,7 +91,7 @@ export const healthVi = {
       },
       {
         title: 'Mức nền an toàn',
-        body: 'Mục tiêu năng lượng không xuống dưới 1.200 kcal mỗi ngày với nữ, 1.500 kcal mỗi ngày với nam, và không thấp hơn mức năng lượng nghỉ của bạn. Mục tiêu cũng không thấp hơn mức năng lượng bạn dùng mỗi ngày quá 20%.',
+        body: 'Mục tiêu năng lượng không xuống dưới 1.200 kcal mỗi ngày với nữ, 1.500 kcal mỗi ngày với nam, và không thấp hơn mức năng lượng nghỉ của bạn. Mục tiêu cũng chỉ thấp hơn mức năng lượng bạn dùng mỗi ngày tối đa 20%.',
       },
       {
         title: 'Cân nặng chỉ là đầu vào',
@@ -127,24 +134,43 @@ export const CRISIS_LINES = [
   { number: '111', label: 'Tổng đài quốc gia bảo vệ trẻ em' },
 ] as const;
 
-// Tier A, tone-insensitive: already normalised with normalizeVi (lower case, no diacritics) and matched
-// on word boundaries against the normalised text, so a phrase also matches when typed without diacritics.
-// Phrases only, never a single everyday word ("mệt", "chết đói"). Left out on purpose because they fire on
-// routine writing once tones are gone: bare "muon chet" (mệt muốn chết), "tu tu" (từ từ), "tu van" (tư vấn),
-// bare "uong thuoc ngu", "nhay lau" (nhảy lâu hơn), "chan song" (chân sống lưng).
+// First-person words that may precede a direct statement (toi = tôi, minh = mình, chau = cháu, ...).
+const SELF = [
+  'toi',
+  'minh',
+  'em',
+  'con',
+  'chau',
+  'to',
+  'tao',
+  'tui',
+  'anh',
+  'chi',
+];
+
+// Tier A, tone-insensitive: already normalised with normalizeVi (lower case, no diacritics) apart from the
+// ^ and $ anchors, and matched against the normalised clause, so a phrase also matches when typed without
+// diacritics. Phrases only, never a single everyday word ("mệt", "chết đói"). Left out on purpose because
+// they fire on routine writing once tones are gone or the idiom is a suffix: bare and suffix forms of
+// "muon chet" (mệt/đói/đau muốn chết), "tu tu" (từ từ), "tu van" (tư vấn), "ngu mai khong day" (ngủ mãi
+// không dậy nổi), "uong het lo thuoc" (lọ thuốc ho), "nhay lau" (nhảy lâu hơn), "chan song" (chân sống lưng),
+// "rach tay" (rách tay áo), "cat tay" (cắt tay áo), "het chiu noi" (nóng hết chịu nổi).
 export const CRISIS_KEYWORDS: readonly string[] = [
-  // wanting to die
-  'toi muon chet',
-  'minh muon chet',
-  'em muon chet',
-  'chi muon chet',
-  'muon chet qua',
-  'muon chet di',
-  'muon chet luon',
-  'muon duoc chet',
-  'chet di cho xong',
+  // wanting to die: clause-initial, or after a first-person word, or with an intent continuation
+  '^muon chet',
+  ...SELF.map(who => `${who} muon chet`),
+  'muon chet cho xong',
+  'muon chet cho roi',
+  'tha chet',
+  'chet quach',
+  'chet di cho',
+  'chet cho roi',
   'chet cho xong',
-  // not wanting to live
+  'muon duoc chet',
+  'chet di thi moi nguoi',
+  'chet di moi nguoi',
+  'chet di cung khong ai',
+  // not wanting to live, no way out
   'khong muon song',
   'chang muon song',
   'khong con muon song',
@@ -167,11 +193,24 @@ export const CRISIS_KEYWORDS: readonly string[] = [
   'doi nay khong con gi',
   'doi nay chang con gi',
   'khong muon ton tai',
+  'khong con loi thoat',
+  'chang con loi thoat',
+  'khong con duong thoat',
+  'buong xuoi tat ca',
+  'muon buong xuoi',
+  '^het chiu noi$',
+  '^het chiu noi roi$',
+  ...SELF.flatMap(who => [`${who} het chiu noi$`, `${who} het chiu noi roi$`]),
   // hoping not to wake up, disappearing
   'khong tinh day nua',
+  'khong muon tinh day nua',
   'khong thuc day nua',
-  'ngu mai khong day',
-  'ngu mot giac khong day',
+  'muon ngu mai',
+  'khong bao gio day nua',
+  'dung bao gio day nua',
+  'khong bao gio tinh lai',
+  'dung bao gio tinh lai',
+  'khong bao gio tinh day',
   'muon bien mat',
   'bien mat khoi the gioi',
   'bien mat khoi cuoc doi',
@@ -187,46 +226,81 @@ export const CRISIS_KEYWORDS: readonly string[] = [
   'ket thuc doi minh',
   'muon ket thuc tat ca',
   'nhay tu tang',
+  'muon nhay cau',
+  'muon nhay xuong song',
+  'muon nhay xuong bien',
+  'nhay xuong song',
   // harming oneself
-  'cat tay',
+  'hay cat tay',
+  'lai cat tay',
+  'tu cat tay',
+  'tu cat vao tay',
+  'muon cat tay',
+  'cat tay de',
+  'cat tay minh',
+  'minh cat tay$',
+  'toi cat tay$',
+  'em cat tay$',
   'cat co tay',
+  'cua vao tay',
+  'hay rach tay',
+  'lai rach tay',
+  'tu rach tay',
+  'muon rach tay',
   'rach co tay',
   'tu lam dau ban than',
   'tu lam dau minh',
+  'tu lam minh dau',
   'tu lam hai ban than',
   'tu lam hai minh',
   'muon lam dau ban than',
   'muon lam dau minh',
+  // means named, or intent stated
   'uong thuoc ngu cho het',
   'uong thuoc ngu het lo',
-  'uong het lo thuoc',
-  'uong that nhieu thuoc',
   'uong thuoc ngu that nhieu',
   'uong thuoc ngu de chet',
   'uong thuoc de chet',
+  'uong het thuoc ngu',
+  'uong ca vi thuoc',
+  'uong thuoc diet co',
+  'uong thuoc tru sau',
+  'uong thuoc chuot',
   // feeling like a burden
   'se tot hon neu khong co toi',
   'se tot hon neu khong co minh',
   'khong co toi se tot hon',
   'la ganh nang cho moi nguoi',
+  'la ganh nang cho gia dinh',
   'la ganh nang cua gia dinh',
 ];
 
-// Tier B, tone-sensitive: compared with the NFC lower-case text, so accented "muốn từ từ" and "tư vấn"
+// Tier B, tone-sensitive: compared with the NFC lower-case clause, so accented "muốn từ từ" and "tư vấn"
 // can never match. Accented entries are words that collide with everyday ones once tones are stripped
-// (tự tử / từ từ, tự vẫn / tư vấn, nhảy lầu / nhảy lâu, đáng sống / đang sống). The raw-ASCII entries are
-// intent phrases for people who type without diacritics.
+// (tự tử / từ từ, tự vẫn / tư vấn, nhảy lầu / nhảy lâu, treo cổ / treo cờ, đáng sống / đang sống). The
+// raw-ASCII entries are intent phrases for people who type without diacritics; "tu tu" there needs a clause
+// end or an unambiguous continuation, because "muon tu tu giam can" is the everyday "từ từ".
 export const CRISIS_PHRASES_EXACT: readonly string[] = [
   'tự tử',
   'tự vẫn',
   'nhảy lầu',
+  'treo cổ',
+  'cứa tay',
+  'cứa vào tay',
+  'cứa cổ tay',
   'không đáng sống',
   'chẳng đáng sống',
   'không xứng đáng sống',
-  'muon tu tu',
-  'dinh tu tu',
-  'se tu tu',
+  'muon tu tu$',
+  'dinh tu tu$',
+  'se tu tu$',
+  'y dinh tu tu',
+  'nghi den tu tu',
+  'nghi toi tu tu',
   'nghi den chuyen tu tu',
+  'tu tu cho xong',
+  'tu tu de giai thoat',
+  'muon treo co',
   'muon nhay lau',
   'dinh nhay lau',
   'khong dang song nua',
