@@ -6,6 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import pg from 'pg';
+import type { ClientBase } from 'pg';
+import { APP_CONN, TEST } from '../scripts/cluster.ts';
 import { migrate } from '../src/migrate.ts';
 import {
   asAnon,
@@ -80,6 +83,36 @@ test('app.current_user_id() is null without a user, also on a reused connection'
     c.query('SELECT app.current_user_id() AS id, current_user::text AS role'),
   );
   assert.deepEqual(rows[0], { id: null, role: 'app_anon' });
+});
+
+test('a user id left on the session never becomes the identity of a request', async () => {
+  // one connection, so the helpers must run on the one that carries the stale value
+  const pool = new pg.Pool({
+    host: '127.0.0.1',
+    port: TEST.port,
+    ...APP_CONN,
+    database: db.name,
+    max: 1,
+  });
+  try {
+    const stale = randomUUID();
+    await pool.query("SELECT set_config('app.user_id', $1, false)", [stale]);
+    const { rows: session } = await pool.query(
+      "SELECT current_setting('app.user_id', true) AS uid",
+    );
+    assert.equal(session[0].uid, stale);
+
+    const identity = 'SELECT app.current_user_id()::text AS id';
+    for (const request of [asAnon, asJob]) {
+      const { rows } = await request(pool, c => c.query(identity));
+      assert.equal(rows[0].id, null);
+    }
+    const userId = randomUUID();
+    const { rows } = await asUser(pool, userId, c => c.query(identity));
+    assert.equal(rows[0].id, userId);
+  } finally {
+    await pool.end();
+  }
 });
 
 test('a function granted only to app_job is closed to app_anon and app_auth', async () => {
@@ -198,7 +231,7 @@ test('loading the cluster manager leaves the exit code of the process alone', ()
   }
 });
 
-test('migrate runs SQL below 80, then the seeders, then 8N and 90', async () => {
+test('migrate runs SQL below 80, then the seeders, then 8N and 90, and names the step that fails', async () => {
   const root = await mkdtemp(join(tmpdir(), 'hm-migrate-'));
   const client = await db.admin.connect();
   try {
@@ -267,6 +300,32 @@ test('migrate runs SQL below 80, then the seeders, then 8N and 90', async () => 
       migrate(client, join(root, 'seed')),
       /no NN-\*\.sql file/,
     );
+    await rm(join(root, 'sql', '11-broken.sql'));
+
+    // the step's own error is reported even when the rollback fails too
+    const lost = {
+      query: async (sql: string) => {
+        if (sql !== 'BEGIN') {
+          throw new Error(sql === 'ROLLBACK' ? 'connection lost' : 'boom');
+        }
+      },
+    } as unknown as ClientBase;
+    await assert.rejects(
+      migrate(lost, join(root, 'sql'), join(root, 'absent')),
+      /^Error: 10-base\.sql: boom$/,
+    );
+
+    // nothing may run after the self-check, and the refusal comes before any step
+    const stepCount = async () =>
+      (await client.query('SELECT count(*)::int AS n FROM fx_migrate_steps'))
+        .rows[0].n;
+    const stepsBefore = await stepCount();
+    await writeFile(join(root, 'sql', '91-late.sql'), step('91'));
+    await assert.rejects(
+      migrate(client, join(root, 'sql'), join(root, 'seed')),
+      /^Error: 90-verify\.sql must be the last step, but 91-late\.sql would run after it$/,
+    );
+    assert.equal(await stepCount(), stepsBefore);
   } finally {
     client.release();
     await rm(root, { recursive: true, force: true });

@@ -20,7 +20,8 @@ async function inTransaction(
     await work();
     await client.query('COMMIT');
   } catch (cause) {
-    await client.query('ROLLBACK');
+    // the step's own error is the one to report, even when the rollback fails too
+    await client.query('ROLLBACK').catch(() => {});
     throw new Error(`${label}: ${(cause as Error).message}`, { cause });
   }
 }
@@ -40,6 +41,15 @@ export async function migrate(
     .sort();
   if (sqlFiles.length === 0) {
     throw new Error(`no NN-*.sql file in ${sqlDir}`);
+  }
+  // The self-check judges the finished schema: whatever ran after it would go unchecked.
+  const selfCheck = sqlFiles.findIndex(name => name.startsWith('90-'));
+  if (selfCheck !== -1 && selfCheck !== sqlFiles.length - 1) {
+    throw new Error(
+      `${sqlFiles[selfCheck]} must be the last step, but ${sqlFiles
+        .slice(selfCheck + 1)
+        .join(', ')} would run after it`,
+    );
   }
   const seedFiles = (
     await readdir(seedDir).catch((e: NodeJS.ErrnoException) => {

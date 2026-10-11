@@ -16,11 +16,11 @@ async function asRole<T>(
     await client.query('BEGIN');
     // SET ROLE takes an identifier, not a parameter: `role` is one of three literals, never data.
     await client.query(`SET LOCAL ROLE ${role}`);
-    if (userId !== null) {
-      await client.query("SELECT set_config('app.user_id', $1, true)", [
-        userId,
-      ]);
-    }
+    // Always set, also to "no user": a value left on the session by anything else must not
+    // become the identity of this request.
+    await client.query("SELECT set_config('app.user_id', $1, true)", [
+      userId ?? '',
+    ]);
     const result = await work(client);
     await client.query('COMMIT');
     return result;
