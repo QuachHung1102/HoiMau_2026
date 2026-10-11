@@ -1,7 +1,7 @@
 module.exports = {
   preset: '@react-native/jest-preset',
   setupFiles: ['<rootDir>/jest.setup.js'],
-  // server/ and domain/ run on node:test; tools/ and design/ are not app code.
+  // server/ and domain/ run on node:test; tools/, design/ and .superpowers/ (agent scratch) are not app code.
   testPathIgnorePatterns: [
     '/node_modules/',
     '/server/',
@@ -10,6 +10,7 @@ module.exports = {
     '/design/',
     '/android/',
     '/ios/',
+    '/.superpowers/',
   ],
   modulePathIgnorePatterns: ['<rootDir>/server/'],
   // lucide-react-native resolves to .mjs under the "react-native" condition.

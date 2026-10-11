@@ -62,12 +62,8 @@ const slotCounts = Object.fromEntries(
   ]),
 ) as Record<keyof typeof MEALS_PER_SLOT, number>;
 
-// `npm run content:count -- --require=…` from the repository root is swallowed by the inner npm as its own
-// option and reaches this script only as npm_config_require, so read both.
 const arg = process.argv.slice(2).find(a => a.startsWith('--require='));
-const requested = arg
-  ? arg.slice('--require='.length)
-  : process.env.npm_config_require;
+const requested = arg?.slice('--require='.length);
 const required = requested
   ? requested.split(',').filter(Boolean)
   : Object.keys(MINIMUMS);
