@@ -16,91 +16,152 @@ const mount = (motion: 'REDUCED' | 'FULL' = 'REDUCED') =>
       </SnackbarProvider>
     </MotionPreferenceProvider>,
   );
-const show = (options: SnackbarOptions) => act(() => api.show(options));
+// async: the screen-reader check resolves in a microtask after the snackbar mounts
+const show = (options: SnackbarOptions) => act(async () => api.show(options));
+const advance = (ms: number) => act(async () => jest.advanceTimersByTime(ms));
 
+let screenReader: jest.SpyInstance;
 beforeEach(() => {
+  jest.clearAllMocks(); // the preset's AccessibilityInfo methods are shared jest.fn()s: counts would carry over
   jest.useFakeTimers();
   jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => undefined);
+  screenReader = jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(false);
 });
 afterEach(() => {
   jest.useRealTimers();
   jest.restoreAllMocks();
 });
 
-test('show displays the message and announces it', () => {
+test('show displays the message and announces it', async () => {
   const view = mount();
-  show({ message: 'Đã lưu thêm một phần nước' });
+  await show({ message: 'Đã lưu thêm một phần nước' });
   expect(view.getByText('Đã lưu thêm một phần nước')).toBeTruthy();
   expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith('Đã lưu thêm một phần nước');
   view.unmount();
 });
 
-test('the action is a button that fires once and dismisses', () => {
+test('the action is a button that fires once and dismisses', async () => {
   const onPress = jest.fn();
   const view = mount();
-  show({ message: 'Đã lưu', action: { label: 'Hoàn tác', onPress } });
+  await show({ message: 'Đã lưu', action: { label: 'Hoàn tác', onPress }, durationMs: 5000 });
   const button = view.getByRole('button', { name: 'Hoàn tác' });
-  fireEvent.press(button);
-  fireEvent.press(button);
+  // both presses land before React re-renders, so only the component's own guard can stop the second
+  act(() => {
+    fireEvent.press(button);
+    fireEvent.press(button);
+  });
   expect(onPress).toHaveBeenCalledTimes(1);
   expect(view.queryByText('Đã lưu')).toBeNull();
   view.unmount();
 });
 
-test('auto-dismisses after durationMs and not before', () => {
+test('auto-dismisses after durationMs and not before', async () => {
   const view = mount();
-  show({ message: 'Đã lưu', durationMs: 3000 });
-  act(() => jest.advanceTimersByTime(2999));
+  await show({ message: 'Đã lưu', durationMs: 3000 });
+  await advance(2999);
   expect(view.getByText('Đã lưu')).toBeTruthy();
-  act(() => jest.advanceTimersByTime(1));
+  await advance(1);
   expect(view.queryByText('Đã lưu')).toBeNull();
   view.unmount();
 });
 
-test('the default duration is 4000 ms', () => {
+test('the default duration is 4000 ms', async () => {
   const view = mount();
-  show({ message: 'Đã lưu' });
-  act(() => jest.advanceTimersByTime(3999));
+  await show({ message: 'Đã lưu' });
+  await advance(3999);
   expect(view.getByText('Đã lưu')).toBeTruthy();
-  act(() => jest.advanceTimersByTime(1));
+  await advance(1);
   expect(view.queryByText('Đã lưu')).toBeNull();
   view.unmount();
 });
 
-test('under reduced motion a countdown is written as seconds, and counts down', () => {
+test('under reduced motion a countdown is written as seconds, and counts down', async () => {
   const view = mount('REDUCED');
-  show({ message: 'Đã lưu', countdown: true, durationMs: 5000, action: { label: 'Hoàn tác', onPress: jest.fn() } });
+  await show({ message: 'Đã lưu', countdown: true, durationMs: 5000, action: { label: 'Hoàn tác', onPress: jest.fn() } });
   expect(view.getByText('Còn 5 giây')).toBeTruthy();
-  act(() => jest.advanceTimersByTime(2000));
+  await advance(2000);
   expect(view.getByText('Còn 3 giây')).toBeTruthy();
   view.unmount();
 });
 
-test('under full motion a countdown draws a bar and writes no seconds', () => {
+test('under full motion a countdown draws a bar and writes no seconds', async () => {
   const view = mount('FULL');
-  show({ message: 'Đã lưu', countdown: true, durationMs: 5000 });
+  await show({ message: 'Đã lưu', countdown: true, durationMs: 5000 });
   expect(view.queryByText(/Còn \d+ giây/)).toBeNull();
   view.unmount();
 });
 
-test('a second show replaces the first, and the first timer does not close the second', () => {
+test('a second show replaces the first, and the first timer does not close the second', async () => {
   const view = mount();
-  show({ message: 'Một', durationMs: 2000 });
-  act(() => jest.advanceTimersByTime(1000));
-  show({ message: 'Hai', durationMs: 3000 });
+  // the same duration for both: a snackbar that was reused instead of replaced would keep the first timer
+  await show({ message: 'Một', durationMs: 3000 });
+  await advance(1000);
+  await show({ message: 'Hai', durationMs: 3000 });
   expect(view.queryByText('Một')).toBeNull();
   expect(view.getByText('Hai')).toBeTruthy();
-  act(() => jest.advanceTimersByTime(1500)); // past the first timer's 2000 ms
+  await advance(2500); // t = 3500: past the first timer's 3000 ms
   expect(view.getByText('Hai')).toBeTruthy();
-  act(() => jest.advanceTimersByTime(1500));
+  await advance(500); // t = 4000: the second timer's 3000 ms
   expect(view.queryByText('Hai')).toBeNull();
   view.unmount();
 });
 
-test('dismiss() removes the current snackbar', () => {
+test('dismiss() removes the current snackbar', async () => {
   const view = mount();
-  show({ message: 'Đã lưu' });
-  act(() => api.dismiss());
+  await show({ message: 'Đã lưu' });
+  await act(async () => api.dismiss());
+  expect(view.queryByText('Đã lưu')).toBeNull();
+  view.unmount();
+});
+
+describe('with a screen reader on', () => {
+  beforeEach(() => {
+    screenReader.mockResolvedValue(true);
+    jest.spyOn(jest.requireActual('react-native'), 'findNodeHandle').mockReturnValue(7); // Jest has no native handles
+  });
+
+  test('announces the message and the action together and moves focus to the action', async () => {
+    const focus = jest.spyOn(AccessibilityInfo, 'setAccessibilityFocus').mockImplementation(() => undefined);
+    const view = mount();
+    await show({ message: 'Đã lưu thêm một phần nước', action: { label: 'Hoàn tác', onPress: jest.fn() } });
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith('Đã lưu thêm một phần nước. Nút Hoàn tác.');
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledTimes(1);
+    expect(focus).toHaveBeenCalledWith(7);
+    view.unmount();
+  });
+
+  test('uses screenReaderDurationMs instead of durationMs', async () => {
+    jest.spyOn(AccessibilityInfo, 'setAccessibilityFocus').mockImplementation(() => undefined);
+    const view = mount();
+    await show({ message: 'Đã lưu', durationMs: 5000, screenReaderDurationMs: 9000, action: { label: 'Hoàn tác', onPress: jest.fn() } });
+    await advance(5001);
+    expect(view.getByText('Đã lưu')).toBeTruthy();
+    await advance(3998);
+    expect(view.getByText('Đã lưu')).toBeTruthy();
+    await advance(2);
+    expect(view.queryByText('Đã lưu')).toBeNull();
+    view.unmount();
+  });
+
+  test('without screenReaderDurationMs the normal duration applies, and a snackbar without an action takes no focus', async () => {
+    const focus = jest.spyOn(AccessibilityInfo, 'setAccessibilityFocus').mockImplementation(() => undefined);
+    const view = mount();
+    await show({ message: 'Đã lưu', durationMs: 3000 });
+    expect(focus).not.toHaveBeenCalled();
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith('Đã lưu');
+    await advance(3000);
+    expect(view.queryByText('Đã lưu')).toBeNull();
+    view.unmount();
+  });
+});
+
+test('with the screen reader off the longer duration is ignored and focus stays put', async () => {
+  const focus = jest.spyOn(AccessibilityInfo, 'setAccessibilityFocus').mockImplementation(() => undefined);
+  const view = mount();
+  await show({ message: 'Đã lưu', durationMs: 5000, screenReaderDurationMs: 9000, action: { label: 'Hoàn tác', onPress: jest.fn() } });
+  expect(focus).not.toHaveBeenCalled();
+  expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith('Đã lưu');
+  await advance(5000);
   expect(view.queryByText('Đã lưu')).toBeNull();
   view.unmount();
 });
@@ -129,10 +190,10 @@ const watchTimers = () => {
   return { live, restore: () => Object.assign(globalThis, real) };
 };
 
-test.each([['REDUCED'], ['FULL']] as const)('unmounting leaves no timer behind (%s motion, with countdown)', motion => {
+test.each([['REDUCED'], ['FULL']] as const)('unmounting leaves no timer behind (%s motion, with countdown)', async motion => {
   const timers = watchTimers();
   const view = mount(motion);
-  show({ message: 'Đã lưu', countdown: true, durationMs: 5000, action: { label: 'Hoàn tác', onPress: jest.fn() } });
+  await show({ message: 'Đã lưu', countdown: true, durationMs: 5000, action: { label: 'Hoàn tác', onPress: jest.fn() } });
   expect(timers.live.size).toBeGreaterThan(0);
   view.unmount();
   expect(timers.live.size).toBe(0);

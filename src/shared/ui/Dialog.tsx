@@ -12,13 +12,16 @@ type Props = {
   visible?: boolean;
   title: string;
   body: string;
+  /** A smaller, muted paragraph under the body (frame S63). */
+  note?: string;
   primary: Action;
+  /** With no secondary action the primary handler must close the dialog: it has no other visible control. */
   secondary?: Action;
   /** Android Back and a tap on the dim backdrop. */
   onDismiss: () => void;
 };
 
-export function Dialog({ visible = true, title, body, primary, secondary, onDismiss }: Props) {
+export function Dialog({ visible = true, title, body, note, primary, secondary, onDismiss }: Props) {
   const palette = useTheme();
   const reduced = useReducedMotion();
   const { ref, focus } = useFocusOnShow();
@@ -38,6 +41,7 @@ export function Dialog({ visible = true, title, body, primary, secondary, onDism
               <AppText variant="title">{title}</AppText>
             </View>
             <AppText>{body}</AppText>
+            {note ? <AppText variant="caption">{note}</AppText> : null}
             <View style={styles.actions}>
               <Button label={primary.label} onPress={primary.onPress} />
               {secondary ? <Button variant="secondary" label={secondary.label} onPress={secondary.onPress} /> : null}

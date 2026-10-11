@@ -1,4 +1,5 @@
 import { fireEvent, render } from '@testing-library/react-native';
+import { AccessibilityInfo, Platform, StyleSheet, type ViewStyle } from 'react-native';
 import { MotionPreferenceProvider } from '../motion/useReducedMotion';
 import { colors } from '../theme/tokens';
 import { DisabledReason, InlineError } from './Notices';
@@ -34,4 +35,39 @@ test('DisabledReason states the reason in text and is not an alert', () => {
   expect(liveRegionOf(text as unknown as Node)).toBeUndefined();
   expect(JSON.stringify(view.toJSON())).not.toContain(colors.error);
   view.unmount();
+});
+
+test('InlineError is never fully transparent while it fades in (Android can drop live-region events from an invisible view)', () => {
+  const view = render(
+    <MotionPreferenceProvider value="FULL">
+      <InlineError message="Chưa lưu được." />
+    </MotionPreferenceProvider>,
+  );
+  let node = view.getByText('Chưa lưu được.').parent as unknown as Node | null;
+  while (node && !node.props.accessibilityLiveRegion) node = node.parent;
+  const style = StyleSheet.flatten(node?.props.style as ViewStyle);
+  expect(style?.opacity).toBeGreaterThan(0);
+  view.unmount();
+});
+
+describe('iOS ignores live regions', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => undefined);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  test('InlineError announces its text on iOS', () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    const view = render(wrap(<InlineError message="Chưa lưu được." />));
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith('Chưa lưu được.');
+    view.unmount();
+  });
+
+  test('InlineError leaves the announcement to the live region on Android', () => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    const view = render(wrap(<InlineError message="Chưa lưu được." />));
+    expect(AccessibilityInfo.announceForAccessibility).not.toHaveBeenCalled();
+    view.unmount();
+  });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Animated, Easing, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { motion } from '../motion/motion';
 import { useReducedMotion } from '../motion/useReducedMotion';
 import { useTheme } from '../theme/ThemeProvider';
@@ -9,10 +9,21 @@ import { Touchable } from './Touchable';
 
 type Action = { label: string; onPress: () => void };
 
+/**
+ * accessibilityLiveRegion does nothing on iOS, so there the text is announced explicitly when it appears.
+ * Android keeps the live region alone (announcing as well would read it twice).
+ */
+export function useAnnounceOnIos(text: string) {
+  useEffect(() => {
+    if (Platform.OS === 'ios') AccessibilityInfo.announceForAccessibility(text);
+  }, [text]);
+}
+
 /** Error text with an icon (never colour alone), announced politely when it appears. */
 export function InlineError({ message, action, style }: { message: string; action?: Action; style?: StyleProp<ViewStyle> }) {
   const palette = useTheme();
   const reduced = useReducedMotion();
+  useAnnounceOnIos(message);
   const [enter] = useState(() => new Animated.Value(reduced ? 1 : 0));
   useEffect(() => {
     if (reduced) return;
@@ -27,10 +38,12 @@ export function InlineError({ message, action, style }: { message: string; actio
     return () => run.stop();
   }, [reduced, enter]);
   const shift = enter.interpolate({ inputRange: [0, 1], outputRange: [-4, 0] });
+  // Never fully transparent: Android can drop live-region events from an invisible view.
+  const opacity = enter.interpolate({ inputRange: [0, 1], outputRange: [0.01, 1] });
   return (
     <Animated.View
       accessibilityLiveRegion="polite"
-      style={[styles.row, { opacity: enter, transform: [{ translateY: shift }] }, style]}
+      style={[styles.row, { opacity, transform: [{ translateY: shift }] }, style]}
     >
       <Icon name="CircleAlert" size={16} color={palette.error} />
       <AppText variant="caption" color="error" style={styles.text}>

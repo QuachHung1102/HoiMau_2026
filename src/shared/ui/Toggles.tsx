@@ -154,6 +154,30 @@ export function SegmentedControl({ options, value, onChange, accessibilityLabel 
   );
 }
 
+type RadioRowProps = { label: string; description?: string; selected: boolean; onPress: () => void; disabled?: boolean };
+
+/** One option of a single-choice list. The filled dot shows the choice, so colour is never the only cue. */
+export function RadioRow({ label, description, selected, onPress, disabled }: RadioRowProps) {
+  const palette = useTheme();
+  return (
+    <Touchable
+      accessibilityRole="radio"
+      accessibilityState={{ checked: selected }}
+      disabled={disabled}
+      onPress={onPress}
+      style={[styles.row, disabled && styles.disabled]}
+    >
+      <View style={[styles.radio, { borderColor: palette.primary }]}>
+        {selected ? <View testID="radio-dot" style={[styles.dot, { backgroundColor: palette.primary }]} /> : null}
+      </View>
+      <View style={styles.text}>
+        <AppText weight="semibold">{label}</AppText>
+        {description ? <AppText variant="caption">{description}</AppText> : null}
+      </View>
+    </Touchable>
+  );
+}
+
 type ChipProps = { label: string; selected: boolean; onPress: () => void; disabled?: boolean };
 
 export function FilterChip({ label, selected, onPress, disabled }: ChipProps) {
@@ -186,11 +210,15 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.5 },
   box: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   track: { width: TRACK.width, height: TRACK.height, borderRadius: TRACK.height / 2, padding: TRACK.pad, justifyContent: 'center' },
+  radio: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  dot: { width: 12, height: 12, borderRadius: 6 },
   thumb: { width: TRACK.thumb, height: TRACK.thumb, borderRadius: TRACK.thumb / 2 },
   segments: { flexDirection: 'row', borderWidth: 1, borderRadius: radius.surface, padding: 4 },
-  // flexGrow without a fixed basis: a wide label gets a wide segment, as in the frame
+  // flexGrow without a fixed basis: a wide label gets a wide segment, as in the frame; flexShrink and a wrapping
+  // label keep three segments inside 360 dp at font scale 1.3 (minHeight, not height, lets them grow).
   segment: {
     flexGrow: 1,
+    flexShrink: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { FlatList, StyleSheet } from 'react-native';
 import { normalizeVi } from '../../../domain/language.ts';
 import * as vi from '../i18n/vi/common';
 import { useTheme } from '../theme/ThemeProvider';
@@ -19,29 +19,34 @@ type Props = {
   placeholder?: string;
   error?: string;
   helper?: string;
-  /** Adds a search box that ignores case and diacritics ("ha noi" finds "Hà Nội"). */
+  /** Adds a search box that ignores case, diacritics and the separators _ / - ("ho chi minh" finds "Asia/Ho_Chi_Minh"). */
   searchable?: boolean;
 };
+
+// Separators become spaces before the diacritics are folded, on the option and on the query alike.
+const fold = (text: string) => normalizeVi(text.replace(/[_/-]/g, ' '));
 
 export function SelectField({ label, value, options, onChange, placeholder = vi.select, error, helper, searchable = false }: Props) {
   const palette = useTheme();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const selected = options.find(o => o.value === value);
-  const needle = normalizeVi(query.trim());
-  const shown = needle ? options.filter(o => normalizeVi(o.label).includes(needle)) : options;
-  const close = () => {
-    setOpen(false);
-    setQuery('');
-  };
+  const needle = fold(query.trim());
+  const shown = needle ? options.filter(o => fold(o.label).includes(needle)) : options;
+  const hint = error ? undefined : helper;
   return (
     <>
       <FieldFrame label={label} error={error} helper={helper} focused={open}>
         <Touchable
           accessibilityRole="combobox"
           accessibilityLabel={`${error ? vi.fieldInvalid(label, error) : label}, ${selected?.label ?? placeholder}`}
+          accessibilityHint={hint}
           accessibilityState={{ expanded: open }}
-          onPress={() => setOpen(true)}
+          onPress={() => {
+            // reset on open, not on close: the list must not un-filter while the sheet slides out
+            setQuery('');
+            setOpen(true);
+          }}
           style={styles.field}
         >
           <AppText color={selected ? 'ink' : 'muted'} style={styles.value}>
@@ -50,32 +55,38 @@ export function SelectField({ label, value, options, onChange, placeholder = vi.
           <Icon name="ChevronDown" color={palette.muted} />
         </Touchable>
       </FieldFrame>
-      <BottomSheet visible={open} title={label} onDismiss={close}>
+      <BottomSheet visible={open} title={label} onDismiss={() => setOpen(false)} scroll={false}>
         {searchable ? <TextField label={vi.search} value={query} onChangeText={setQuery} autoCorrect={false} /> : null}
-        {/* ponytail: every option is rendered at once; switch to a FlatList if a list ever passes a few hundred rows. */}
-        <View accessibilityRole="radiogroup" accessibilityLabel={label}>
-          {shown.map(option => {
-            const checked = option.value === value;
+        <FlatList
+          accessibilityRole="radiogroup"
+          accessibilityLabel={label}
+          data={shown}
+          extraData={value}
+          keyExtractor={option => option.value}
+          keyboardShouldPersistTaps="handled"
+          initialNumToRender={12}
+          windowSize={7}
+          ListEmptyComponent={<AppText variant="secondary">{vi.noResults}</AppText>}
+          renderItem={({ item }) => {
+            const checked = item.value === value;
             return (
               <Touchable
-                key={option.value}
                 accessibilityRole="radio"
                 accessibilityState={{ checked }}
                 onPress={() => {
-                  onChange(option.value);
-                  close();
+                  onChange(item.value);
+                  setOpen(false);
                 }}
                 style={[styles.option, checked && { backgroundColor: palette.soft }]}
               >
                 <AppText weight={checked ? 'semibold' : undefined} style={styles.value}>
-                  {option.label}
+                  {item.label}
                 </AppText>
                 {checked ? <Icon name="Check" color={palette.primary} /> : null}
               </Touchable>
             );
-          })}
-        </View>
-        {shown.length === 0 ? <AppText variant="secondary">{vi.noResults}</AppText> : null}
+          }}
+        />
       </BottomSheet>
     </>
   );

@@ -68,3 +68,25 @@ test('a secure field hides the text and a labelled button toggles it', () => {
   expect(view.getByRole('button', { name: 'Ẩn mật khẩu' })).toBeTruthy();
   view.unmount();
 });
+
+test('a secure field turns off capitalisation, correction and spell check; a caller can override', () => {
+  const view = render(wrap(<TextField label="Mật khẩu" secure value="" onChangeText={() => undefined} />));
+  expect(view.getByLabelText('Mật khẩu').props).toMatchObject({ autoCapitalize: 'none', autoCorrect: false, spellCheck: false });
+  view.rerender(wrap(<TextField label="Mật khẩu" secure autoCorrect value="" onChangeText={() => undefined} />));
+  expect(view.getByLabelText('Mật khẩu').props.autoCorrect).toBe(true);
+  view.unmount();
+});
+
+test('a plain field leaves those keyboard settings alone', () => {
+  const view = render(wrap(<TextField label="Tên" value="" onChangeText={() => undefined} />));
+  expect(view.getByLabelText('Tên').props.autoCapitalize).toBeUndefined();
+  view.unmount();
+});
+
+test('helper text is also the input hint, until an error replaces it', () => {
+  const view = render(wrap(<TextField label="Mật khẩu" helper="Ít nhất 8 ký tự" value="" onChangeText={() => undefined} />));
+  expect(view.getByLabelText('Mật khẩu').props.accessibilityHint).toBe('Ít nhất 8 ký tự');
+  view.rerender(wrap(<TextField label="Mật khẩu" helper="Ít nhất 8 ký tự" error="Quá ngắn." value="" onChangeText={() => undefined} />));
+  expect(view.getByLabelText('Mật khẩu, lỗi: Quá ngắn.').props.accessibilityHint).toBeUndefined();
+  view.unmount();
+});

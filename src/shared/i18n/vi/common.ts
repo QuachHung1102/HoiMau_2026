@@ -30,3 +30,5 @@ export const select = 'Chọn';
 export const search = 'Tìm kiếm';
 export const noResults = 'Không có kết quả phù hợp';
 export const secondsLeft = (seconds: number) => `Còn ${seconds} giây`;
+export const snackbarAnnouncement = (message: string, actionLabel: string) =>
+  `${message}. Nút ${actionLabel}.`;

@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type ComponentRef, type ReactNode, type Ref } from 'react';
 import {
   Animated,
   Pressable,
   StyleSheet,
+  type View,
   type AccessibilityRole,
   type GestureResponderEvent,
   type LayoutChangeEvent,
@@ -18,6 +19,8 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 type Props = Omit<PressableProps, 'style' | 'children' | 'accessibilityRole' | 'role'> & {
   accessibilityRole: AccessibilityRole;
+  /** For moving screen-reader focus to this control; passed on to the Pressable. */
+  ref?: Ref<ComponentRef<typeof View>>;
   style?: StyleProp<ViewStyle>;
   children?: ReactNode;
 };
