@@ -15,22 +15,27 @@
 --   * SECURITY DEFINER is not subject to row level security: "the user is not deleted" is
 --     written out in every lookup.
 
--- The time zone names PostgreSQL knows, copied so that users.timezone can reference them: the
--- view reads the zone files on every query (about 250 ms on the development machine), a foreign
--- key lookup does not. '+07:00', 'ICT' and 'UTC+7' are not names: they mean something else, or
--- nothing, to JavaScript. A migration after a tzdata update adds the new names.
+-- The time zone names users.timezone may hold: the Area/City names of PostgreSQL's zone
+-- database, and UTC. They are copied because the view reads the zone files on every query (about
+-- 250 ms on the development machine) and a foreign key lookup does not.
+-- A name without a slash is left out because PostgreSQL and JavaScript do not read it alike:
+-- 'CET', 'EET', 'MET', 'WET', 'EST' are also abbreviations, which AT TIME ZONE prefers (a fixed
+-- offset, no summer time), and 'Factory' is no zone at all to JavaScript. '+07:00', 'ICT' and
+-- 'UTC+7' were never names.
+-- Insert only: a migration after a tzdata update adds the new names, and a name the zone
+-- database has dropped stays, so no user row ever loses its zone.
 CREATE TABLE IF NOT EXISTS timezones (
   name text PRIMARY KEY
 );
 INSERT INTO timezones (name)
-SELECT name FROM pg_timezone_names
+SELECT name FROM pg_timezone_names WHERE name LIKE '%/%' OR name = 'UTC'
 ON CONFLICT (name) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   -- stored as app._email() returns it; stays reserved while the row exists, deleted or not
   email text NOT NULL CHECK (email = lower(btrim(email)) AND char_length(email) BETWEEN 1 AND 254),
-  display_name text NOT NULL CHECK (char_length(display_name) BETWEEN 1 AND 40),
+  display_name text NOT NULL,
   timezone text NOT NULL DEFAULT 'Asia/Ho_Chi_Minh' REFERENCES timezones (name),
   archetype text CHECK (archetype IN ('TANKER', 'ASSASSIN', 'SUPPORTER')),
   archetype_set_at timestamptz,
@@ -41,6 +46,18 @@ CREATE TABLE IF NOT EXISTS users (
   created_at timestamptz NOT NULL DEFAULT app.now()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_key ON users (lower(email));
+
+-- 1 to 40 characters, no space at either end, and nothing a reader cannot see: no control
+-- character (U+0000-001F, U+007F-009F) and no invisible or text-direction character
+-- (U+200B-200F, U+202A-202E, U+2060-2069, U+FEFF). The owner of the row writes this column
+-- directly, so the rule is a constraint. Dropped and added again so that an edit of the rule
+-- reaches a table that already exists. The escapes use "!" to keep backslashes out of this file.
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_display_name_check;
+ALTER TABLE users ADD CONSTRAINT users_display_name_check CHECK (
+  char_length(display_name) BETWEEN 1 AND 40
+  AND display_name = btrim(display_name)
+  AND display_name !~ U&'[!0001-!001F!007F-!009F!200B-!200F!202A-!202E!2060-!2069!FEFF]' UESCAPE '!'
+);
 
 CREATE TABLE IF NOT EXISTS credentials (
   user_id uuid PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
@@ -125,13 +142,18 @@ SELECT meta.expect_table('app_secrets', 'internal', '{}', '{}', NULL);
 -- Internal helpers: EXECUTE for no role.
 
 -- The one spelling of an email: spaces trimmed, lower-cased by the database collation (ICU:
--- full Unicode case mapping, the result JavaScript's toLowerCase() gives). No Unicode
--- normalisation: a composed and a decomposed spelling are two emails. Null when the result is
--- empty or longer than 254 characters: such an email names no account.
+-- full Unicode case mapping, the result JavaScript's toLowerCase() gives). Null for what names
+-- no account and can never become one: empty, longer than 254 characters, holding a control,
+-- invisible or text-direction character (the class of users_display_name_check), or not in
+-- normal form: a decomposed letter, a fullwidth "@", a ligature are look-alikes of an address
+-- that exists. NFKC-stable implies NFC-stable. Nothing is rewritten here: the caller normalises.
 CREATE OR REPLACE FUNCTION app._email(p_email text) RETURNS text
 LANGUAGE sql IMMUTABLE
 AS $$
-  SELECT CASE WHEN char_length(s.email) BETWEEN 1 AND 254 THEN s.email END
+  SELECT CASE WHEN char_length(s.email) BETWEEN 1 AND 254
+               AND s.email !~ U&'[!0001-!001F!007F-!009F!200B-!200F!202A-!202E!2060-!2069!FEFF]' UESCAPE '!'
+               AND s.email = normalize(s.email, NFKC)
+              THEN s.email END
     FROM (SELECT lower(btrim(p_email)) AS email) s
 $$;
 
@@ -207,6 +229,7 @@ AS $$
 DECLARE
   v_email text := app._email(p_email);
   v_user uuid;
+  v_constraint text;
 BEGIN
   IF octet_length(p_salt) IS DISTINCT FROM 16 OR octet_length(p_key) IS DISTINCT FROM 32
      OR octet_length(p_token_hash) IS DISTINCT FROM 32 THEN
@@ -225,10 +248,20 @@ BEGIN
   END IF;
 
   -- the email of a deleted account is still a row, so it is still taken
-  INSERT INTO users (email, display_name, terms_accepted_at)
-  VALUES (v_email, p_display_name, app.now())
-  ON CONFLICT (lower(email)) DO NOTHING
-  RETURNING id INTO v_user;
+  BEGIN
+    INSERT INTO users (email, display_name, terms_accepted_at)
+    VALUES (v_email, p_display_name, app.now())
+    ON CONFLICT (lower(email)) DO NOTHING
+    RETURNING id INTO v_user;
+  EXCEPTION WHEN check_violation THEN
+    -- the rule for a display name is written once, in the constraint
+    GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+    IF v_constraint = 'users_display_name_check' THEN
+      RAISE EXCEPTION 'VALIDATION_FAILED' USING ERRCODE = 'HM000',
+        DETAIL = '{"fields":[{"field":"displayName","rule":"format"}]}';
+    END IF;
+    RAISE;
+  END;
   IF v_user IS NULL THEN
     RAISE EXCEPTION 'REGISTRATION_UNAVAILABLE' USING ERRCODE = 'HM000', DETAIL = '{}';
   END IF;

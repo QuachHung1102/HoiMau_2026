@@ -7,6 +7,7 @@ import { after, before, test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import type { PoolClient, QueryResult } from 'pg';
+import { logicalDateOf } from '../../domain/logicalDate.ts';
 import {
   asAnon,
   asJob,
@@ -70,6 +71,9 @@ async function call<T = unknown>(
   const { rows } = await as(c => c.query(select(fn, args), args));
   return rows[0].v;
 }
+
+/** A character by its code point: this file holds no escape sequence that a tool could rewrite. */
+const cp = (codePoint: number) => String.fromCodePoint(codePoint);
 
 const newEmail = () => `u${randomBytes(6).toString('hex')}@example.com`;
 
@@ -291,13 +295,24 @@ test('the email is trimmed and lower-cased inside every function, non-ASCII lett
   assert.equal(await login(stored, newKey), a.id);
 });
 
-test('an empty or over-long email is the uniform failure, and leaves no throttle row', async () => {
+test('an email that can never be an account is the uniform failure, and leaves no throttle row', async () => {
   const long = `${'a'.repeat(243)}@example.com`; // 255 characters
   assert.equal(long.length, 255);
+  const lookAlikes = [
+    `a${cp(0x07)}b@example.com`, // control characters
+    `a${cp(0x0a)}b@example.com`,
+    `a${cp(0x85)}b@example.com`,
+    `a${cp(0x200b)}b@example.com`, // zero width space
+    `a${cp(0x202e)}b@example.com`, // right-to-left override
+    `a${cp(0xfeff)}b@example.com`,
+    `re${cp(0x301)}sume${cp(0x301)}@example.com`, // decomposed (NFD) letters
+    `a${cp(0xff20)}b@example.com`, // fullwidth commercial at
+    `${cp(0xff41)}@example.com`, // fullwidth letter
+  ];
   const countBefore = await db.admin.query(
     'SELECT count(*) FROM auth_throttle',
   );
-  for (const email of ['', '   ', long, null]) {
+  for (const email of ['', '   ', long, null, ...lookAlikes]) {
     assert.equal((await salt(email)).length, 16);
     assert.equal(await login(email, randomBytes(32)), null);
     assert.equal(
@@ -334,6 +349,42 @@ test('an empty or over-long email is the uniform failure, and leaves no throttle
   assert.deepEqual(countAfter.rows, countBefore.rows);
   // 254 characters is still an email
   const a = await register(`${'a'.repeat(242)}@example.com`);
+  assert.equal(await login(a.email, a.key), a.id);
+  // and so is a composed (NFC) letter; its decomposed spelling is refused, not a second account
+  const tag = randomBytes(4).toString('hex');
+  const composed = await register(
+    `r${cp(0xe9)}sum${cp(0xe9)}+${tag}@example.com`,
+  );
+  const decomposed = `re${cp(0x301)}sume${cp(0x301)}+${tag}@example.com`;
+  assert.equal(decomposed.normalize('NFC'), composed.email);
+  assert.equal(await login(decomposed, composed.key), null);
+  await expectPgError(register(decomposed), {
+    code: HM,
+    messagePrefix: 'VALIDATION_FAILED',
+  });
+  assert.equal(await login(composed.email, composed.key), composed.id);
+});
+
+test('an email with a NUL byte never reaches a function: PostgreSQL refuses the parameter', async () => {
+  // text cannot hold U+0000, so the refusal is raised while the parameter is read, before any
+  // function runs: no SQL can turn it into the uniform failure. The route must reject it.
+  const a = await register();
+  const email = `${a.email.slice(0, 3)}${cp(0)}${a.email.slice(3)}`;
+  const [b16, b32] = [randomBytes(16), randomBytes(32)];
+  const calls: [string, unknown[]][] = [
+    ['auth_salt', [email]],
+    ['auth_login', [email, b32, b32]],
+    ['auth_register', [email, 'x', b16, b32, b32]],
+    ['auth_reset_request', [email, b32]],
+    ['auth_reset_confirm', [email, b32, b16, b32]],
+  ];
+  for (const [fn, args] of calls) {
+    await expectPgError(call(fn, args), {
+      code: '22021',
+      messagePrefix: 'invalid byte sequence for encoding "UTF8": 0x00',
+    });
+  }
+  assert.equal(await session(b32), null);
   assert.equal(await login(a.email, a.key), a.id);
 });
 
@@ -398,6 +449,82 @@ test('register checks every argument before it writes anything', async () => {
     await call<string>('auth_register', args({ 1: 'ầ'.repeat(40) })),
     /^[0-9a-f-]{36}$/,
   );
+});
+
+test('a display name is 1 to 40 visible characters with no space at either end, on both write paths', async () => {
+  const a = await register();
+  const refused: [why: string, name: string][] = [
+    ['spaces only', '   '],
+    ['leading space', ' a'],
+    ['trailing space', 'a '],
+    ['U+200B alone', cp(0x200b)],
+    ...[
+      0x01, 0x07, 0x09, 0x0a, 0x0d, 0x1f, 0x7f, 0x80, 0x85, 0x9f, 0x200b,
+      0x200d, 0x200f, 0x202a, 0x202e, 0x2060, 0x2069, 0xfeff,
+    ].map((code): [string, string] => [
+      `U+${code.toString(16).toUpperCase().padStart(4, '0')}`,
+      `a${cp(code)}b`,
+    ]),
+  ];
+  const email = newEmail();
+  for (const [why, name] of refused) {
+    const registered = call('auth_register', [
+      email,
+      name,
+      randomBytes(16),
+      randomBytes(32),
+      randomBytes(32),
+    ]);
+    await expectPgError(registered, {
+      code: HM,
+      messagePrefix: 'VALIDATION_FAILED',
+    });
+    const { detail } = (await registered.catch(e => e)) as { detail: string };
+    assert.deepEqual(
+      JSON.parse(detail),
+      { fields: [{ field: 'displayName', rule: 'format' }] },
+      why,
+    );
+    // the owner of the row, through the column grant: stopped by the constraint itself
+    await assert.rejects(
+      user(a.id)(c => c.query('UPDATE users SET display_name = $1', [name])),
+      {
+        code: '23514',
+        message:
+          'new row for relation "users" violates check constraint "users_display_name_check"',
+      },
+      why,
+    );
+  }
+  const { rows } = await db.admin.query(
+    `SELECT (SELECT count(*) FROM users WHERE email = $1)::int AS registered,
+            (SELECT display_name FROM users WHERE id = $2) AS name`,
+    [email, a.id],
+  );
+  assert.deepEqual(rows, [{ registered: 0, name: 'Mầm' }]);
+
+  // letters with diacritics, an emoji, an inner space, 40 characters, and the printable
+  // neighbours of the refused ranges
+  for (const name of [
+    'Nguyễn Thị Ánh Tuyết',
+    `Mầm ${cp(0x1f331)}`,
+    `~${cp(0xa1)}${cp(0x2010)}${cp(0x2030)}${cp(0xff01)}`,
+    'ầ'.repeat(40),
+  ]) {
+    const id = await call<string>('auth_register', [
+      newEmail(),
+      name,
+      randomBytes(16),
+      randomBytes(32),
+      randomBytes(32),
+    ]);
+    const updated = await user(id)(c =>
+      c.query('UPDATE users SET display_name = $1 RETURNING display_name', [
+        name,
+      ]),
+    );
+    assert.deepEqual(updated.rows, [{ display_name: name }]);
+  }
 });
 
 test('five failed logins lock the email until its 15-minute window ends; a success clears the count', async () => {
@@ -490,6 +617,145 @@ test('login refuses a key or token hash of the wrong size before it counts anyth
   const said = JSON.stringify([error.message, ...Object.values(error)]);
   assert.match(said, /already names a session/);
   assert.equal(said.includes(a.token.toString('hex')), false);
+});
+
+test('the key and the code are compared by app._same_bytes, and nothing is decided before the compare', async () => {
+  const lines = async (fn: string) => {
+    const { rows } = await db.admin.query<{ prosrc: string }>(
+      'SELECT prosrc FROM pg_proc WHERE oid = $1::regproc',
+      [fn],
+    );
+    return rows[0].prosrc.split(cp(10)).map(line => line.trim());
+  };
+  const mentioning = (source: string[], word: string) =>
+    source.filter(line => line.includes(word));
+
+  // Behaviour cannot tell a compare that stops at the first differing byte, or one that is
+  // skipped for an unknown email, from the real thing. The source of the deployed function can.
+  const loginSource = await lines('auth_login');
+  const compare =
+    'v_match := app._same_bytes(coalesce(v_stored, v_dummy), p_key);';
+  assert.deepEqual(mentioning(loginSource, 'p_key'), [
+    'IF octet_length(p_key) IS DISTINCT FROM 32 OR octet_length(p_token_hash) IS DISTINCT FROM 32 THEN',
+    compare,
+  ]);
+  assert.deepEqual(mentioning(loginSource, 'v_stored'), [
+    'v_stored bytea;',
+    'SELECT u.id, c.key INTO v_user, v_stored',
+    compare,
+  ]);
+  assert.deepEqual(mentioning(loginSource, 'v_dummy'), [
+    'v_dummy bytea;',
+    "SELECT sha256(s.value || convert_to('login:' || v_email, 'UTF8')) INTO v_dummy",
+    compare,
+  ]);
+  assert.deepEqual(mentioning(loginSource, 'v_match'), [
+    'v_match boolean;',
+    compare,
+    'IF v_user IS NULL OR NOT v_match OR v_attempts > 5 THEN',
+  ]);
+  // from the count to the compare there is no branch: every email walks the same statements
+  const counted = loginSource.findIndex(line =>
+    line.startsWith('v_attempts := app._throttle_hit('),
+  );
+  const compared = loginSource.indexOf(compare);
+  assert.ok(counted > 0 && compared > counted);
+  const branching = new Set([
+    'IF',
+    'ELSIF',
+    'ELSE',
+    'CASE',
+    'RETURN',
+    'RAISE',
+    'EXCEPTION',
+    'EXIT',
+  ]);
+  assert.deepEqual(
+    loginSource
+      .slice(counted, compared)
+      .filter(line => branching.has(line.split(/[ ;]/)[0].toUpperCase())),
+    [],
+  );
+
+  const confirmSource = await lines('auth_reset_confirm');
+  const compareCode = 'v_match := app._same_bytes(v_hash, p_code_hash);';
+  assert.deepEqual(mentioning(confirmSource, 'p_code_hash'), [
+    'IF octet_length(p_code_hash) IS DISTINCT FROM 32 OR octet_length(p_key) IS DISTINCT FROM 32',
+    compareCode,
+  ]);
+  assert.deepEqual(mentioning(confirmSource, 'v_hash'), [
+    'v_hash bytea;',
+    'RETURNING r.id, r.user_id, r.attempts, r.code_hash INTO v_code, v_user, v_attempts, v_hash;',
+    compareCode,
+  ]);
+  assert.deepEqual(mentioning(confirmSource, 'v_match'), [
+    'v_match boolean;',
+    compareCode,
+    'IF v_code IS NULL OR NOT v_match OR v_attempts > 5 THEN',
+  ]);
+
+  // the compare itself: every byte goes through bit_or, and the answer is right
+  const sameBytes = (await lines('app._same_bytes')).join(' ');
+  assert.ok(sameBytes.includes('bit_or(get_byte(a, i) # get_byte(b, i)) = 0'));
+  assert.equal(sameBytes.includes('a = b'), false);
+  const key = randomBytes(32);
+  const flipped = (at: number) => {
+    const copy = Buffer.from(key);
+    copy[at] = (copy[at] + 1) % 256;
+    return copy;
+  };
+  const others: [Buffer | null, boolean][] = [
+    [Buffer.from(key), true],
+    [flipped(0), false],
+    [flipped(15), false],
+    [flipped(31), false],
+    [key.subarray(0, 31), false],
+    [Buffer.concat([key, Buffer.alloc(1)]), false],
+    [Buffer.alloc(0), false],
+    [null, false],
+  ];
+  for (const [other, expected] of others) {
+    const { rows } = await db.admin.query(
+      `SELECT app._same_bytes($1::bytea, $2::bytea) AS forth,
+              app._same_bytes($2::bytea, $1::bytea) AS back`,
+      [key, other],
+    );
+    assert.deepEqual(rows, [{ forth: expected, back: expected }]);
+  }
+  const { rows: empties } = await db.admin.query(
+    "SELECT app._same_bytes(''::bytea, ''::bytea) AS v",
+  );
+  assert.deepEqual(empties, [{ v: false }]);
+});
+
+test('login, reset request and reset confirm each wait for the lock of their email, and of no other', async () => {
+  const [a, b] = [await register(), await register()];
+  assert.equal(await requestReset(a.email, '888888'), true);
+  const finished: string[] = [];
+  const pending: Promise<unknown>[] = [];
+  const holder = await db.admin.connect();
+  try {
+    await holder.query('BEGIN');
+    await holder.query(
+      "SELECT pg_advisory_xact_lock(hashtextextended('auth:' || $1, 0))",
+      [a.email],
+    );
+    pending.push(
+      login(a.email, a.key).then(() => finished.push('login')),
+      requestReset(a.email, '999999').then(() => finished.push('request')),
+      confirmReset(a.email, '888888').then(() => finished.push('confirm')),
+    );
+    await sleep(400);
+    assert.deepEqual(finished, []);
+    // an account with another email is not held up
+    assert.equal(await login(b.email, b.key), b.id);
+    assert.equal(await requestReset(b.email, '888888'), true);
+  } finally {
+    await holder.query('ROLLBACK');
+    holder.release();
+    await Promise.allSettled(pending);
+  }
+  assert.deepEqual(finished.sort(), ['confirm', 'login', 'request']);
 });
 
 // ---------------------------------------------------------------- sessions
@@ -971,7 +1237,97 @@ test('fence: each auth function runs for its roles only; helpers run for none; p
   assert.equal(await session(b32), null);
 });
 
-test('fence: users.timezone takes only a name PostgreSQL lists, on every write path', async () => {
+// Every half hour of a January day and of a July day (UTC): whatever the offset of a zone, some
+// of these fall on either side of its 03:00, in winter time and in summer time.
+const HALF_HOURS = ['2026-01-15T00:00:00Z', '2026-07-15T00:00:00Z'].flatMap(
+  day =>
+    Array.from({ length: 48 }, (_, i) =>
+      new Date(Date.parse(day) + i * 30 * MINUTE).toISOString(),
+    ),
+);
+
+/** Where app.logical_date and the Intl computation of the domain name a different day. */
+async function logicalDateDisagreements(zones: string[]): Promise<string[]> {
+  const { rows } = await anon(c =>
+    c.query<{ name: string; at: Date; sql: string }>(
+      `SELECT z.name, i.at, app.logical_date(i.at, z.name)::text AS sql
+         FROM unnest($1::text[]) z (name) CROSS JOIN unnest($2::timestamptz[]) i (at)`,
+      [zones, HALF_HOURS],
+    ),
+  );
+  assert.equal(rows.length, zones.length * HALF_HOURS.length);
+  return rows.flatMap(({ name, at, sql }) => {
+    const js = logicalDateOf(at.getTime(), name);
+    return js === sql
+      ? []
+      : [`${name} at ${at.toISOString()}: SQL ${sql}, JS ${js}`];
+  });
+}
+
+const ZONE_SAMPLE = [
+  'UTC',
+  'Asia/Ho_Chi_Minh',
+  'Asia/Saigon',
+  'Europe/Berlin',
+  'Etc/GMT+7',
+  'Etc/GMT-7',
+  'Etc/UTC',
+  'Asia/Bangkok',
+  'Asia/Tokyo',
+  'Asia/Seoul',
+  'Asia/Singapore',
+  'Asia/Shanghai',
+  'Asia/Kolkata',
+  'Asia/Kathmandu',
+  'Asia/Tehran',
+  'Asia/Dubai',
+  'Australia/Sydney',
+  'Australia/Adelaide',
+  'Australia/Lord_Howe',
+  'Pacific/Auckland',
+  'Pacific/Chatham',
+  'Pacific/Honolulu',
+  'Pacific/Kiritimati',
+  'America/New_York',
+  'America/Los_Angeles',
+  'America/St_Johns',
+  'America/Sao_Paulo',
+  'America/Santiago',
+  'America/Argentina/Buenos_Aires',
+  'Europe/London',
+  'Europe/Lisbon',
+  'Europe/Paris',
+  'Europe/Moscow',
+  'Africa/Cairo',
+  'Africa/Johannesburg',
+  'Atlantic/Reykjavik',
+  'US/Pacific',
+];
+
+test('fence: for a zone the table admits, app.logical_date and JavaScript name the same day', async () => {
+  assert.ok(ZONE_SAMPLE.length >= 30);
+  assert.equal(new Set(ZONE_SAMPLE).size, ZONE_SAMPLE.length);
+  assert.ok(HALF_HOURS.includes('2026-01-15T01:30:00.000Z'));
+  assert.ok(HALF_HOURS.includes('2026-07-15T01:30:00.000Z'));
+  const admitted = await db.admin.query(
+    'SELECT name FROM timezones WHERE name = ANY ($1)',
+    [ZONE_SAMPLE],
+  );
+  assert.equal(admitted.rowCount, ZONE_SAMPLE.length);
+  assert.deepEqual(await logicalDateDisagreements(ZONE_SAMPLE), []);
+
+  // The comparison can fail, and does for what the table keeps out: to PostgreSQL CET is an
+  // abbreviation (UTC+1 all year), to JavaScript a zone with summer time.
+  const cet = await logicalDateDisagreements(['CET']);
+  assert.ok(
+    cet.includes(
+      'CET at 2026-07-15T01:30:00.000Z: SQL 2026-07-14, JS 2026-07-15',
+    ),
+    cet.join('; '),
+  );
+});
+
+test('fence: users.timezone takes only an Area/City name or UTC, on every write path', async () => {
   const a = await register();
   const asA = user(a.id);
   const refusal = {
@@ -986,6 +1342,14 @@ test('fence: users.timezone takes only a name PostgreSQL lists, on every write p
     'Not/AZone',
     '',
     'asia/ho_chi_minh',
+    // names of the zone database that PostgreSQL and JavaScript do not read alike
+    'CET',
+    'EET',
+    'MET',
+    'WET',
+    'EST',
+    'Factory',
+    'GMT',
   ]) {
     await expectPgError(
       asA(c => c.query('UPDATE users SET timezone = $1', [zone])),
@@ -1000,20 +1364,30 @@ test('fence: users.timezone takes only a name PostgreSQL lists, on every write p
       refusal,
     );
   }
-  for (const zone of ['Europe/Berlin', 'Asia/Ho_Chi_Minh']) {
+  for (const zone of [
+    'UTC',
+    'Asia/Saigon',
+    'Europe/Berlin',
+    'Etc/GMT+7',
+    'Asia/Ho_Chi_Minh',
+  ]) {
     const updated = await asA(c =>
       c.query('UPDATE users SET timezone = $1 RETURNING timezone', [zone]),
     );
     assert.deepEqual(updated.rows, [{ timezone: zone }]);
   }
 
-  // the list is PostgreSQL's own, readable by a signed-in user and writable by no request role
-  const drift = await db.admin.query(
-    `SELECT count(*)::int AS n, count(*) FILTER (WHERE t.name IS NULL OR z.name IS NULL)::int AS differing
-       FROM timezones t FULL JOIN pg_timezone_names z ON z.name = t.name`,
+  // the only name without a slash is UTC; the rest of PostgreSQL's Area/City names are there
+  const slashless = await db.admin.query(
+    "SELECT name FROM timezones WHERE name NOT LIKE '%/%'",
   );
-  assert.equal(drift.rows[0].differing, 0);
-  assert.ok(drift.rows[0].n > 300);
+  assert.deepEqual(slashless.rows, [{ name: 'UTC' }]);
+  const total = await db.admin.query(
+    'SELECT count(*)::int AS n FROM timezones',
+  );
+  assert.ok(total.rows[0].n > 300);
+
+  // readable by a signed-in user, writable by no request role
   const listed = await asA(c =>
     c.query("SELECT name FROM timezones WHERE name = 'Asia/Ho_Chi_Minh'"),
   );
@@ -1056,7 +1430,7 @@ test('fence: the owner cannot store an email that is not trimmed and lower-cased
 
 // ---------------------------------------------------------------- the file itself
 
-test('10-auth.sql applies again on a live database: same pepper, accounts keep working', async () => {
+test('10-auth.sql applies again on a live database: same pepper, same zones, accounts keep working', async () => {
   const peppers = () =>
     db.admin
       .query('SELECT name, value FROM app_secrets')
@@ -1066,10 +1440,47 @@ test('10-auth.sql applies again on a live database: same pepper, accounts keep w
     secrets.map(row => [row.name, row.value.length]),
     [['fake_salt_pepper', 32]],
   );
-  const a = await register();
+  const [a, b] = [await register(), await register()];
   const fake = await salt('nobody@example.com');
+  const zones = () =>
+    db.admin
+      .query('SELECT name FROM timezones ORDER BY name COLLATE "C"')
+      .then(r => r.rows.map(row => row.name as string));
+  const setZone = (id: string, zone: string) =>
+    db.admin.query('UPDATE users SET timezone = $2 WHERE id = $1', [id, zone]);
+  const listed = await zones();
 
-  await db.admin.query(AUTH_SQL);
+  // A zone the zone database has dropped since the last migration: the file only ever adds, so
+  // the name stays, whether a user holds it (A) or not, and A keeps its zone.
+  await db.admin.query(
+    "INSERT INTO timezones (name) VALUES ('Old/Dropped'), ('Old/Unused')",
+  );
+  await setZone(a.id, 'Old/Dropped');
+  await setZone(b.id, 'Europe/Berlin');
+  try {
+    const expected = [...listed, 'Old/Dropped', 'Old/Unused'].sort((x, y) =>
+      x < y ? -1 : 1,
+    );
+    for (const run of ['second', 'third']) {
+      await db.admin.query(AUTH_SQL);
+      assert.deepEqual(await zones(), expected, `${run} run`);
+    }
+    const held = await db.admin.query(
+      'SELECT timezone FROM users WHERE id = ANY ($1) ORDER BY timezone',
+      [[a.id, b.id]],
+    );
+    assert.deepEqual(held.rows, [
+      { timezone: 'Europe/Berlin' },
+      { timezone: 'Old/Dropped' },
+    ]);
+  } finally {
+    await setZone(a.id, 'Asia/Ho_Chi_Minh');
+    await setZone(b.id, 'Asia/Ho_Chi_Minh');
+    await db.admin.query(
+      "DELETE FROM timezones WHERE name IN ('Old/Dropped', 'Old/Unused')",
+    );
+  }
+  assert.deepEqual(await zones(), listed);
 
   assert.deepEqual(await peppers(), secrets);
   assert.deepEqual(await salt('nobody@example.com'), fake);
