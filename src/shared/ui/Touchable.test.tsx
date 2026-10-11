@@ -1,5 +1,5 @@
 import { fireEvent, render } from '@testing-library/react-native';
-import { Animated, Text } from 'react-native';
+import { Animated, StyleSheet, Text } from 'react-native';
 import { MotionPreferenceProvider } from '../motion/useReducedMotion';
 import { Touchable } from './Touchable';
 
@@ -55,4 +55,27 @@ test('a small control expands its hit area to 48 x 48', () => {
   fireEvent(getByRole('button'), 'layout', { nativeEvent: { layout: { width: 20, height: 30, x: 0, y: 0 } } });
   expect(getByRole('button').props.hitSlop).toEqual({ top: 9, bottom: 9, left: 14, right: 14 });
   unmount();
+});
+
+test('a caller hitSlop is kept where it is larger than the computed one', () => {
+  const view = render(
+    <Touchable accessibilityRole="button" hitSlop={{ top: 30, left: 2 }}>
+      <Text>x</Text>
+    </Touchable>,
+  );
+  fireEvent(view.getByRole('button'), 'layout', { nativeEvent: { layout: { width: 20, height: 30, x: 0, y: 0 } } });
+  expect(view.getByRole('button').props.hitSlop).toEqual({ top: 30, bottom: 9, left: 14, right: 14 });
+  view.unmount();
+});
+
+test('a caller transform is kept next to the press scale', () => {
+  const view = render(
+    <Touchable accessibilityRole="button" style={{ transform: [{ rotate: '5deg' }] }}>
+      <Text>x</Text>
+    </Touchable>,
+  );
+  const transform = StyleSheet.flatten(view.getByRole('button').props.style).transform as unknown[];
+  expect(transform).toHaveLength(2);
+  expect(transform[0]).toEqual({ rotate: '5deg' });
+  view.unmount();
 });

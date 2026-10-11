@@ -52,7 +52,7 @@ export function Screen({ title, subtitle, onBack, scroll = true, hasInputs = fal
             {body}
           </ScrollView>
         ) : (
-          <View style={styles.content}>{body}</View>
+          <View style={[styles.fill, styles.content]}>{body}</View>
         )}
       </KeyboardAvoidingView>
     </SafeAreaView>

@@ -17,7 +17,7 @@ test('AppText: headline is Be Vietnam Pro 28, body is Inter 16, weight picks the
   const style = (t: string) => StyleSheet.flatten(view.getByText(t).props.style);
   expect(style('Hồi Máu')).toMatchObject({ fontFamily: fontFamilies.headline, fontSize: 28, color: colors.ink });
   expect(style('Nội dung')).toMatchObject({ fontFamily: fontFamilies.regular, fontSize: 16 });
-  expect(style('Đậm vừa').fontFamily).toBe('Inter_600SemiBold');
+  expect(style('Đậm vừa').fontFamily).toBe(fontFamilies.semibold);
   view.unmount();
 });
 
@@ -69,5 +69,39 @@ test('ListRow without onPress is plain and shows its trailing node', () => {
   const view = render(<ListRow title="Âm thanh" trailing={<Text>Đang tắt</Text>} />);
   expect(view.queryByRole('button')).toBeNull();
   expect(view.getByText('Đang tắt')).toBeTruthy();
+  view.unmount();
+});
+
+test('ListRow: a pressable row exposes title, description and status in one label', () => {
+  const view = render(<ListRow title="Âm thanh" description="Hiệu ứng trong ứng dụng" status="Đang tắt" onPress={() => undefined} />);
+  expect(view.getByRole('button').props.accessibilityLabel).toBe('Âm thanh. Hiệu ứng trong ứng dụng. Đang tắt');
+  expect(view.getByText('Đang tắt')).toBeTruthy();
+  view.unmount();
+});
+
+test('Icon without a label is hidden from the accessibility tree', () => {
+  const view = render(<Icon name="Heart" />);
+  expect(view.toJSON()).toMatchObject({
+    props: { accessible: false, importantForAccessibility: 'no-hide-descendants', accessibilityElementsHidden: true },
+  });
+  view.unmount();
+});
+
+test('Icon with a label is an image the screen reader can find', () => {
+  const view = render(<Icon name="Heart" accessibilityLabel="Yêu thích" />);
+  expect(view.getByLabelText('Yêu thích').props).toMatchObject({ accessible: true, accessibilityRole: 'image' });
+  view.unmount();
+});
+
+test('Screen without scroll fills the screen so children can pin to the bottom', () => {
+  const view = render(
+    <Screen scroll={false}>
+      <Text testID="kid">x</Text>
+    </Screen>,
+  );
+  // the nearest ancestor that carries a style is the content view
+  let node = view.getByTestId('kid').parent;
+  while (node && !node.props.style) node = node.parent;
+  expect(StyleSheet.flatten(node?.props.style).flex).toBe(1);
   view.unmount();
 });

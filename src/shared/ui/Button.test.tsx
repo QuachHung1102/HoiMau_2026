@@ -54,3 +54,13 @@ test('disabled blocks presses and reports disabled', () => {
   expect(view.getByRole('button').props.accessibilityState).toMatchObject({ disabled: true });
   view.unmount();
 });
+
+test.each([
+  ['primary', colors.white],
+  ['secondary', colors.primary],
+  ['onPrimary', colors.ink],
+] as const)('%s variant uses its label colour', (variant, expected) => {
+  const view = render(<Button label="Tiếp tục" variant={variant} />);
+  expect(StyleSheet.flatten(view.getByText('Tiếp tục').props.style).color).toBe(expected);
+  view.unmount();
+});

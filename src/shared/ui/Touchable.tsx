@@ -1,7 +1,8 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   Animated,
   Pressable,
+  StyleSheet,
   type AccessibilityRole,
   type GestureResponderEvent,
   type LayoutChangeEvent,
@@ -21,11 +22,17 @@ type Props = Omit<PressableProps, 'style' | 'children' | 'accessibilityRole' | '
   children?: ReactNode;
 };
 
+const slopOf = (hitSlop: PressableProps['hitSlop']) =>
+  typeof hitSlop === 'number'
+    ? { top: hitSlop, bottom: hitSlop, left: hitSlop, right: hitSlop }
+    : { top: 0, bottom: 0, left: 0, right: 0, ...hitSlop };
+
 /** The only press primitive: enforced role, 48 dp hit area, press feedback. */
 export function Touchable({
   accessibilityRole,
   accessibilityState,
   disabled,
+  hitSlop,
   onPress,
   onPressIn,
   onPressOut,
@@ -35,7 +42,7 @@ export function Touchable({
   ...rest
 }: Props) {
   const reduced = useReducedMotion();
-  const scale = useRef(new Animated.Value(motion.scale.rest)).current;
+  const [scale] = useState(() => new Animated.Value(motion.scale.rest));
   const [box, setBox] = useState<{ width: number; height: number }>({ width: sizes.minTouch, height: sizes.minTouch });
 
   const animateTo = (toValue: number) => {
@@ -48,8 +55,11 @@ export function Touchable({
     setBox(prev => (prev.width === width && prev.height === height ? prev : { width, height }));
     onLayout?.(e);
   };
+  // Each side is the larger of the caller's slop and what is needed to reach 48 dp.
   const vertical = Math.max(0, (sizes.minTouch - box.height) / 2);
   const horizontal = Math.max(0, (sizes.minTouch - box.width) / 2);
+  const callerSlop = slopOf(hitSlop);
+  const callerTransform = StyleSheet.flatten(style)?.transform;
 
   return (
     <AnimatedPressable
@@ -57,7 +67,12 @@ export function Touchable({
       accessibilityRole={accessibilityRole}
       accessibilityState={{ ...accessibilityState, disabled: disabled ?? accessibilityState?.disabled }}
       disabled={disabled}
-      hitSlop={{ top: vertical, bottom: vertical, left: horizontal, right: horizontal }}
+      hitSlop={{
+        top: Math.max(vertical, callerSlop.top ?? 0),
+        bottom: Math.max(vertical, callerSlop.bottom ?? 0),
+        left: Math.max(horizontal, callerSlop.left ?? 0),
+        right: Math.max(horizontal, callerSlop.right ?? 0),
+      }}
       onLayout={handleLayout}
       onPress={disabled ? undefined : (onPress as ((e: GestureResponderEvent) => void) | undefined)}
       onPressIn={e => {
@@ -68,7 +83,7 @@ export function Touchable({
         animateTo(motion.scale.rest);
         onPressOut?.(e);
       }}
-      style={[style, { transform: [{ scale }] }]}
+      style={[style, { transform: [...(Array.isArray(callerTransform) ? callerTransform : []), { scale }] }]}
     >
       {children}
     </AnimatedPressable>

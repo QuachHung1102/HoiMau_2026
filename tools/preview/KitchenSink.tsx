@@ -19,8 +19,12 @@ const styles = StyleSheet.create({
   bar: { height: 8, borderRadius: 4, backgroundColor: '#E5484D' },
 });
 
-const queryClient = new QueryClient();
-queryClient.setQueryData(['profile'], { name: 'Nguyễn Thị Hương', level: 7 });
+// Created per mount, never at module scope: a module-level client leaves a gc timer that keeps Jest open.
+function makeClient() {
+  const client = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity } } });
+  client.setQueryData(['profile'], { name: 'Nguyễn Thị Hương', level: 7 });
+  return client;
+}
 
 function Home() {
   const insets = useSafeAreaInsets();
@@ -78,6 +82,7 @@ function Other() {
 }
 
 export function KitchenSink() {
+  const [queryClient] = useState(makeClient);
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
