@@ -1,5 +1,10 @@
 import { normalizeVi } from '../../../../domain/language.ts';
-import { CRISIS_KEYWORDS, CRISIS_LINES, healthVi } from './health';
+import {
+  CRISIS_KEYWORDS,
+  CRISIS_LINES,
+  CRISIS_PHRASES_EXACT,
+  healthVi,
+} from './health';
 
 test('CRISIS_LINES are exactly 115 and 111', () => {
   expect(CRISIS_LINES).toEqual([
@@ -44,4 +49,28 @@ test('the workout caution is the designed sentence', () => {
   expect(healthVi.workoutCaution).toBe(
     'Dừng nếu thấy đau hoặc khó chịu. Bạn luôn có thể nghỉ hoặc kết thúc sớm.',
   );
+});
+
+test('CRISIS_PHRASES_EXACT entries are distinct and equal their own NFC lower-case form', () => {
+  expect(CRISIS_PHRASES_EXACT.length).toBeGreaterThan(0);
+  expect(new Set(CRISIS_PHRASES_EXACT).size).toBe(CRISIS_PHRASES_EXACT.length);
+  for (const phrase of CRISIS_PHRASES_EXACT) {
+    expect(phrase).toBe(phrase.normalize('NFC').toLowerCase());
+    expect(phrase).toBe(phrase.trim());
+  }
+});
+
+test('the estimate notes use the "ước tính, không phải chẩn đoán" wording', () => {
+  expect(healthVi.estimate.prescription).toContain(
+    'ước tính, không phải chẩn đoán',
+  );
+  expect(healthVi.estimate.stats).toContain('ước tính, không phải chẩn đoán');
+});
+
+test('the macro explanation says the energy target is unchanged', () => {
+  expect(healthVi.macroAdjusted.body).toContain(
+    'Mục tiêu năng lượng của bạn vẫn giữ nguyên',
+  );
+  expect(healthVi.macroAdjusted.body).toContain('50 g');
+  expect(healthVi.macroAdjusted.body).toContain('20%');
 });

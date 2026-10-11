@@ -5,9 +5,11 @@
 // promise of results, no calorie or weight target beyond what the spec defines. The phone numbers in
 // CRISIS_LINES are Vietnam's public numbers and are flagged for review as well.
 //
-// CRISIS_KEYWORDS exist only so the journal screen can show the support block (S56). Matching runs on
-// the device against the text the user just wrote; the text and the match result are never logged,
-// stored or sent anywhere (AR-20).
+// CRISIS_KEYWORDS and CRISIS_PHRASES_EXACT exist only so the journal screen can show the support block
+// (S56), through matchesCrisis in crisisMatch.ts. Matching runs on the device against the text the user
+// just wrote; the text and the match result are never logged, stored or sent anywhere (AR-20).
+// The lists trade false positives for recall: a false positive only shows a gentle support block, a miss
+// shows nothing to someone who needed it. crisisMatch.test.ts holds the examples a reviewer should read.
 
 /** 1500 -> "1.500" (Hermes may lack Intl locale data, so no toLocaleString). */
 const grouped = (n: number): string => {
@@ -28,9 +30,9 @@ export const healthVi = {
   // "Ước tính, không phải chẩn đoán": S08 (and S62), S47.
   estimate: {
     prescription:
-      'Đây là ước tính hỗ trợ thói quen, không thay thế tư vấn của bác sĩ hoặc chuyên gia dinh dưỡng.',
+      'Đây là ước tính, không phải chẩn đoán. Con số này hỗ trợ thói quen và không thay thế tư vấn của bác sĩ hoặc chuyên gia dinh dưỡng.',
     stats:
-      'Các chỉ số chỉ để tham khảo tiến trình thói quen. Chúng không đo trực tiếp tình trạng sức khỏe.',
+      'Các chỉ số chỉ để tham khảo tiến trình thói quen. Đây là ước tính, không phải chẩn đoán: chúng không đo trực tiếp tình trạng sức khỏe.',
   },
 
   // S62 and S08 when safetyClamped: the target was raised to the floor.
@@ -43,10 +45,10 @@ export const healthVi = {
       )} kcal mỗi ngày. Đây là ước tính, không phải chỉ định y tế.`,
   },
 
-  // When macroAdjusted: the protein/fat/carb split used a fallback.
+  // When macroAdjusted: the energy target is unchanged, only the protein/fat/carb split was redone (R-D06).
   macroAdjusted: {
     title: 'Vì sao phân bổ này?',
-    body: 'Mình đã điều chỉnh nhẹ cách chia đạm, béo và carb để giữ mục tiêu năng lượng ở mức an toàn. Đây là ước tính, không phải chỉ định y tế. Nếu bạn cần tư vấn dinh dưỡng cá nhân, hãy trao đổi với chuyên gia.',
+    body: 'Mục tiêu năng lượng của bạn vẫn giữ nguyên. Mình chỉ chia lại đạm, béo và carb để carb không xuống dưới 50 g và chất béo không dưới 20% năng lượng. Đây là ước tính, không phải chỉ định y tế. Nếu bạn cần tư vấn dinh dưỡng cá nhân, hãy trao đổi với chuyên gia.',
   },
 
   // S43: a reduce-fat profile is not applied; the two allowed directions are TANKER and SUPPORTER.
@@ -82,7 +84,7 @@ export const healthVi = {
       },
       {
         title: 'Mức nền an toàn',
-        body: 'Mục tiêu năng lượng không xuống dưới 1.200 kcal mỗi ngày với nữ, 1.500 kcal mỗi ngày với nam, và không thấp hơn mức năng lượng nghỉ của bạn. Mục tiêu cũng không thấp hơn quá 20% so với mức năng lượng bạn dùng mỗi ngày.',
+        body: 'Mục tiêu năng lượng không xuống dưới 1.200 kcal mỗi ngày với nữ, 1.500 kcal mỗi ngày với nam, và không thấp hơn mức năng lượng nghỉ của bạn. Mục tiêu cũng không thấp hơn mức năng lượng bạn dùng mỗi ngày quá 20%.',
       },
       {
         title: 'Cân nặng chỉ là đầu vào',
@@ -125,30 +127,109 @@ export const CRISIS_LINES = [
   { number: '111', label: 'Tổng đài quốc gia bảo vệ trẻ em' },
 ] as const;
 
-// Already normalised with normalizeVi (lower case, no diacritics): compare against normalizeVi(text).
-// Phrases only, never a single everyday word such as "mệt" or "chết đói".
+// Tier A, tone-insensitive: already normalised with normalizeVi (lower case, no diacritics) and matched
+// on word boundaries against the normalised text, so a phrase also matches when typed without diacritics.
+// Phrases only, never a single everyday word ("mệt", "chết đói"). Left out on purpose because they fire on
+// routine writing once tones are gone: bare "muon chet" (mệt muốn chết), "tu tu" (từ từ), "tu van" (tư vấn),
+// bare "uong thuoc ngu", "nhay lau" (nhảy lâu hơn), "chan song" (chân sống lưng).
 export const CRISIS_KEYWORDS: readonly string[] = [
-  'muon chet di',
+  // wanting to die
   'toi muon chet',
   'minh muon chet',
   'em muon chet',
-  'khong muon song nua',
+  'chi muon chet',
+  'muon chet qua',
+  'muon chet di',
+  'muon chet luon',
+  'muon duoc chet',
+  'chet di cho xong',
+  'chet cho xong',
+  // not wanting to live
+  'khong muon song',
+  'chang muon song',
   'khong con muon song',
+  'chang con muon song',
   'khong muon tiep tuc song',
-  'chan song',
   'het muon song',
+  'muon dung song',
+  'khong thiet song',
+  'chang thiet song',
+  'chan song qua',
+  'chan song roi',
+  'chan song nua',
+  'toi chan song',
+  'minh chan song',
+  'khong con ly do de song',
   'khong thay ly do de song',
-  'muon bien mat vinh vien',
-  'muon ket thuc tat ca',
+  'song de lam gi',
+  'song chang con y nghia',
+  'song khong con y nghia',
+  'doi nay khong con gi',
+  'doi nay chang con gi',
+  'khong muon ton tai',
+  // hoping not to wake up, disappearing
+  'khong tinh day nua',
+  'khong thuc day nua',
+  'ngu mai khong day',
+  'ngu mot giac khong day',
+  'muon bien mat',
+  'bien mat khoi the gioi',
+  'bien mat khoi cuoc doi',
+  'bien mat vinh vien',
+  // ending it
+  'tu sat',
+  'ket lieu doi',
+  'ket lieu ban than',
+  'ket lieu cuoc song',
+  'ket lieu minh',
   'ket thuc cuoc song',
   'ket thuc cuoc doi',
   'ket thuc doi minh',
-  'tu sat',
-  'muon tu tu',
-  'nghi den chuyen tu tu',
-  'ket lieu ban than',
-  'lam dau ban than',
+  'muon ket thuc tat ca',
+  'nhay tu tang',
+  // harming oneself
+  'cat tay',
+  'cat co tay',
+  'rach co tay',
+  'tu lam dau ban than',
   'tu lam dau minh',
+  'tu lam hai ban than',
+  'tu lam hai minh',
+  'muon lam dau ban than',
+  'muon lam dau minh',
+  'uong thuoc ngu cho het',
+  'uong thuoc ngu het lo',
+  'uong het lo thuoc',
+  'uong that nhieu thuoc',
+  'uong thuoc ngu that nhieu',
+  'uong thuoc ngu de chet',
+  'uong thuoc de chet',
+  // feeling like a burden
   'se tot hon neu khong co toi',
+  'se tot hon neu khong co minh',
+  'khong co toi se tot hon',
   'la ganh nang cho moi nguoi',
+  'la ganh nang cua gia dinh',
+];
+
+// Tier B, tone-sensitive: compared with the NFC lower-case text, so accented "muốn từ từ" and "tư vấn"
+// can never match. Accented entries are words that collide with everyday ones once tones are stripped
+// (tự tử / từ từ, tự vẫn / tư vấn, nhảy lầu / nhảy lâu, đáng sống / đang sống). The raw-ASCII entries are
+// intent phrases for people who type without diacritics.
+export const CRISIS_PHRASES_EXACT: readonly string[] = [
+  'tự tử',
+  'tự vẫn',
+  'nhảy lầu',
+  'không đáng sống',
+  'chẳng đáng sống',
+  'không xứng đáng sống',
+  'muon tu tu',
+  'dinh tu tu',
+  'se tu tu',
+  'nghi den chuyen tu tu',
+  'muon nhay lau',
+  'dinh nhay lau',
+  'khong dang song nua',
+  'thay minh khong dang song',
+  'khong xung dang song',
 ];

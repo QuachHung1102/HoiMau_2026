@@ -1,15 +1,20 @@
 // Shape of every seed content table (PLAN P1.4), column for column in camelCase.
+import type { ShopItem, WorkoutDetail } from '../../domain/contract/content.ts';
 import type {
   Archetype,
+  IngredientTag,
   MealSlot,
   Modality,
   QuestCategory,
   SpaceRequirement,
+  STYLE_TAGS,
 } from '../../domain/types.ts';
 
 export type Equipment = 'tham' | 'ta-tay' | 'day-khang-luc';
-export type ShopItemKind = 'THEME' | 'PET_SKIN' | 'BADGE';
-export type WorkoutPhase = 'WARMUP' | 'MAIN' | 'COOLDOWN';
+export type ShopItemKind = ShopItem['kind'];
+export type WorkoutPhase = WorkoutDetail['steps'][number]['phase'];
+/** A mistyped tag fails typecheck. */
+export type MealTag = (typeof STYLE_TAGS)[number] | IngredientTag;
 
 export type QuestSeed = {
   code: string;
@@ -43,7 +48,7 @@ export type MealSeed = {
   proteinG: number;
   carbsG: number;
   fatG: number;
-  tags: string[];
+  tags: MealTag[];
   portionText: string;
   description: string;
   imageKey: string | null;
@@ -68,7 +73,7 @@ export type WorkoutSeed = {
   code: string;
   name: string;
   modality: Modality;
-  durationSec: number;
+  durationSec: 300 | 900 | 1800 | 2700;
   spaceNeeded: SpaceRequirement;
   /** Empty array = "Không cần". */
   equipment: Equipment[];
