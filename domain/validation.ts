@@ -122,12 +122,14 @@ export function allowedArchetypes(
     : ['TANKER', 'ASSASSIN', 'SUPPORTER'];
 }
 
-// What a reader cannot see: C0 and C1 controls, zero-width and text-direction formatting, BOM.
-// Same class as users_display_name_check and app._email in server/sql/10-auth.sql, plus NUL
-// (PostgreSQL text cannot hold it). Kept as escapes: this file must stay ASCII.
+// What a reader cannot see: C0 and C1 controls, soft hyphen, zero-width and text-direction
+// formatting, line and paragraph separators, BOM. The class of users_display_name_check and
+// app._email in server/sql/10-auth.sql, plus NUL (PostgreSQL text cannot hold it) and U+00AD,
+// U+2028, U+2029, which the database does not refuse but a reader cannot tell from nothing.
+// Kept as escapes: this file must stay ASCII.
 const UNSEEN =
   // eslint-disable-next-line no-control-regex
-  /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/;
+  /[\u0000-\u001f\u007f-\u009f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/;
 
 const isNfkc = (text: string) => text === text.normalize('NFKC');
 
@@ -135,6 +137,15 @@ const isNfkc = (text: string) => text === text.normalize('NFKC');
 export function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
 }
+
+/**
+ * The one spelling of a password before its length is judged and before it is derived into a
+ * key: Unicode NFC, so that "ế" typed as one character (iOS) or as e + two marks (some
+ * Android keyboards) is the same password. Nothing else: no trimming, no case change, no NFKC.
+ * Client and server both call it; changing it afterwards orphans every stored key.
+ */
+export const normalizePassword = (password: string): string =>
+  password.normalize('NFC');
 
 /**
  * Judges the value as given: it never trims or lower-cases (normalizeEmail does). Refuses

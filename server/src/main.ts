@@ -10,19 +10,23 @@ import { createLogger, describeError } from './log.ts';
 import { DEFAULT_OUTBOX, outboxMailer } from './mailer.ts';
 
 /**
- * The mailer MAIL_MODE names. `outbox` (one JSON line per mail in server/.outbox/mail.jsonl,
- * for development) is the only mode there is. Anything else, an unset variable included, stops
- * the start-up: a server that cannot send mail must not look as if it could.
+ * The mailer MAIL_MODE names. `outbox` (one JSON line per mail in server/.outbox/mail.jsonl) is
+ * the only mode there is, and it starts only when NODE_ENV is exactly `development` or `test`:
+ * its file holds live reset codes, so it fails closed for `production`, `Production`,
+ * `staging`, an unset variable and anything else. Anything else than outbox, an unset MAIL_MODE
+ * included, stops the start-up too: a server that cannot send mail must not look as if it could.
  */
 export function mailerFromEnv(
   env: Record<string, string | undefined> = process.env,
 ): Mailer {
-  // the outbox file holds live reset codes: never in production
-  if (env.MAIL_MODE === 'outbox' && env.NODE_ENV !== 'production') {
+  if (
+    env.MAIL_MODE === 'outbox' &&
+    (env.NODE_ENV === 'development' || env.NODE_ENV === 'test')
+  ) {
     return outboxMailer(DEFAULT_OUTBOX);
   }
   throw new Error(
-    'MAIL_MODE must be "outbox", the only mode there is, and not with NODE_ENV=production; see "Thư" in docs/backend.md and server/.env.example.',
+    'MAIL_MODE must be "outbox", the only mode there is, and only with NODE_ENV=development or test; see "Thư" in docs/backend.md and server/.env.example.',
   );
 }
 

@@ -4,14 +4,14 @@ import crypto, { randomBytes } from 'node:crypto';
 import { syncBuiltinESMExports } from 'node:module';
 import { after, before, mock, test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { LIMITS } from '../../../domain/validation.ts';
+import { LIMITS, normalizePassword } from '../../../domain/validation.ts';
 import { setTestClock } from '../../test/helpers.ts';
-import { startTestApp } from '../../test/http.ts';
+import { newUser, startTestApp } from '../../test/http.ts';
 import type { TestApp } from '../../test/http.ts';
 import { createTestDb } from '../../test/testdb.ts';
 import type { TestDb } from '../../test/testdb.ts';
 import type { Route } from '../app.ts';
-import { deriveKey } from '../password.ts';
+import { deriveKey, scryptGate } from '../password.ts';
 import { hashToken, newToken } from '../session.ts';
 import {
   RESET_MAIL_SUBJECT,
@@ -28,6 +28,9 @@ const RLM = String.fromCharCode(0x200f); // right-to-left mark: invisible
 const BEL = String.fromCharCode(7);
 const NBSP = String.fromCharCode(0xa0);
 const FULLWIDTH_AT = String.fromCharCode(0xff20);
+const SOFT_HYPHEN = String.fromCharCode(0xad);
+const LINE_SEPARATOR = String.fromCharCode(0x2028);
+const PARAGRAPH_SEPARATOR = String.fromCharCode(0x2029);
 
 const PASSWORD = 'mật-khẩu-của-tôi-1';
 const NEW_PASSWORD = 'mật-khẩu-mới-của-tôi-2';
@@ -67,11 +70,16 @@ before(async () => {
   syncBuiltinESMExports();
 });
 after(async () => {
-  mock.restoreAll();
-  syncBuiltinESMExports();
-  await setTestClock(db.admin, null);
-  await Promise.all([app.close(), limited.close(), failing.close()]);
-  await db.drop();
+  try {
+    // everything every test of this file did, on every app: none of it in any log
+    assertNoSecrets([app.logText(), limited.logText(), failing.logText()].join('\n'), secrets);
+  } finally {
+    mock.restoreAll();
+    syncBuiltinESMExports();
+    await setTestClock(db.admin, null);
+    await Promise.all([app.close(), limited.close(), failing.close()]);
+    await db.drop();
+  }
 });
 
 const fresh = () => `u${randomBytes(6).toString('hex')}@example.com`;
@@ -138,6 +146,19 @@ async function mailedCode(email: string, from: number, caller = app) {
   return code;
 }
 
+/**
+ * Resolves once every mail queued by the requests answered so far has reached the mailer. A
+ * sentinel account asks for a code through the same route and the same queue; its own mail is
+ * the signal. A mail that is late, for anyone, has arrived before it, so "no mail for X" can be
+ * asserted right after this without waiting a guessed time.
+ */
+async function mailsSettled(caller: TestApp = app) {
+  const sentinel = await newUser(db);
+  const from = caller.mail.length;
+  await caller.call('POST', '/auth/password/forgot', { body: { email: sentinel.email } });
+  await mailedCode(sentinel.email, from, caller);
+}
+
 const wrongCodeFor = (code: string) =>
   String((Number(code) + 1) % 10 ** LIMITS.resetCode.length).padStart(
     LIMITS.resetCode.length,
@@ -189,7 +210,7 @@ test('register: 201 with a session, the account and its credentials stored, the 
   );
   assert.deepEqual(
     credentials[0].key,
-    await deriveKey(PASSWORD, credentials[0].salt),
+    await deriveKey(normalizePassword(PASSWORD), credentials[0].salt),
   );
 
   // the token works; /healthz does not care about it
@@ -496,7 +517,7 @@ test('forgot: always 202 {}, the mail goes to the normalised address of an accou
   assert.deepEqual(known, unknown);
 
   const code = await mailedCode(normalised, start);
-  await sleep(150);
+  await mailsSettled();
   assert.equal(app.mail.filter(m => m.to === normalised).length, 1, 'one mail for the account');
   assert.equal(app.mail.filter(m => m.to === stranger).length, 0, 'none for an address that is no account');
   const mail = app.mail.filter(m => m.to === normalised)[0];
@@ -533,7 +554,7 @@ test('forgot past the hourly cap: still the same 202 {}, no mail beyond the cap'
   assert.ok(answers.every(a => a.status === 202 && a.text === '{}'));
   const mails = () => app.mail.filter(m => m.to === email);
   await until(() => mails().length >= 3);
-  await sleep(200);
+  await mailsSettled();
   assert.equal(mails().length, 3, 'three an hour');
   for (const mail of mails()) {
     secrets.push(/([0-9]{8})/.exec(mail.text)?.[1] as string);
@@ -645,6 +666,177 @@ test('rate limit: 10 a minute per client address on each anonymous route, 10 per
   assert.deepEqual(statuses, [...Array(10).fill(204), 429]);
 });
 
+test('a password is NFC before it is judged and derived: typed decomposed or composed, it is the same password', async () => {
+  const composed = 'm\u1EADt-kh\u1EA9u-th\u1EED-3';
+  const decomposed = composed.normalize('NFD');
+  assert.notEqual(decomposed, composed);
+  assert.notEqual(normalizePassword(decomposed), decomposed);
+  secrets.push(composed, decomposed);
+
+  // registered decomposed, signs in composed and decomposed
+  const first = await register({ password: decomposed });
+  assert.equal(first.res.status, 201, JSON.stringify(first.res.body));
+  assert.equal((await login(first.email, composed)).status, 200);
+  assert.equal((await login(first.email, decomposed)).status, 200);
+  assert.equal((await login(first.email, composed.toUpperCase())).status, 401, 'case is not folded');
+  assert.equal((await login(first.email, `${composed} `)).status, 401, 'nothing is trimmed');
+  // registered composed, signs in decomposed
+  const second = await register({ password: composed });
+  assert.equal((await login(second.email, decomposed)).status, 200);
+
+  // a reset: new password typed decomposed, then used composed; and the other way round
+  for (const [typed, used] of [[decomposed, composed], [composed, decomposed]]) {
+    const { email } = await register();
+    const start = app.mail.length;
+    await app.call('POST', '/auth/password/forgot', { body: { email } });
+    const code = await mailedCode(email, start);
+    const reset = await app.call('POST', '/auth/password/reset', {
+      body: { email, code, newPassword: typed },
+    });
+    assert.equal(reset.status, 204);
+    assert.equal((await login(email, used)).status, 200);
+    assert.equal((await login(email, PASSWORD)).status, 401);
+  }
+
+  // the length is the length of the NFC text: 128 composed characters typed as 384 code points
+  // are accepted, 7 typed as 21 are too short
+  const edge = '\u1EBF';
+  assert.equal(edge.normalize('NFD').length, 3);
+  const longest = await register({ password: edge.repeat(LIMITS.password.max).normalize('NFD') });
+  assert.equal(longest.res.status, 201, JSON.stringify(longest.res.body));
+  const tooLong = await register({ password: edge.repeat(LIMITS.password.max + 1).normalize('NFD') });
+  assert.deepEqual(fieldsOf(tooLong.res), [{ field: 'password', rule: 'max' }]);
+  const tooShort = await register({ password: edge.repeat(LIMITS.password.min - 1).normalize('NFD') });
+  assert.deepEqual(fieldsOf(tooShort.res), [{ field: 'password', rule: 'min' }]);
+  // and the validators hand on the NFC text
+  assert.equal(
+    checkRegister({ email: 'a@example.com', password: decomposed, displayName: 'Lan', acceptedTerms: true }).password,
+    composed,
+  );
+  assert.equal(checkLogin({ email: 'a@example.com', password: decomposed }).password, composed);
+  assert.equal(
+    checkReset({ email: 'a@example.com', code: '12345678', newPassword: decomposed }).newPassword,
+    composed,
+  );
+});
+
+test('characters a reader cannot see are refused in an email and in a display name: soft hyphen, line and paragraph separator', async () => {
+  for (const [name, mark] of [
+    ['soft hyphen', SOFT_HYPHEN],
+    ['line separator', LINE_SEPARATOR],
+    ['paragraph separator', PARAGRAPH_SEPARATOR],
+  ]) {
+    const inEmail = await register({ email: `lan${mark}anh${fresh()}` });
+    assert.deepEqual(fieldsOf(inEmail.res), [{ field: 'email', rule: 'format' }], `${name} in an email`);
+    const inName = await register({ displayName: `Lan${mark}Anh` });
+    assert.deepEqual(fieldsOf(inName.res), [{ field: 'displayName', rule: 'format' }], `${name} in a name`);
+    const signIn = await app.call('POST', '/auth/login', {
+      body: { email: `lan${mark}anh@example.com`, password: PASSWORD },
+    });
+    assert.deepEqual(fieldsOf(signIn), [{ field: 'email', rule: 'format' }], `${name} at login`);
+  }
+});
+
+test('the scrypt gate over HTTP: when it is full, register, login and reset get 429 with Retry-After, nothing is counted, forgot is untouched, and it recovers', async () => {
+  const { email } = await register();
+  // 4 derivations running and 32 waiting: held by promises that finish only when released
+  const releases: (() => void)[] = [];
+  const held = Array.from({ length: 36 }, () =>
+    scryptGate.run(() => new Promise<void>(resolve => releases.push(resolve))),
+  );
+  try {
+    await sleep(20);
+    assert.equal(releases.length, 4, 'four running, the rest waiting');
+    const stranger = fresh();
+    const answers = [
+      await app.call('POST', '/auth/login', { body: { email: stranger, password: PASSWORD } }),
+      await app.call('POST', '/auth/register', {
+        body: { email: fresh(), password: PASSWORD, displayName: 'Lan', acceptedTerms: true },
+      }),
+      await app.call('POST', '/auth/password/reset', {
+        body: { email, code: '12345678', newPassword: NEW_PASSWORD },
+      }),
+    ];
+    for (const answer of answers) {
+      assert.equal(answer.status, 429);
+      assert.deepEqual(answer.body, { error: { code: 'RATE_LIMITED', message: 'rate limited' } });
+      assert.equal(answer.headers.get('retry-after'), '1');
+    }
+    // refused before the transaction: no failed attempt was written for anyone
+    const { rows } = await db.admin.query('SELECT key FROM auth_throttle WHERE key = $1 OR key = $2', [
+      `login:${stranger}`,
+      `login:${email}`,
+    ]);
+    assert.equal(rows.length, 0);
+    assert.equal((await app.call('POST', '/auth/password/forgot', { body: { email } })).status, 202);
+  } finally {
+    // release the running ones; each hands its slot on to a waiter, which is released in turn
+    while (releases.length > 0) {
+      (releases.shift() as () => void)();
+      await sleep(1);
+    }
+    await Promise.all(held);
+  }
+  assert.equal((await login(email)).status, 200, 'the gate is free again');
+});
+
+test('a mailer that never finishes does not hold the answer: 202 {} promptly, nothing unhandled, nothing logged', async () => {
+  let started = 0;
+  const unhandled: unknown[] = [];
+  const onUnhandled = (reason: unknown) => unhandled.push(reason);
+  process.on('unhandledRejection', onUnhandled);
+  const hanging = await startTestApp(db, {
+    mailer: () => {
+      started++;
+      return new Promise<void>(() => {});
+    },
+  });
+  try {
+    const user = await newUser(db);
+    const began = performance.now();
+    const res = await hanging.call('POST', '/auth/password/forgot', { body: { email: user.email } });
+    const took = performance.now() - began;
+    assert.deepEqual([res.status, res.body], [202, {}]);
+    assert.ok(took < 1500, `answered in ${Math.round(took)} ms`);
+    await until(() => started === 1);
+    assert.equal(started, 1, 'the mailer was started');
+    // the next request is served as usual while the first mail hangs
+    assert.equal((await hanging.call('POST', '/auth/password/forgot', { body: { email: fresh() } })).status, 202);
+    await sleep(50);
+    assert.deepEqual(unhandled, []);
+    assert.equal(hanging.logs.filter(l => l.level === 'error').length, 0);
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+    await hanging.close();
+  }
+});
+
+test('a COMMIT that fails is a 500 and no mail: the code is not stored either', async () => {
+  const user = await newUser(db);
+  await db.admin.query(`
+    CREATE FUNCTION t9_refuse_at_commit() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN RAISE EXCEPTION 't9: refused at commit'; END $$;
+    CREATE CONSTRAINT TRIGGER t9_refuse_at_commit AFTER INSERT ON reset_codes
+      DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION t9_refuse_at_commit();
+  `);
+  let res;
+  try {
+    res = await app.call('POST', '/auth/password/forgot', { body: { email: user.email } });
+  } finally {
+    await db.admin.query('DROP TRIGGER t9_refuse_at_commit ON reset_codes; DROP FUNCTION t9_refuse_at_commit();');
+  }
+  assert.deepEqual([res.status, res.body], [500, { error: { code: 'INTERNAL', message: 'internal' } }]);
+  await mailsSettled();
+  assert.equal(app.mail.filter(m => m.to === user.email).length, 0, 'no mail for a code that was not stored');
+  const { rows } = await db.admin.query('SELECT 1 FROM reset_codes WHERE user_id = $1', [user.userId]);
+  assert.equal(rows.length, 0);
+  // the failure is logged without a message and the account can ask again
+  assert.equal(app.logs.filter(l => l.status === 500 && l.route === '/auth/password/forgot').length, 1);
+  const start = app.mail.length;
+  assert.equal((await app.call('POST', '/auth/password/forgot', { body: { email: user.email } })).status, 202);
+  await mailedCode(user.email, start);
+});
+
 test('the reset code: LIMITS.resetCode.length digits, zero-padded, spread over the whole range', () => {
   const digits = LIMITS.resetCode.length;
   const seen = new Set<string>();
@@ -658,12 +850,47 @@ test('the reset code: LIMITS.resetCode.length digits, zero-padded, spread over t
   assert.ok([...seen].some(code => code.startsWith('0')));
 });
 
-test('no log line of the whole run holds a password, a code, a token or an address', () => {
-  const lines = [app.logText(), limited.logText(), failing.logText()].join('\n');
-  assert.ok(lines.length > 0 && secrets.length > 20, `${secrets.length} secrets`);
-  for (const secret of secrets) {
+/** A log text must hold none of the secrets and no address. */
+function assertNoSecrets(text: string, own: string[]) {
+  assert.ok(text.length > 0, 'there is a log to look at');
+  for (const secret of own) {
     assert.ok(secret.length > 0);
-    assert.ok(!lines.includes(secret), 'a secret reached the log');
+    assert.ok(!text.includes(secret), 'a secret reached the log');
   }
-  assert.ok(!/@example\.com/i.test(lines), 'an email address reached the log');
+  assert.ok(!/@example\.com/i.test(text), 'an email address reached the log');
+}
+
+test('no log line holds a password, a code, a token or an address (own app, own flow: runs alone as well as in order)', async () => {
+  const quiet = await startTestApp(db, { routes: [probe] });
+  try {
+    const own: string[] = [];
+    const email = fresh();
+    const password = 'ghi-nho-mat-khau-9';
+    const newPassword = 'ghi-nho-mat-khau-10';
+    own.push(password, newPassword);
+    const made = await quiet.call('POST', '/auth/register', {
+      body: { email, password, displayName: 'Lan', acceptedTerms: true },
+    });
+    assert.equal(made.status, 201);
+    own.push(made.body.token);
+    assert.equal(
+      (await quiet.call('POST', '/auth/login', { body: { email, password: 'sai-mat-khau-0' } })).status,
+      401,
+    );
+    const again = await quiet.call('POST', '/auth/login', { body: { email, password } });
+    own.push(again.body.token);
+    assert.equal((await quiet.call('POST', '/auth/password/forgot', { body: { email } })).status, 202);
+    await until(() => quiet.mail.length === 1);
+    const code = /([0-9]{8})/.exec(quiet.mail[0].text)?.[1] as string;
+    own.push(code);
+    const reset = await quiet.call('POST', '/auth/password/reset', {
+      body: { email, code, newPassword },
+    });
+    assert.equal(reset.status, 204);
+    assert.equal((await quiet.call('POST', '/auth/logout', { token: made.body.token })).status, 401);
+    assert.equal((await quiet.call('POST', '/auth/register', { body: { email } })).status, 422);
+    assertNoSecrets(quiet.logText(), own);
+  } finally {
+    await quiet.close();
+  }
 });

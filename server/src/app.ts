@@ -491,6 +491,9 @@ export function createApp(deps: AppDeps): Server {
         // a client keeps the action for and sends again; by then the first answer is stored.
         answer = retryAfter(1);
         note = 'idempotency key in use';
+      } else if (refusal?.body.error.code === 'RATE_LIMITED') {
+        // thrown by a route (the scrypt gate): the contract gives every 429 a Retry-After
+        answer = retryAfter(1);
       } else if (refusal !== null) {
         answer = out(refusal);
       } else {
