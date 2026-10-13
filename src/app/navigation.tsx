@@ -51,7 +51,10 @@ const MAIN_TABS = 'MainTabs';
 const TAB_ORDER: readonly TabRootName[] = ['Today', 'Plan', 'Guild', 'Profile'];
 const tabNameOf = (root: string) => `${root}Tab`;
 const rootNameOf = (root: string) => `${root}Root`;
-const tabsInOrder = () => [...tabRoots].sort((a, b) => TAB_ORDER.indexOf(a.name) - TAB_ORDER.indexOf(b.name));
+// The bar always has its four tabs. One whose root has not been registered yet (AR-25) shows the notice of
+// `GroupPending` under the label and icon of the design.
+const PENDING_TAB_ICON: Record<TabRootName, IconName> = { Today: 'Sun', Plan: 'Route', Guild: 'Users', Profile: 'User' };
+const tabRootOf = (name: TabRootName) => tabRoots.find(tab => tab.name === name);
 
 // Every screen draws its own header (`Screen`); Back is the native one.
 const noHeader = { headerShown: false } as const;
@@ -67,22 +70,25 @@ function ShellTabBar(props: BottomTabBarProps) {
   // The tab bar belongs to the MainTabs screen of the root stack: not focused while the focus flow covers it.
   const focused = useIsFocused();
   // A detail screen has no tab bar (frames S10 and later); Back returns to the tab root.
-  const onDetail = (props.state.routes[props.state.index].state?.index ?? 0) > 0;
+  // A stack opened from a given state (`stateForRoute`, a restored state) has no `index` yet: it shows its last route.
+  const stack = props.state.routes[props.state.index].state;
+  const onDetail = (stack?.index ?? (stack?.routes.length ?? 1) - 1) > 0;
   const shown = focused && !onDetail;
   useEffect(() => {
     setShown(shown);
     return () => setShown(false);
   }, [shown, setShown]);
-  const icons: Record<string, IconName> = Object.fromEntries(tabRoots.map(tab => [tabNameOf(tab.name), tab.icon]));
+  const icons: Record<string, IconName> = Object.fromEntries(TAB_ORDER.map(name => [tabNameOf(name), tabRootOf(name)?.icon ?? PENDING_TAB_ICON[name]]));
   return onDetail ? null : <TabBar {...props} icons={icons} />;
 }
 const renderTabBar = (props: BottomTabBarProps) => <ShellTabBar {...props} />;
 
 function TabStack({ route }: { route: { name: string } }) {
-  const root = tabRoots.find(tab => tabNameOf(tab.name) === route.name);
+  const name = TAB_ORDER.find(root => tabNameOf(root) === route.name) ?? TAB_ORDER[0];
+  const root = tabRootOf(name);
   return (
     <Stack.Navigator screenOptions={noHeader}>
-      {root ? <Stack.Screen name={rootNameOf(root.name)} component={root.component as ComponentType} options={root.options} /> : null}
+      <Stack.Screen name={rootNameOf(name)} component={root ? (root.component as ComponentType) : GroupPending} options={root?.options} />
       {screensOf(Stack, detailScreens)}
     </Stack.Navigator>
   );
@@ -91,8 +97,8 @@ function TabStack({ route }: { route: { name: string } }) {
 function MainTabs() {
   return (
     <Tabs.Navigator tabBar={renderTabBar} screenOptions={noHeader}>
-      {tabsInOrder().map(tab => (
-        <Tabs.Screen key={tab.name} name={tabNameOf(tab.name)} component={TabStack} options={{ title: tab.label }} />
+      {TAB_ORDER.map(name => (
+        <Tabs.Screen key={name} name={tabNameOf(name)} component={TabStack} options={{ title: tabRootOf(name)?.label ?? navVi.tabLabel[name] }} />
       ))}
     </Tabs.Navigator>
   );
@@ -150,7 +156,7 @@ function LoadFailed({ error, onRetry }: { error: unknown; onRetry: () => void })
   );
 }
 
-/** A group whose screens have not been registered yet (AR-25): say so and offer the way out. */
+/** A group, or a tab, whose screens have not been registered yet (AR-25): say so and offer the way out. */
 function GroupPending() {
   return (
     <Screen title={authVi.productName}>
@@ -171,7 +177,6 @@ function SignedIn() {
     if (!onboardingScreens.length) return <GroupPending />;
     return <Root.Navigator screenOptions={noHeader}>{screensOf(Root, onboardingScreens)}</Root.Navigator>;
   }
-  if (!tabRoots.length) return <GroupPending />;
   return (
     <Root.Navigator screenOptions={noHeader}>
       <Root.Screen name={MAIN_TABS} component={MainTabs} />
@@ -224,9 +229,8 @@ export function stateForRoute(name: RouteName, params?: object): InitialState {
   const inTab = (tab: string, routes?: { name: string; params?: object }[]) => ({
     routes: [{ name: MAIN_TABS, state: { routes: [{ name: tabNameOf(tab), state: routes && { routes } }] } }],
   });
-  if (tabRoots.some(tab => tab.name === name)) return inTab(name);
-  const firstTab = tabsInOrder()[0];
-  if (firstTab && detailScreens.some(entry => entry.name === name)) return inTab(firstTab.name, [{ name: rootNameOf(firstTab.name) }, route]);
+  if (TAB_ORDER.some(root => root === name)) return inTab(name);
+  if (detailScreens.some(entry => entry.name === name)) return inTab(TAB_ORDER[0], [{ name: rootNameOf(TAB_ORDER[0]) }, route]);
   if (focusScreens.some(entry => entry.name === name)) return { routes: [{ name: MAIN_TABS }, route] };
   return { routes: [route] };
 }
