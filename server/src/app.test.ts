@@ -535,6 +535,7 @@ test('a session route runs as app_auth as the user of the session, at READ COMMI
   assert.equal(result.body.ip, '127.0.0.1');
   assert.deepEqual(result.body.ctxKeys, [
     'actionId',
+    'afterCommit',
     'body',
     'db',
     'ip',
