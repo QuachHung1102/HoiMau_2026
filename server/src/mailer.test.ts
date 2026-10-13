@@ -1,7 +1,7 @@
 // No database: the outbox mailer and the MAIL_MODE gate of the process.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -45,6 +45,42 @@ test('MAIL_MODE=outbox is the only mode: anything else, unset included, is an er
   assert.equal(typeof mailerFromEnv({ MAIL_MODE: 'outbox' }), 'function');
   for (const env of [{}, { MAIL_MODE: '' }, { MAIL_MODE: 'smtp' }, { MAIL_MODE: 'Outbox' }]) {
     assert.throws(() => mailerFromEnv(env), /MAIL_MODE.*docs\/backend\.md/);
+  }
+});
+
+test('MAIL_MODE=outbox is refused when NODE_ENV is production: reset codes are never written to disk there', () => {
+  assert.equal(typeof mailerFromEnv({ MAIL_MODE: 'outbox', NODE_ENV: 'development' }), 'function');
+  assert.throws(
+    () => mailerFromEnv({ MAIL_MODE: 'outbox', NODE_ENV: 'production' }),
+    /MAIL_MODE.*production.*docs\/backend\.md/,
+  );
+  const { status, stderr } = spawnSync(process.execPath, ['src/main.ts'], {
+    cwd: SERVER_DIR,
+    encoding: 'utf8',
+    timeout: 20_000,
+    env: {
+      ...process.env,
+      DATABASE_URL: 'postgres://nobody:nothing@127.0.0.1:1/none',
+      JOURNAL_KEY: Buffer.alloc(32, 3).toString('base64'),
+      MAIL_MODE: 'outbox',
+      NODE_ENV: 'production',
+    },
+  });
+  assert.equal(status, 1, stderr);
+  assert.match(stderr, /production.*docs\/backend\.md/);
+});
+
+test('the outbox directory is created owner-only and the file owner-read/write (mode is ignored on Windows)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'hm-outbox-'));
+  try {
+    const file = join(dir, 'box', 'mail.jsonl');
+    await outboxMailer(file)({ to: 'a@example.com', subject: 's', text: 't' });
+    if (process.platform !== 'win32') {
+      assert.equal((await stat(join(dir, 'box'))).mode.toString(8).slice(-3), '700');
+      assert.equal((await stat(file)).mode.toString(8).slice(-3), '600');
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
 
