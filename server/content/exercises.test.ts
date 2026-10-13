@@ -73,7 +73,8 @@ test('every move has a name, exactly 3 short steps and one caution that says whe
     assert.ok(m.name.trim().length > 0, m.code);
     assert.equal(m.steps.length, 3, m.code);
     for (const s of m.steps)
-      assert.ok(s.trim().length > 0 && s.length <= 110, `${m.code}: ${s}`);
+      assert.ok(s.trim().length > 0 && s.length <= 100, `${m.code}: ${s}`);
+    assert.ok(m.caution.length <= 130, `${m.code}: caution is ${m.caution.length} characters`);
     assert.match(
       m.caution.toLowerCase(),
       /dừng|nghỉ|giảm|chậm lại|chuyển sang đi bộ|quay về thở/,
@@ -355,7 +356,7 @@ test('step text fits the step seconds, and says what fills the rest', () => {
         if (+m[1] + +m[2] !== s.seconds) problems.push(at);
       } else if ((m = t.match(/^giữ (\d+) giây(, .+)?$/))) {
         const gap = s.seconds - +m[1];
-        if (gap < 0 || (gap > SLACK && !/đến hết giờ/.test(t))) problems.push(at);
+        if (gap < 0 || (gap > SLACK && !/lặp lại/.test(t))) problems.push(at);
       } else if ((m = t.match(/^(\d+) giây mỗi bên$/))) {
         const need = 2 * +m[1] + 5; // 5 s to change sides
         if (need > s.seconds || s.seconds - need > SLACK) problems.push(at);
@@ -417,9 +418,17 @@ test('stretch moves used outdoors name a support that exists outdoors', () => {
 
 test('one word for each body part: no bare "gối", "khuỷu" or "choáng"', () => {
   for (const m of MOVES) {
-    const text = [...m.steps, m.caution].join(' ').toLowerCase(); // the name "Plank tựa gối" is the plan's
+    // The name "Plank tựa gối" is the plan's fixed name, so it is exempt.
+    const own = m.code === 'PLANK_TUA_GOI' ? '' : m.name;
+    const text = [own, ...m.steps, m.caution].join(' ').toLowerCase();
     assert.doesNotMatch(text.replace(/đầu gối/g, ''), /\bgối\b/, `${m.code}: gối`);
     assert.doesNotMatch(text.replace(/khuỷu tay/g, ''), /khuỷu/, `${m.code}: khuỷu`);
     assert.doesNotMatch(text, /choáng/, `${m.code}: choáng`);
   }
+});
+
+test('a step text fits the row of the frame S18: at most 26 characters', () => {
+  for (const w of WORKOUTS)
+    for (const s of w.steps)
+      assert.ok(s.repsText.length <= 26, `${w.code}: "${s.repsText}" is ${s.repsText.length} characters`);
 });

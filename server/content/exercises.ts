@@ -68,7 +68,7 @@ export const MOVES: MoveSeed[] = [
     demoCode: 'exercise-chung-chan-lui',
     steps: [
       'Đứng thẳng, vịn vào thành ghế hoặc tường nếu cần giữ thăng bằng.',
-      'Bước một chân ra sau, hạ người thẳng xuống, đầu gối trước nằm trên mắt cá chân, đầu gối sau không chạm sàn.',
+      'Bước một chân ra sau, hạ người thẳng xuống; đầu gối trước trên mắt cá, đầu gối sau không chạm sàn.',
       'Đẩy chân trước để đứng lên; làm đủ số lần một bên rồi đổi bên.',
     ],
     caution:
@@ -132,7 +132,8 @@ export const MOVES: MoveSeed[] = [
       'Nâng ngực lên, kéo nhẹ hai vai ra sau, không ưỡn lưng dưới.',
       'Giữ vài nhịp thở rồi thả tay.',
     ],
-    caution: 'Chỉ mở ngực đến mức thoải mái. Dừng nếu vai hoặc lưng đau.',
+    caution:
+      'Nếu ngồi, chọn ghế không lăn hoặc tựa lưng ghế vào tường. Chỉ mở ngực đến mức thoải mái. Dừng nếu vai hoặc lưng đau.',
   },
   {
     code: 'GIAN_CO_TAY',
@@ -155,7 +156,7 @@ export const MOVES: MoveSeed[] = [
       'Trở về giữa rồi xoay sang bên còn lại.',
     ],
     caution:
-      'Chọn ghế không lăn; nếu ghế có bánh xe thì tựa vào tường. Xoay vừa phải, hông giữ yên. Dừng nếu lưng đau.',
+      'Chọn ghế không lăn, hoặc tựa lưng ghế vào tường. Xoay vừa phải, hông giữ yên. Dừng nếu lưng đau.',
   },
   {
     code: 'GIAN_LUNG_NGOI',
@@ -167,7 +168,7 @@ export const MOVES: MoveSeed[] = [
       'Giữ vài nhịp thở rồi ngồi thẳng dậy thật chậm.',
     ],
     caution:
-      'Chọn ghế không lăn, nếu ghế có bánh xe thì tựa vào tường. Cúi đến mức thoải mái và ngồi dậy chậm. Dừng nếu lưng đau hoặc thấy chóng mặt.',
+      'Chọn ghế không lăn, hoặc tựa lưng ghế vào tường. Cúi đến mức thoải mái, ngồi dậy chậm. Dừng nếu lưng đau hoặc chóng mặt.',
   },
   {
     code: 'MEO_BO',
@@ -191,19 +192,19 @@ export const MOVES: MoveSeed[] = [
       'Giữ vài nhịp thở rồi đổi chân.',
     ],
     caution:
-      'Dừng nếu đầu gối đau, chóng mặt hoặc khó giữ thăng bằng; chỉ kéo đến mức thoải mái.',
+      'Chọn chỗ vịn vững. Dừng nếu đầu gối đau, chóng mặt hoặc khó giữ thăng bằng; chỉ kéo đến mức thoải mái.',
   },
   {
     code: 'GIAN_BAP_CHAN',
     name: 'Giãn bắp chân',
     demoCode: null,
     steps: [
-      'Đứng đối diện tường, cây hoặc hàng rào, hai tay chạm vào ngang vai.',
+      'Đứng đối diện tường, cây hoặc hàng rào, hai tay chạm lên đó ngang vai.',
       'Bước một chân ra sau, giữ gót chân sau chạm sàn.',
       'Nghiêng người nhẹ về phía trước, giữ vài nhịp thở rồi đổi chân.',
     ],
     caution:
-      'Chỉ nghiêng đến khi thấy giãn nhẹ. Dừng nếu bắp chân hoặc gót chân đau, hoặc thấy chóng mặt.',
+      'Chọn chỗ vững. Chỉ nghiêng đến khi thấy giãn nhẹ. Dừng nếu bắp chân hoặc gót chân đau, hoặc chóng mặt.',
   },
   {
     code: 'XOAY_HONG',
@@ -308,7 +309,7 @@ export const MOVES: MoveSeed[] = [
     name: 'Chèo tạ tay',
     demoCode: null,
     steps: [
-      'Một tay và một đầu gối chống lên ghế hoặc mép sofa thật vững, lưng thẳng, tay kia cầm tạ buông thẳng.',
+      'Một tay và một đầu gối chống lên ghế hoặc mép sofa thật vững, lưng thẳng; tay kia cầm tạ.',
       'Kéo khuỷu tay lên sát sườn, khép nhẹ bả vai.',
       'Hạ tạ chậm rãi, làm hết lượt rồi đổi bên.',
     ],
@@ -321,8 +322,8 @@ export const MOVES: MoveSeed[] = [
     demoCode: null,
     steps: [
       'Đứng hai chân rộng bằng hông, hai tay cầm tạ trước đùi, đầu gối chùng nhẹ.',
-      'Đẩy hông ra sau, gập từ hông chứ không cúi lưng, hạ tạ đến ngang đầu gối hoặc đến khi thấy căng mặt sau đùi.',
-      'Siết mông để đứng thẳng trở lại.',
+      'Đẩy hông ra sau, gập từ hông chứ không cúi lưng; hạ tạ tối đa đến ngang đầu gối.',
+      'Dừng hạ sớm hơn khi thấy căng mặt sau đùi, rồi siết mông để đứng thẳng.',
     ],
     caution:
       'Giữ lưng thẳng, chọn tạ nhẹ. Dừng nếu lưng dưới hoặc mặt sau đùi đau.',
@@ -344,7 +345,7 @@ export const MOVES: MoveSeed[] = [
     name: 'Kéo dây kháng lực',
     demoCode: null,
     steps: [
-      'Ngồi hoặc đứng, móc dây vào chân ghế nặng hoặc điểm móc chắc, ngang ngực, hai tay nắm dây.',
+      'Ngồi hoặc đứng, móc dây quanh chân ghế nặng hoặc điểm móc chắc phía trước, hai tay nắm dây.',
       'Kéo hai tay về phía thân, khuỷu tay sát sườn, khép nhẹ bả vai.',
       'Thả dây về chậm rãi, giữ dây luôn hơi căng.',
     ],
@@ -378,7 +379,7 @@ export const MOVES: MoveSeed[] = [
   },
   {
     code: 'NANG_GOI',
-    name: 'Nâng gối',
+    name: 'Nâng đầu gối',
     demoCode: null,
     steps: [
       'Đứng thẳng, hai tay co ở ngang hông.',
@@ -446,7 +447,7 @@ export const MOVES: MoveSeed[] = [
       'Tay thả lỏng, thở đều, tiếp đất thật êm.',
     ],
     caution:
-      'Giữ bước nhún thấp và êm. Giảm nhịp hoặc dừng nếu đầu gối, mắt cá hoặc lưng đau, hoặc khó thở, chóng mặt, tức ngực.',
+      'Giữ bước nhún thấp và êm. Giảm nhịp hoặc dừng nếu đầu gối, mắt cá hoặc lưng đau, hoặc nếu khó thở, chóng mặt, tức ngực.',
   },
   {
     code: 'LEO_NUI_TUA_BAN',
@@ -458,7 +459,7 @@ export const MOVES: MoveSeed[] = [
       'Đưa chân về và đổi chân, nhịp chậm và đều.',
     ],
     caution:
-      'Chọn bàn thật vững, giữ nhịp chậm. Dừng nếu cổ tay, vai hoặc lưng đau, hoặc khó thở, chóng mặt, tức ngực.',
+      'Chọn bàn thật vững, giữ nhịp chậm. Dừng nếu cổ tay, vai hoặc lưng đau, hoặc nếu khó thở, chóng mặt, tức ngực.',
   },
   {
     code: 'DI_BO_CHAM',
@@ -575,7 +576,7 @@ function workout(
   };
 }
 
-const HOLD = 'giữ 20 giây, lặp lại đến hết giờ';
+const HOLD = 'giữ 20 giây, lặp lại';
 
 export const WORKOUTS: WorkoutSeed[] = [
   // ------------------------------------------------ the starter set (PLAN Task 21; frame S18)
@@ -609,7 +610,7 @@ export const WORKOUTS: WorkoutSeed[] = [
     [['XOAY_VAI', 40, '40 giây']],
     [
       ['NGHIENG_CO', 30, '3 lần mỗi bên'],
-      ['MO_NGUC', 40, 'giữ 15 giây, lặp lại đến hết giờ'],
+      ['MO_NGUC', 40, 'giữ 15 giây, lặp lại'],
       ['GIAN_CO_TAY', 30, '12 giây mỗi bên'],
     ],
     [['THA_LONG_VAI', 60, '60 giây']],
