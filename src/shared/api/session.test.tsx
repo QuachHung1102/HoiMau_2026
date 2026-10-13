@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient, QueryClientProvider, useMutation, useQuery } from '@tanstack/react-query';
-import { act, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { Text } from 'react-native';
 import * as Keychain from 'react-native-keychain';
 import { readCache, writeCache } from '../storage/cache';
+import { enqueueAction, resetPendingForTests } from '../storage/pendingActions';
 import { api } from './client';
 import { SessionProvider, useSession, type Session } from './session';
 
@@ -48,6 +49,7 @@ afterEach(async () => {
   jest.restoreAllMocks();
   await Keychain.resetGenericPassword();
   await AsyncStorage.clear();
+  resetPendingForTests();
   jest.clearAllMocks();
   globalThis.fetch = realFetch;
 });
@@ -109,7 +111,7 @@ test('a keychain that cannot be read starts signed out', async () => {
   expect(await screen.findByText('signedOut|-|ok')).toBeTruthy();
 });
 
-test('signOut revokes on the server, then clears keychain, query cache and this user cache, in that order', async () => {
+test('signOut revokes on the server, then clears keychain, query cache, this user cache and this user queue, in that order', async () => {
   const order: string[] = [];
   mount();
   await screen.findByText('signedOut|-|ok');
@@ -136,14 +138,14 @@ test('signOut revokes on the server, then clears keychain, query cache and this 
   });
   const removeMany = AsyncStorage.removeMany;
   jest.spyOn(AsyncStorage, 'removeMany').mockImplementation(keys => {
-    order.push('cache');
+    order.push(keys[0].startsWith('cache:') ? 'cache' : keys[0].startsWith('pending:') ? 'queue' : keys[0]);
     return removeMany(keys);
   });
 
   await act(() => session.signOut());
   reset.mockImplementation(realReset);
 
-  expect(order).toEqual(['revoke', 'keychain', 'queries', 'cache']);
+  expect(order).toEqual(['revoke', 'keychain', 'queries', 'cache', 'queue']);
   expect(bearers()).toEqual([['/auth/logout', `Bearer ${TOKEN}`]]);
   expect(fetchMock.mock.calls[0][1].method).toBe('POST');
   expect(screen.getByText('signedOut|-|ok')).toBeTruthy();
@@ -370,4 +372,133 @@ test('signIn rejects and stays signed out when the keychain cannot store the tok
 test('useSession outside a SessionProvider throws a clear error', () => {
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
   expect(() => render(<Probe />)).toThrow('useSession needs a SessionProvider above it');
+});
+
+describe('signing out while records are still waiting to be sent', () => {
+  const QUEUE = `pending:v1:${USER}`;
+  const offline = () => Promise.reject(new TypeError('Network request failed'));
+  const record = (id: string) => ({ id, userId: USER, method: 'POST' as const, path: '/day/quests/WATER/progress', body: { amount: 1 }, createdAt: new Date().toISOString() });
+  const idsOnDisk = async () => (JSON.parse((await AsyncStorage.getItem(QUEUE)) ?? '[]') as { id: string }[]).map(item => item.id);
+  const paths = () => bearers().map(([path]) => path);
+  const question = () => screen.queryByRole('header', { name: 'Còn 2 ghi nhận chưa gửi' });
+
+  /** Signed in, two records made, the network goes down and "Đăng xuất" is pressed: `leaving` is that signOut call. */
+  async function signOutWithTwoWaiting() {
+    mount();
+    await screen.findByText('signedOut|-|ok');
+    await act(() => session.signIn(TOKEN, USER));
+    await enqueueAction(record('a1'));
+    await enqueueAction(record('a2'));
+    fetchMock.mockImplementation(offline);
+    let settled = false;
+    let leaving!: Promise<void>;
+    act(() => {
+      leaving = session.signOut().then(() => {
+        settled = true;
+      });
+    });
+    await screen.findByRole('header', { name: 'Còn 2 ghi nhận chưa gửi' });
+    return { leaving, isSettled: () => settled };
+  }
+
+  test('with nothing waiting there is no question', async () => {
+    mount();
+    await screen.findByText('signedOut|-|ok');
+    await act(() => session.signIn(TOKEN, USER));
+    await act(() => session.signOut());
+    expect(screen.getByText('signedOut|-|ok')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ở lại' })).toBeNull();
+    expect(paths()).toEqual(['/auth/logout']);
+  });
+
+  test('records that can still be delivered are delivered first, and then there is no question either', async () => {
+    mount();
+    await screen.findByText('signedOut|-|ok');
+    await act(() => session.signIn(TOKEN, USER));
+    await enqueueAction(record('a1'));
+    await enqueueAction(record('a2'));
+    await act(() => session.signOut());
+    expect(paths()).toEqual(['/day/quests/WATER/progress', '/day/quests/WATER/progress', '/auth/logout']);
+    expect(bearers().every(([, bearer]) => bearer === `Bearer ${TOKEN}`)).toBe(true);
+    expect(screen.getByText('signedOut|-|ok')).toBeTruthy();
+    expect(await AsyncStorage.getAllKeys()).toEqual([]);
+  });
+
+  test('the question names how many would be dropped; nothing has been signed out or revoked yet', async () => {
+    const { isSettled } = await signOutWithTwoWaiting();
+    expect(question()).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Ở lại' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Đăng xuất và bỏ các ghi nhận này' })).toBeTruthy();
+    expect(screen.getByText(`signedIn|${USER}|ok`)).toBeTruthy();
+    expect(isSettled()).toBe(false);
+    expect(paths()).toEqual(['/day/quests/WATER/progress']); // the last attempt to deliver; no /auth/logout
+    expect(await idsOnDisk()).toEqual(['a1', 'a2']);
+    expect(Keychain.resetGenericPassword).not.toHaveBeenCalled();
+  });
+
+  test('"Ở lại" keeps the session and the queue, and the signOut call settles', async () => {
+    const { leaving } = await signOutWithTwoWaiting();
+    fireEvent.press(screen.getByRole('button', { name: 'Ở lại' }));
+    await act(() => leaving);
+    expect(question()).toBeNull();
+    expect(screen.getByText(`signedIn|${USER}|ok`)).toBeTruthy();
+    expect(await idsOnDisk()).toEqual(['a1', 'a2']);
+    expect(await Keychain.getGenericPassword()).toMatchObject({ username: USER, password: TOKEN });
+    expect(paths()).not.toContain('/auth/logout');
+
+    // and the requests still carry the token
+    fetchMock.mockResolvedValue(respond(200, {}));
+    await act(() => api.get('/settings').then(() => undefined));
+    expect(bearers().at(-1)).toEqual(['/settings', `Bearer ${TOKEN}`]);
+  });
+
+  test('Back or a tap outside the dialog is "Ở lại"', async () => {
+    const { leaving } = await signOutWithTwoWaiting();
+    await act(async () => screen.UNSAFE_getByProps({ transparent: true, visible: true }).props.onRequestClose());
+    await act(() => leaving);
+    expect(question()).toBeNull();
+    expect(screen.getByText(`signedIn|${USER}|ok`)).toBeTruthy();
+    expect(await idsOnDisk()).toEqual(['a1', 'a2']);
+  });
+
+  test('"Đăng xuất và bỏ các ghi nhận này" signs out as before and removes the queue of that user only', async () => {
+    await AsyncStorage.setItem('pending:v1:someone-else', '[]');
+    const { leaving } = await signOutWithTwoWaiting();
+    fireEvent.press(screen.getByRole('button', { name: 'Đăng xuất và bỏ các ghi nhận này' }));
+    await act(() => leaving);
+    expect(question()).toBeNull();
+    expect(screen.getByText('signedOut|-|ok')).toBeTruthy();
+    expect(paths().at(-1)).toBe('/auth/logout');
+    expect(await Keychain.getGenericPassword()).toBe(false);
+    expect(await AsyncStorage.getAllKeys()).toEqual(['pending:v1:someone-else']);
+
+    // the same user signs in again: nothing of the dropped records comes back
+    fetchMock.mockResolvedValue(respond(200, {}));
+    await act(() => session.signIn(TOKEN, USER));
+    await act(() => session.signOut());
+    expect(paths().filter(path => path.includes('/quests/'))).toHaveLength(1);
+  });
+
+  test('a session the server ended keeps the queue on this device and asks nothing', async () => {
+    mount();
+    await screen.findByText('signedOut|-|ok');
+    await act(() => session.signIn(TOKEN, USER));
+    await enqueueAction(record('a1'));
+    fetchMock.mockResolvedValue(sessionInvalid());
+    await act(() => api.get('/me').catch(() => undefined));
+    expect(await screen.findByText('signedOut|-|expired')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ở lại' })).toBeNull();
+    expect(await AsyncStorage.getAllKeys()).toEqual([QUEUE]);
+    expect(await idsOnDisk()).toEqual(['a1']);
+  });
+
+  test('the session ends while the question is open: the question goes, the queue stays', async () => {
+    const { leaving } = await signOutWithTwoWaiting();
+    fetchMock.mockResolvedValue(sessionInvalid());
+    await act(() => api.get('/me').catch(() => undefined));
+    await act(() => leaving);
+    expect(await screen.findByText('signedOut|-|expired')).toBeTruthy();
+    expect(question()).toBeNull();
+    expect(await idsOnDisk()).toEqual(['a1', 'a2']);
+  });
 });

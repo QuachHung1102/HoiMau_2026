@@ -1,8 +1,9 @@
-import { ApiError, api, bindApiSession, isValidationDetails } from './client';
+import { ApiError, api, bindApiSession, boundUserId, isValidationDetails, onRequestOutcome } from './client';
 import { API_BASE_URL } from './config';
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const TOKEN = 'tok-secret-1';
+const USER = 'user-1';
 
 type Init = { method: string; headers: Record<string, string>; body?: string; signal: AbortSignal };
 const fetchMock = jest.fn<Promise<unknown>, [string, Init]>();
@@ -42,7 +43,7 @@ test('the base URL is the dev server behind adb reverse', () => {
 });
 
 test('get sends the bearer token, the query string and no idempotency key or body', async () => {
-  bindApiSession({ token: TOKEN, onInvalid: jest.fn() });
+  bindApiSession({ token: TOKEN, userId: USER, onInvalid: jest.fn() });
   fetchMock.mockResolvedValue(respond(200, { days: [] }));
   await expect(api.get('/day/history', { from: '2026-10-01', to: '2026-10-07', skipped: undefined, n: 3, q: 'a b&c' })).resolves.toEqual({
     days: [],
@@ -62,7 +63,7 @@ test('a request without a session carries no Authorization header', async () => 
 });
 
 test('write sends the bearer token, the given idempotency key and a JSON body', async () => {
-  bindApiSession({ token: TOKEN, onInvalid: jest.fn() });
+  bindApiSession({ token: TOKEN, userId: USER, onInvalid: jest.fn() });
   fetchMock.mockResolvedValue(respond(200, { ok: true }));
   const key = '0b8f4d0e-6a57-4c0e-9d58-2f1f3d1c9a11';
   await expect(api.write('PATCH', '/settings', { motion: 'REDUCED' }, { idempotencyKey: key })).resolves.toEqual({ ok: true });
@@ -174,7 +175,7 @@ test('details that are not an object are dropped', async () => {
 
 test('three parallel 401 SESSION_INVALID answers end the session exactly once', async () => {
   const onInvalid = jest.fn();
-  bindApiSession({ token: TOKEN, onInvalid });
+  bindApiSession({ token: TOKEN, userId: USER, onInvalid });
   fetchMock.mockResolvedValue(respond(401, { error: { code: 'SESSION_INVALID', message: 'session is not valid' } }));
   const errors = await Promise.all([caught(api.get('/me')), caught(api.get('/day')), caught(api.write('POST', '/day/bedtime', {}))]);
   expect(errors.map(e => [e.status, e.code])).toEqual(Array(3).fill([401, 'SESSION_INVALID']));
@@ -196,7 +197,7 @@ test('a 401 on a request that carried no token is an ordinary error for the form
 
 test('401 INVALID_CREDENTIALS with a token (wrong password on delete) keeps the session', async () => {
   const onInvalid = jest.fn();
-  bindApiSession({ token: TOKEN, onInvalid });
+  bindApiSession({ token: TOKEN, userId: USER, onInvalid });
   fetchMock.mockResolvedValue(respond(401, { error: { code: 'INVALID_CREDENTIALS', message: 'x' } }));
   await caught(api.write('POST', '/me/delete', { password: 'wrong' }));
   expect(onInvalid).not.toHaveBeenCalled();
@@ -208,11 +209,11 @@ test('401 INVALID_CREDENTIALS with a token (wrong password on delete) keeps the 
 test('a late 401 for an old token does not end a newer session', async () => {
   const oldInvalid = jest.fn();
   const newInvalid = jest.fn();
-  bindApiSession({ token: 'old-token', onInvalid: oldInvalid });
+  bindApiSession({ token: 'old-token', userId: USER, onInvalid: oldInvalid });
   let answer!: (response: unknown) => void;
   fetchMock.mockImplementationOnce(() => new Promise(resolve => (answer = resolve)));
   const stale = caught(api.get('/me'));
-  bindApiSession({ token: 'new-token', onInvalid: newInvalid });
+  bindApiSession({ token: 'new-token', userId: USER, onInvalid: newInvalid });
   answer(respond(401, { error: { code: 'SESSION_INVALID', message: 'x' } }));
   await stale;
   expect(oldInvalid).not.toHaveBeenCalled();
@@ -220,7 +221,7 @@ test('a late 401 for an old token does not end a newer session', async () => {
 });
 
 test('an ApiError never carries the token, the URL or the request', async () => {
-  bindApiSession({ token: TOKEN, onInvalid: jest.fn() });
+  bindApiSession({ token: TOKEN, userId: USER, onInvalid: jest.fn() });
   fetchMock.mockResolvedValue(respond(500, { error: { code: 'INTERNAL', message: `echo Bearer ${TOKEN}` } }));
   const error = await caught(api.write('POST', '/journal', { text: 'private words' }));
   const everything = JSON.stringify([error.message, error.stack, { ...error }, Object.getOwnPropertyNames(error)]);
@@ -351,4 +352,78 @@ test('isValidationDetails narrows VALIDATION_FAILED details and rejects anything
   for (const bad of [undefined, null, 'x', {}, { fields: 'email' }, { fields: [{ field: 'email' }] }, { fields: [{ field: 1, rule: 'min' }] }, { fields: [{ field: 'a', rule: 'weird' }] }, { fields: [null] }]) {
     expect(isValidationDetails(bad)).toBe(false);
   }
+});
+
+describe('onRequestOutcome and boundUserId (Task 24)', () => {
+  const network = () => Promise.reject(new TypeError('Network request failed'));
+
+  test('every request reports how it ended, with the outcome and nothing else', async () => {
+    const outcomes: unknown[][] = [];
+    const stop = onRequestOutcome((...told) => outcomes.push(told));
+    bindApiSession({ token: TOKEN, userId: USER, onInvalid: jest.fn() });
+
+    fetchMock.mockResolvedValueOnce(respond(200, { ok: true }));
+    await api.get('/day');
+    fetchMock.mockResolvedValueOnce(respond(204));
+    await api.write('POST', '/day/bedtime', {});
+    fetchMock.mockImplementationOnce(network);
+    await caught(api.get('/day'));
+    fetchMock.mockResolvedValueOnce(respond(409, { error: { code: 'DAY_CLOSED', message: 'x' } }));
+    await caught(api.write('POST', '/nutrition/log', { kcal: 1 }));
+    fetchMock.mockResolvedValueOnce(respond(500, { error: { code: 'INTERNAL', message: 'x' } }));
+    await caught(api.get('/day'));
+    fetchMock.mockResolvedValueOnce(respond(200, '<html>'));
+    await caught(api.get('/day'));
+    expect(outcomes).toEqual([['ok'], ['ok'], ['NETWORK'], ['DAY_CLOSED'], ['INTERNAL'], ['INTERNAL']]);
+
+    stop();
+    fetchMock.mockResolvedValueOnce(respond(200, {}));
+    await api.get('/day');
+    expect(outcomes).toHaveLength(6);
+  });
+
+  test('a timeout is reported as TIMEOUT; a request its caller aborted has no outcome', async () => {
+    const outcomes: string[] = [];
+    const stop = onRequestOutcome(outcome => outcomes.push(outcome));
+    jest.useFakeTimers();
+    fetchMock.mockImplementation((_url, init) => new Promise((_resolve, reject) => init.signal.addEventListener('abort', () => reject(new Error('Aborted')))));
+    const slow = caught(api.get('/day'));
+    await jest.advanceTimersByTimeAsync(10_000);
+    await slow;
+    expect(outcomes).toEqual(['TIMEOUT']);
+
+    const controller = new AbortController();
+    const cancelled = api.get('/day', undefined, { signal: controller.signal }).catch((failure: unknown) => failure);
+    controller.abort();
+    expect(await cancelled).not.toBeInstanceOf(ApiError);
+    expect(outcomes).toEqual(['TIMEOUT']);
+    stop();
+  });
+
+  test('a listener that throws does not turn an answered request into a failed one, nor silence the others', async () => {
+    const heard: string[] = [];
+    const stopFirst = onRequestOutcome(() => {
+      throw new Error('listener bug');
+    });
+    const stopSecond = onRequestOutcome(outcome => heard.push(outcome));
+    fetchMock.mockResolvedValue(respond(200, { ok: true }));
+    await expect(api.get('/day')).resolves.toEqual({ ok: true });
+    expect(heard).toEqual(['ok']);
+    stopFirst();
+    stopSecond();
+  });
+
+  test('boundUserId is the user of the bound token, and nobody once the session is unbound or refused', async () => {
+    expect(boundUserId()).toBeNull();
+    bindApiSession({ token: TOKEN, userId: USER, onInvalid: jest.fn() });
+    expect(boundUserId()).toBe(USER);
+    bindApiSession({ token: 'other', userId: 'user-2', onInvalid: jest.fn() });
+    expect(boundUserId()).toBe('user-2');
+    fetchMock.mockResolvedValue(respond(401, { error: { code: 'SESSION_INVALID', message: 'x' } }));
+    await caught(api.get('/day'));
+    expect(boundUserId()).toBeNull();
+    bindApiSession({ token: TOKEN, userId: USER, onInvalid: jest.fn() });
+    bindApiSession(null);
+    expect(boundUserId()).toBeNull();
+  });
 });

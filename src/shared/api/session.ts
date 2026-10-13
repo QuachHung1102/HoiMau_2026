@@ -1,7 +1,10 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as Keychain from 'react-native-keychain';
+import * as syncVi from '../i18n/vi/sync';
 import { clearUserCache } from '../storage/cache';
+import { clearPendingFor, flushPending } from '../storage/pendingActions';
+import { Dialog } from '../ui/Dialog';
 import { api, bindApiSession } from './client';
 
 export type Session = {
@@ -10,6 +13,10 @@ export type Session = {
   /** True after the server ended the session (401 SESSION_INVALID) until the next signIn or signOut: SignIn shows the notice. */
   expired: boolean;
   signIn(token: string, userId: string): Promise<void>;
+  /**
+   * Resolves when the user is signed out, or when they chose to stay: with records still waiting to be sent the
+   * provider first asks (they would be dropped), so reset any "leaving" state when this settles.
+   */
   signOut(): Promise<void>;
 };
 
@@ -59,6 +66,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<Pick<Session, 'status' | 'userId' | 'expired'>>({ status: 'loading', userId: null, expired: false });
   const userIdRef = useRef<string | null>(null);
   const leaving = useRef<Promise<void> | null>(null);
+  // Sign-out guard: how many records would be dropped, while the person is being asked; and where the answer goes.
+  const [unsent, setUnsent] = useState<number | null>(null);
+  const answer = useRef<((discard: boolean) => void) | null>(null);
+  const reply = useCallback((discard: boolean) => {
+    answer.current?.(discard);
+    answer.current = null;
+    setUnsent(null);
+  }, []);
 
   // One flight for every way out: a second signOut, or a 401 that arrives while signing out, joins the first.
   const leave = useCallback(
@@ -77,20 +92,42 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // stops here and cannot write to the disk cache after it is cleared below.
         wipeQueries(queryClient);
         if (userId) await bestEffort(clearUserCache(userId));
+        // What was still waiting to be sent goes only when the user asked to leave (and was warned by `signOut`).
+        // A session the server ended keeps its queue: it is sent when that user signs in again, never under another.
+        if (userId && !expired) await bestEffort(clearPendingFor(userId));
         setState({ status: 'signedOut', userId: null, expired });
+        reply(false); // a question still open belongs to a session that is gone
       })().finally(() => {
         leaving.current = null;
       });
       return leaving.current;
     },
-    [queryClient],
+    [queryClient, reply],
   );
+
+  const signOut = useCallback(async () => {
+    const userId = userIdRef.current;
+    if (userId && !leaving.current) {
+      // One last attempt to deliver, then the truth about what is left.
+      const { remaining } = await flushPending(userId);
+      if (remaining > 0 && userIdRef.current === userId) {
+        const discard = await new Promise<boolean>(resolve => {
+          answer.current?.(false); // a second request replaces the first question
+          answer.current = resolve;
+          setUnsent(remaining);
+        });
+        if (!discard) return;
+      }
+    }
+    return leave(false);
+  }, [leave]);
 
   const enter = useCallback(
     (token: string, userId: string) => {
       userIdRef.current = userId;
       bindApiSession({
         token,
+        userId,
         onInvalid: () => {
           leave(true);
         },
@@ -123,9 +160,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         await Keychain.setGenericPassword(userId, token);
         enter(token, userId);
       },
-      signOut: () => leave(false),
+      signOut,
     }),
-    [state, enter, leave],
+    [state, enter, signOut],
   );
-  return createElement(SessionContext.Provider, { value: session }, children);
+  return createElement(
+    SessionContext.Provider,
+    { value: session },
+    children,
+    unsent === null
+      ? null
+      : createElement(Dialog, {
+          title: syncVi.signOutPendingTitle(unsent),
+          body: syncVi.signOutPendingBody,
+          primary: { label: syncVi.stay, onPress: () => reply(false) },
+          secondary: { label: syncVi.signOutAndDiscard, onPress: () => reply(true) },
+          onDismiss: () => reply(false),
+        }),
+  );
 }
