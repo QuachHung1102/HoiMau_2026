@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { findBannedTerms, normalizeVi } from '../../domain/language.ts';
 import type {
@@ -260,27 +261,165 @@ test('no banned term in any text', () => {
   for (const text of allText) assert.deepEqual(findBannedTerms(text), [], text);
 });
 
+const FORBIDDEN = [
+  'co them',
+  'co gang them',
+  'chiu dau',
+  'rang suc',
+  'dau la tot',
+  'giam can',
+  'dot chay',
+  'san chac',
+  'chac chan',
+  'dam bao',
+  'cam ket',
+  'hieu qua nhanh',
+  'chua benh',
+  'dieu tri',
+  'vuot qua con dau',
+];
+
 test('wording: no exclamation mark, no pain-through language, no promised result', () => {
-  const forbidden = [
-    'co them',
-    'co gang them',
-    'chiu dau',
-    'rang suc',
-    'dau la tot',
-    'giam can',
-    'dot chay',
-    'san chac',
-    'chac chan',
-    'dam bao',
-    'cam ket',
-    'hieu qua nhanh',
-    'chua benh',
-    'dieu tri',
-  ];
   for (const text of allText) {
     assert.ok(!/[!！]/.test(text), `"!" in: ${text}`);
     const plain = ` ${normalizeVi(text).replace(/[^a-z0-9]+/g, ' ')} `;
-    for (const phrase of forbidden)
+    for (const phrase of FORBIDDEN)
       assert.ok(!plain.includes(` ${phrase} `), `${phrase}: ${text}`);
+  }
+});
+
+// ------------------------------------------------------------------ fix round 1
+// Only the moves that REQUIRE an item; a mat is never required (floor moves offer "thảm hoặc khăn gấp").
+const REQUIRES: Record<string, Equipment> = {
+  SQUAT_TA_TAY: 'ta-tay',
+  DAY_VAI_TA_TAY: 'ta-tay',
+  CHEO_TA_TAY: 'ta-tay',
+  GAP_HONG_TA_TAY: 'ta-tay',
+  CUON_TAY_TA: 'ta-tay',
+  KEO_DAY_NGANG: 'day-khang-luc',
+  BUOC_NGANG_DAY: 'day-khang-luc',
+};
+// "tạ" (dumbbell) and "dây" (band) as whole words; normalised text would fold "đẩy" into "day".
+const ITEM_WORD = /(?<![\p{L}])(tạ|dây)(?![\p{L}])/u;
+const plainText = (text: string) =>
+  ` ${normalizeVi(text).replace(/[^a-z0-9]+/g, ' ')} `;
+const moveText = (m: (typeof MOVES)[number]) =>
+  [m.name, ...m.steps, m.caution].join(' ');
+
+test('equipment declared = equipment the moves require (a mat is optional, never declared)', () => {
+  for (const m of MOVES)
+    if (ITEM_WORD.test(moveText(m).toLowerCase().normalize('NFC')))
+      assert.ok(m.code in REQUIRES, `${m.code} mentions an item but is not in REQUIRES`);
+  for (const w of WORKOUTS) {
+    const needed = [
+      ...new Set(w.steps.map(s => REQUIRES[s.moveCode]).filter(Boolean)),
+    ].sort();
+    assert.deepEqual([...w.equipment].sort(), needed, w.code);
+  }
+  for (const m of MOVES)
+    if (moveText(m).includes('thảm'))
+      assert.ok(moveText(m).includes('khăn'), `${m.code}: mat without towel`);
+  for (const code of ['MEO_BO', 'CAU_MONG', 'PLANK_TUA_GOI', 'TAY_CHAN_DOI_DIEN'])
+    assert.ok(
+      MOVES.find(m => m.code === code)?.steps.join(' ').includes('thảm hoặc khăn'),
+      `${code}: floor move offers a mat or towel`,
+    );
+});
+
+test('a DESK_SIDE workout needs no equipment; dumbbells or a band mean ROOM or GYM', () => {
+  for (const w of WORKOUTS) {
+    if (w.spaceNeeded === 'DESK_SIDE') assert.deepEqual(w.equipment, [], w.code);
+    if (w.equipment.length > 0)
+      assert.ok(['ROOM', 'GYM'].includes(w.spaceNeeded), w.code);
+  }
+});
+
+// Seconds one breath (in + out) takes; a count in the text must fit the step.
+const BREATH_SEC: Record<string, number> = { THO_4_4: 8, THO_RA_DAI: 10 };
+const ROUND_SEC = 16; // one "vòng thở" of THO_VUONG: 4 + 4 + 4 + 4
+const SLACK = 10; // a gap up to 10 s is switching sides or settling; a larger one must be explained
+
+test('step text fits the step seconds, and says what fills the rest', () => {
+  const problems: string[] = [];
+  for (const w of WORKOUTS)
+    for (const s of w.steps) {
+      const at = `${w.code}: ${s.moveCode} "${s.repsText}" in ${s.seconds} s`;
+      const t = s.repsText;
+      let m: RegExpMatchArray | null;
+      if ((m = t.match(/^(\d+) giây$/)) || (m = t.match(/^nghỉ (\d+) giây$/))) {
+        if (+m[1] !== s.seconds) problems.push(at);
+      } else if (
+        (m = t.match(/^(\d+) giây, nghỉ (\d+) giây$/)) ||
+        (m = t.match(/^nhanh (\d+) giây, nhẹ (\d+) giây$/))
+      ) {
+        if (+m[1] + +m[2] !== s.seconds) problems.push(at);
+      } else if ((m = t.match(/^giữ (\d+) giây(, .+)?$/))) {
+        const gap = s.seconds - +m[1];
+        if (gap < 0 || (gap > SLACK && !/đến hết giờ/.test(t))) problems.push(at);
+      } else if ((m = t.match(/^(\d+) giây mỗi bên$/))) {
+        const need = 2 * +m[1] + 5; // 5 s to change sides
+        if (need > s.seconds || s.seconds - need > SLACK) problems.push(at);
+      } else if ((m = t.match(/^(\d+) nhịp thở$/))) {
+        const need = +m[1] * (BREATH_SEC[s.moveCode] ?? 1e9);
+        if (need > s.seconds || s.seconds - need > SLACK) problems.push(at);
+      } else if ((m = t.match(/^(\d+) vòng thở$/))) {
+        const need = +m[1] * ROUND_SEC;
+        if (need > s.seconds || s.seconds - need > SLACK) problems.push(at);
+      } else if (t.includes('giây')) problems.push(`${at} (unrecognised timed text)`);
+    }
+  assert.deepEqual(problems, []);
+});
+
+test('workout names: no digit or duration word, no outcome word, at most 28 characters, unique', () => {
+  for (const w of WORKOUTS) {
+    assert.ok(w.name.length <= 28, `${w.code}: "${w.name}" is ${w.name.length} characters`);
+    assert.doesNotMatch(w.name, /\d|phút|tiếng|mười|mươi/i, `${w.code}: ${w.name}`);
+    assert.doesNotMatch(w.name, /dẻo dai|khỏe|săn|thon|giảm|đốt|bền/i, `${w.code}: ${w.name}`);
+  }
+  assert.ok(unique(WORKOUTS.map(w => w.name)));
+});
+
+test('the header states the content is not reviewed by a professional (R-D10)', () => {
+  const source = readFileSync(new URL('./exercises.ts', import.meta.url), 'utf8');
+  assert.match(source, /NOT reviewed by a fitness or medical professional \(R-D10\)/);
+});
+
+test('the forbidden-phrase list catches pushing through pain', () => {
+  const plain = plainText('Hãy vượt qua cơn đau để tiến bộ.');
+  assert.ok(plain.includes(' vuot qua con dau '));
+  assert.ok(FORBIDDEN.some(p => plain.includes(` ${p} `)));
+});
+
+test('every caution of a move used in a HIIT workout names dizziness or chest tightness', () => {
+  const used = new Set(
+    WORKOUTS.filter(w => w.modality === 'HIIT').flatMap(w => w.steps.map(s => s.moveCode)),
+  );
+  for (const m of MOVES)
+    if (used.has(m.code))
+      assert.match(m.caution, /chóng mặt|tức ngực/, `${m.code}: ${m.caution}`);
+});
+
+test('GYM_STRENGTH_15 is its own workout: at least two MAIN moves that ROOM_DUMBBELL_15 lacks', () => {
+  const main = (code: string) =>
+    new Set(WORKOUTS.find(w => w.code === code)?.steps.filter(s => s.phase === 'MAIN').map(s => s.moveCode));
+  const room = main('ROOM_DUMBBELL_15');
+  assert.ok([...main('GYM_STRENGTH_15')].filter(c => !room.has(c)).length >= 2);
+});
+
+test('stretch moves used outdoors name a support that exists outdoors', () => {
+  const outdoor = new Set(
+    WORKOUTS.filter(w => w.spaceNeeded === 'OUTDOOR').flatMap(w => w.steps.map(s => s.moveCode)),
+  );
+  for (const m of MOVES)
+    if (outdoor.has(m.code) && /tường|ghế/.test(moveText(m)))
+      assert.match(moveText(m), /cây|hàng rào/, `${m.code}: only an indoor support`);
+});
+
+test('one word for each body part: no bare "gối", "khuỷu" or "choáng"', () => {
+  for (const m of MOVES) {
+    const text = [...m.steps, m.caution].join(' ').toLowerCase(); // the name "Plank tựa gối" is the plan's
+    assert.doesNotMatch(text.replace(/đầu gối/g, ''), /\bgối\b/, `${m.code}: gối`);
+    assert.doesNotMatch(text.replace(/khuỷu tay/g, ''), /khuỷu/, `${m.code}: khuỷu`);
+    assert.doesNotMatch(text, /choáng/, `${m.code}: choáng`);
   }
 });

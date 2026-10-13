@@ -12,11 +12,17 @@ import type {
 // Every move has exactly 3 short instruction steps and one caution line that says when to stop or
 // ease off. Only the seven rigged moves (the starter set of PLAN Task 21) carry a `demoCode`.
 // Timing rule for every workout: sum WARMUP + `sets` x sum MAIN + sum COOLDOWN seconds = `durationSec`,
-// each step at least 20 s (a step's seconds include the short rest between its repetitions).
+// each step at least 20 s. A step's text is honest for its seconds: a hold or a count that is shorter
+// than the step says what fills the rest ("lặp lại đến hết giờ", "nghỉ ..."), and a count of breaths
+// fits the seconds of the step.
 // `archetypes` is the archetype the workout is preferred for: TANKER = RESISTANCE,
 // ASSASSIN = CARDIO / HIIT, SUPPORTER = MOBILITY / BREATHING.
-// `equipment` is empty for "Không cần"; `tham` is a mat (a towel does as well for the floor moves).
-// `metValue` is a general estimate inside the range of its modality, not a measurement.
+// `equipment` is empty for "Không cần". It lists an item only when a move REQUIRES it (dumbbells
+// `ta-tay`, a band `day-khang-luc`); a mat is optional, so floor moves offer "thảm hoặc khăn gấp" and
+// no workout declares `tham`.
+// `metValue` is a general estimate inside the range of its modality, not a measurement; where less
+// than half of a workout's time is at the working intensity of its modality it is the minimum of
+// that range, so that the kcal estimate does not flatter.
 
 export const MOVES: MoveSeed[] = [
   // ------------------------------------------------ the starter set (rigged demos)
@@ -30,7 +36,7 @@ export const MOVES: MoveSeed[] = [
       'Sau vài vòng, đổi chiều xoay và giữ nhịp thở đều.',
     ],
     caution:
-      'Dừng nếu vai đau nhói hoặc khó chịu; có thể xoay vòng nhỏ hơn cho nhẹ nhàng.',
+      'Dừng nếu vai đau, tê, khó chịu hoặc thấy chóng mặt; có thể xoay vòng nhỏ hơn.',
   },
   {
     code: 'SQUAT_TAY_TRUOC_NGUC',
@@ -38,7 +44,7 @@ export const MOVES: MoveSeed[] = [
     demoCode: 'exercise-squat',
     steps: [
       'Đứng hai chân rộng bằng vai, hai tay chắp trước ngực.',
-      'Đẩy hông ra sau và hạ người như ngồi xuống ghế, lưng thẳng.',
+      'Đẩy hông ra sau, hạ người như ngồi xuống ghế, lưng thẳng, đầu gối hướng theo mũi chân.',
       'Đẩy gót chân xuống sàn để đứng lên, thở ra khi đứng.',
     ],
     caution:
@@ -62,8 +68,8 @@ export const MOVES: MoveSeed[] = [
     demoCode: 'exercise-chung-chan-lui',
     steps: [
       'Đứng thẳng, vịn vào thành ghế hoặc tường nếu cần giữ thăng bằng.',
-      'Bước một chân ra sau, hạ người cho đến khi hai đầu gối cùng gập.',
-      'Đẩy chân trước để đứng lên, đổi bên sau mỗi lượt.',
+      'Bước một chân ra sau, hạ người thẳng xuống, đầu gối trước nằm trên mắt cá chân, đầu gối sau không chạm sàn.',
+      'Đẩy chân trước để đứng lên; làm đủ số lần một bên rồi đổi bên.',
     ],
     caution:
       'Dừng nếu đầu gối đau hoặc mất thăng bằng; bước ngắn hơn và hạ người nông hơn.',
@@ -73,12 +79,12 @@ export const MOVES: MoveSeed[] = [
     name: 'Plank tựa gối',
     demoCode: 'exercise-plank-tua-goi',
     steps: [
-      'Quỳ trên sàn hoặc thảm, chống hai khuỷu tay ngay dưới vai.',
-      'Nhấc người sao cho thẳng từ đầu đến gối, siết bụng nhẹ.',
+      'Quỳ trên thảm hoặc khăn gấp, chống hai khuỷu tay ngay dưới vai.',
+      'Nhấc người sao cho thẳng từ đầu đến đầu gối, siết bụng nhẹ.',
       'Giữ yên và thở đều, rồi hạ người xuống nghỉ.',
     ],
     caution:
-      'Dừng nếu lưng dưới, vai hoặc cổ tay đau; hạ người xuống nghỉ bất cứ lúc nào.',
+      'Dừng nếu lưng dưới, vai hoặc khuỷu tay đau; hạ người xuống nghỉ bất cứ lúc nào.',
   },
   {
     code: 'THA_LONG_VAI',
@@ -89,7 +95,8 @@ export const MOVES: MoveSeed[] = [
       'Hít vào và nhấc hai vai lên nhẹ.',
       'Thở ra thật chậm, thả vai xuống, lặp lại vài nhịp.',
     ],
-    caution: 'Nhấc vai vừa phải; dừng nếu cổ hoặc vai thấy khó chịu.',
+    caution:
+      'Nhấc vai vừa phải; dừng nếu cổ hoặc vai khó chịu, hoặc thấy chóng mặt.',
   },
   {
     code: 'THO_4_4',
@@ -105,7 +112,7 @@ export const MOVES: MoveSeed[] = [
   },
   // ------------------------------------------------ mobility and stretching
   {
-    code: 'XOAY_CO',
+    code: 'NGHIENG_CO',
     name: 'Nghiêng cổ nhẹ',
     demoCode: null,
     steps: [
@@ -121,8 +128,8 @@ export const MOVES: MoveSeed[] = [
     name: 'Mở ngực',
     demoCode: null,
     steps: [
-      'Ngồi hoặc đứng thẳng, đưa hai tay ra sau lưng và đan nhẹ vào nhau.',
-      'Đưa ngực ra trước, kéo nhẹ hai vai ra sau.',
+      'Ngồi hoặc đứng thẳng, đan tay sau lưng, hoặc nắm hai bên ghế nếu không với tới.',
+      'Nâng ngực lên, kéo nhẹ hai vai ra sau, không ưỡn lưng dưới.',
       'Giữ vài nhịp thở rồi thả tay.',
     ],
     caution: 'Chỉ mở ngực đến mức thoải mái. Dừng nếu vai hoặc lưng đau.',
@@ -133,7 +140,7 @@ export const MOVES: MoveSeed[] = [
     demoCode: null,
     steps: [
       'Duỗi một tay ra trước, lòng bàn tay hướng lên.',
-      'Dùng tay kia kéo nhẹ các ngón tay về phía người.',
+      'Dùng tay kia kéo nhẹ các ngón tay xuống phía sàn, khuỷu tay thẳng nhưng không khóa cứng.',
       'Giữ vài nhịp thở rồi đổi tay.',
     ],
     caution: 'Kéo thật nhẹ. Dừng nếu cổ tay đau hoặc ngón tay bị tê.',
@@ -147,7 +154,8 @@ export const MOVES: MoveSeed[] = [
       'Đặt tay lên vai hoặc đùi, xoay thân từ từ sang một bên.',
       'Trở về giữa rồi xoay sang bên còn lại.',
     ],
-    caution: 'Xoay vừa phải, hông giữ yên. Dừng nếu lưng đau.',
+    caution:
+      'Chọn ghế không lăn; nếu ghế có bánh xe thì tựa vào tường. Xoay vừa phải, hông giữ yên. Dừng nếu lưng đau.',
   },
   {
     code: 'GIAN_LUNG_NGOI',
@@ -159,14 +167,14 @@ export const MOVES: MoveSeed[] = [
       'Giữ vài nhịp thở rồi ngồi thẳng dậy thật chậm.',
     ],
     caution:
-      'Cúi đến mức thoải mái và ngồi dậy chậm. Dừng nếu lưng đau hoặc thấy choáng.',
+      'Chọn ghế không lăn, nếu ghế có bánh xe thì tựa vào tường. Cúi đến mức thoải mái và ngồi dậy chậm. Dừng nếu lưng đau hoặc thấy chóng mặt.',
   },
   {
     code: 'MEO_BO',
     name: 'Cong và võng lưng',
     demoCode: null,
     steps: [
-      'Chống hai tay và hai gối trên sàn, trải thảm hoặc khăn nếu có.',
+      'Chống hai tay và hai đầu gối trên sàn, trải thảm hoặc khăn gấp bên dưới.',
       'Thở ra, cong nhẹ lưng lên và cúi đầu.',
       'Hít vào, võng nhẹ lưng xuống và nhìn ra trước.',
     ],
@@ -178,24 +186,24 @@ export const MOVES: MoveSeed[] = [
     name: 'Giãn đùi trước',
     demoCode: null,
     steps: [
-      'Đứng thẳng, một tay vịn vào tường hoặc ghế.',
-      'Gập một gối, nắm nhẹ cổ chân và đưa gót về phía mông.',
+      'Đứng thẳng, một tay vịn vào tường, cây, hàng rào hoặc ghế.',
+      'Gập một đầu gối, nắm nhẹ cổ chân và đưa gót về phía mông.',
       'Giữ vài nhịp thở rồi đổi chân.',
     ],
     caution:
-      'Dừng nếu đầu gối đau hoặc khó giữ thăng bằng; chỉ kéo đến mức thoải mái.',
+      'Dừng nếu đầu gối đau, chóng mặt hoặc khó giữ thăng bằng; chỉ kéo đến mức thoải mái.',
   },
   {
     code: 'GIAN_BAP_CHAN',
     name: 'Giãn bắp chân',
     demoCode: null,
     steps: [
-      'Đứng đối diện tường, hai tay chạm tường ngang vai.',
+      'Đứng đối diện tường, cây hoặc hàng rào, hai tay chạm vào ngang vai.',
       'Bước một chân ra sau, giữ gót chân sau chạm sàn.',
-      'Nghiêng người nhẹ về phía tường, giữ vài nhịp thở rồi đổi chân.',
+      'Nghiêng người nhẹ về phía trước, giữ vài nhịp thở rồi đổi chân.',
     ],
     caution:
-      'Chỉ nghiêng đến khi thấy giãn nhẹ. Dừng nếu bắp chân hoặc gót chân đau.',
+      'Chỉ nghiêng đến khi thấy giãn nhẹ. Dừng nếu bắp chân hoặc gót chân đau, hoặc thấy chóng mặt.',
   },
   {
     code: 'XOAY_HONG',
@@ -203,7 +211,7 @@ export const MOVES: MoveSeed[] = [
     demoCode: null,
     steps: [
       'Đứng hai chân rộng hơn vai một chút, hai tay chống hông.',
-      'Xoay hông thành vòng tròn lớn, chậm rãi.',
+      'Xoay hông thành vòng tròn vừa, chậm rãi.',
       'Sau vài vòng, đổi chiều xoay.',
     ],
     caution:
@@ -220,7 +228,7 @@ export const MOVES: MoveSeed[] = [
       'Đẩy hông ra sau, ngồi xuống chậm rãi.',
     ],
     caution:
-      'Chọn ghế không trượt, tựa lưng ghế vào tường nếu cần. Dừng nếu đầu gối đau hoặc thấy choáng.',
+      'Chọn ghế không trượt, tựa lưng ghế vào tường nếu cần. Dừng nếu đầu gối đau hoặc thấy chóng mặt.',
   },
   {
     code: 'CHONG_DAY_TUONG',
@@ -251,8 +259,8 @@ export const MOVES: MoveSeed[] = [
     name: 'Cầu mông',
     demoCode: null,
     steps: [
-      'Nằm ngửa, gập hai gối, hai bàn chân đặt trên sàn.',
-      'Thở ra và nhấc hông lên đến khi người gần thẳng từ vai đến gối.',
+      'Nằm ngửa trên thảm hoặc khăn gấp, gập hai đầu gối, hai bàn chân đặt trên sàn.',
+      'Thở ra và nhấc hông lên đến khi người gần thẳng từ vai đến đầu gối.',
       'Hạ hông xuống chậm rãi.',
     ],
     caution:
@@ -263,7 +271,7 @@ export const MOVES: MoveSeed[] = [
     name: 'Tay chân đối diện',
     demoCode: null,
     steps: [
-      'Chống hai tay và hai gối trên sàn, lưng thẳng.',
+      'Chống hai tay và hai đầu gối trên thảm hoặc khăn gấp, lưng thẳng.',
       'Duỗi tay phải ra trước và chân trái ra sau, giữ hông cân bằng.',
       'Trở về vị trí đầu rồi đổi bên.',
     ],
@@ -281,7 +289,7 @@ export const MOVES: MoveSeed[] = [
       'Đẩy gót xuống sàn để đứng lên.',
     ],
     caution:
-      'Chọn tạ nhẹ để giữ được dáng chuẩn. Dừng nếu gối hoặc lưng đau; đặt tạ xuống và nghỉ.',
+      'Chọn tạ nhẹ để giữ được tư thế đúng. Dừng nếu đầu gối hoặc lưng đau; đặt tạ xuống và nghỉ.',
   },
   {
     code: 'DAY_VAI_TA_TAY',
@@ -300,19 +308,20 @@ export const MOVES: MoveSeed[] = [
     name: 'Chèo tạ tay',
     demoCode: null,
     steps: [
-      'Một tay và một gối chống lên ghế tập, lưng thẳng, tay kia cầm tạ buông thẳng.',
+      'Một tay và một đầu gối chống lên ghế hoặc mép sofa thật vững, lưng thẳng, tay kia cầm tạ buông thẳng.',
       'Kéo khuỷu tay lên sát sườn, khép nhẹ bả vai.',
       'Hạ tạ chậm rãi, làm hết lượt rồi đổi bên.',
     ],
-    caution: 'Giữ lưng thẳng và chọn tạ nhẹ. Dừng nếu lưng hoặc vai đau.',
+    caution:
+      'Chọn chỗ chống thật vững, không trượt. Giữ lưng thẳng và chọn tạ nhẹ. Dừng nếu lưng hoặc vai đau.',
   },
   {
     code: 'GAP_HONG_TA_TAY',
     name: 'Gập hông với tạ tay',
     demoCode: null,
     steps: [
-      'Đứng hai chân rộng bằng hông, hai tay cầm tạ trước đùi, gối chùng nhẹ.',
-      'Đẩy hông ra sau, thân nghiêng ra trước, lưng thẳng, tạ trượt dọc đùi.',
+      'Đứng hai chân rộng bằng hông, hai tay cầm tạ trước đùi, đầu gối chùng nhẹ.',
+      'Đẩy hông ra sau, gập từ hông chứ không cúi lưng, hạ tạ đến ngang đầu gối hoặc đến khi thấy căng mặt sau đùi.',
       'Siết mông để đứng thẳng trở lại.',
     ],
     caution:
@@ -324,19 +333,19 @@ export const MOVES: MoveSeed[] = [
     demoCode: null,
     steps: [
       'Đứng thẳng, hai tay cầm tạ buông dọc người, lòng bàn tay hướng ra trước.',
-      'Gập khuỷu, đưa tạ lên gần vai, khuỷu giữ sát sườn.',
+      'Gập khuỷu tay, đưa tạ lên gần vai, khuỷu tay giữ sát sườn.',
       'Hạ tạ xuống chậm rãi.',
     ],
     caution:
-      'Không vung người lấy đà. Dừng nếu khuỷu hoặc cổ tay đau; đặt tạ xuống nghỉ.',
+      'Không vung người lấy đà. Dừng nếu khuỷu tay hoặc cổ tay đau; đặt tạ xuống nghỉ.',
   },
   {
     code: 'KEO_DAY_NGANG',
     name: 'Kéo dây kháng lực',
     demoCode: null,
     steps: [
-      'Ngồi hoặc đứng, móc dây vào một điểm cố định vững ngang ngực, hai tay nắm dây.',
-      'Kéo hai tay về phía thân, khuỷu sát sườn, khép nhẹ bả vai.',
+      'Ngồi hoặc đứng, móc dây vào chân ghế nặng hoặc điểm móc chắc, ngang ngực, hai tay nắm dây.',
+      'Kéo hai tay về phía thân, khuỷu tay sát sườn, khép nhẹ bả vai.',
       'Thả dây về chậm rãi, giữ dây luôn hơi căng.',
     ],
     caution:
@@ -347,7 +356,7 @@ export const MOVES: MoveSeed[] = [
     name: 'Bước ngang với dây kháng lực',
     demoCode: null,
     steps: [
-      'Quấn dây quanh hai đùi, đứng hai chân rộng bằng hông, gối chùng nhẹ.',
+      'Đặt vòng dây quanh hai đùi, phía trên đầu gối; đứng hai chân rộng bằng hông.',
       'Bước một chân sang ngang, giữ dây căng vừa phải.',
       'Đưa chân kia lại gần, lặp lại và đổi hướng sau mỗi lượt.',
     ],
@@ -361,11 +370,11 @@ export const MOVES: MoveSeed[] = [
     demoCode: null,
     steps: [
       'Đứng thẳng, hai tay thả lỏng hai bên.',
-      'Nhấc từng chân lên nhẹ nhàng như đang đi, hai tay đánh nhịp.',
+      'Nhấc từng chân lên nhẹ nhàng như đang đi, hai tay vung nhịp nhàng.',
       'Giữ hơi thở đều, tốc độ vừa phải.',
     ],
     caution:
-      'Giữ tốc độ mà bạn vẫn nói chuyện được. Giảm nhịp hoặc dừng nếu khó thở, chóng mặt hay đau ngực.',
+      'Giữ tốc độ mà bạn vẫn nói chuyện được. Giảm nhịp hoặc dừng nếu khó thở, chóng mặt hoặc tức ngực.',
   },
   {
     code: 'NANG_GOI',
@@ -373,11 +382,11 @@ export const MOVES: MoveSeed[] = [
     demoCode: null,
     steps: [
       'Đứng thẳng, hai tay co ở ngang hông.',
-      'Nâng một gối lên ngang hông, tay đối diện đánh nhẹ lên.',
+      'Nâng một đầu gối lên ngang hông, tay đối diện vung nhẹ lên.',
       'Đổi chân đều nhịp, đặt bàn chân xuống nhẹ.',
     ],
     caution:
-      'Nâng thấp hơn nếu cần. Giảm nhịp hoặc dừng nếu khó thở, đầu gối đau hoặc mất thăng bằng.',
+      'Nâng thấp hơn nếu cần. Giảm nhịp hoặc dừng nếu khó thở, chóng mặt, tức ngực, đầu gối đau hoặc mất thăng bằng.',
   },
   {
     code: 'GOT_CHAM_MONG',
@@ -385,11 +394,11 @@ export const MOVES: MoveSeed[] = [
     demoCode: null,
     steps: [
       'Đứng thẳng, hai tay thả lỏng.',
-      'Gập một gối, đưa gót chân lên phía sau.',
+      'Gập một đầu gối, đưa gót chân lên phía sau.',
       'Đổi chân đều nhịp, đặt chân xuống nhẹ.',
     ],
     caution:
-      'Đưa gót lên vừa tầm. Giảm nhịp hoặc dừng nếu đầu gối đau hoặc khó thở.',
+      'Đưa gót lên vừa tầm. Giảm nhịp hoặc dừng nếu đầu gối đau, khó thở, chóng mặt hoặc tức ngực.',
   },
   {
     code: 'DANG_TAY_BUOC_NGANG',
@@ -401,7 +410,7 @@ export const MOVES: MoveSeed[] = [
       'Đưa chân về, hạ tay xuống rồi đổi bên.',
     ],
     caution:
-      'Bước nhẹ, không nhảy. Giảm nhịp hoặc dừng nếu khó thở, vai hoặc đầu gối đau.',
+      'Bước nhẹ, không nhảy. Giảm nhịp hoặc dừng nếu khó thở, chóng mặt, tức ngực, vai hoặc đầu gối đau.',
   },
   {
     code: 'DI_BO_NHANH',
@@ -409,11 +418,11 @@ export const MOVES: MoveSeed[] = [
     demoCode: null,
     steps: [
       'Chọn đoạn đường phẳng, an toàn; ngực mở, mắt nhìn phía trước.',
-      'Đi nhanh hơn bình thường, hai tay đánh nhịp tự nhiên.',
+      'Đi nhanh hơn bình thường, hai tay vung nhịp nhàng.',
       'Giữ nhịp thở đều, tốc độ mà bạn vẫn nói chuyện được.',
     ],
     caution:
-      'Mang giày êm và để ý xe cộ. Chậm lại hoặc dừng nếu khó thở, chóng mặt hay thấy đau.',
+      'Mang giày êm và để ý xe cộ. Chậm lại hoặc dừng nếu khó thở, chóng mặt, tức ngực hoặc thấy đau.',
   },
   {
     code: 'CHAY_BO_NHE',
@@ -425,19 +434,19 @@ export const MOVES: MoveSeed[] = [
       'Thở đều, giữ tốc độ mà bạn vẫn nói được từng câu ngắn.',
     ],
     caution:
-      'Chuyển sang đi bộ ngay nếu khó thở, chóng mặt hoặc đau chân. Không cần ép tốc độ.',
+      'Chuyển sang đi bộ ngay nếu khó thở, chóng mặt, tức ngực hoặc đau chân. Không cần ép tốc độ.',
   },
   {
     code: 'NHUN_NHE',
     name: 'Nhún nhẹ tại chỗ',
     demoCode: null,
     steps: [
-      'Đứng hai chân rộng bằng vai, gối chùng nhẹ.',
+      'Đứng hai chân rộng bằng vai, đầu gối chùng nhẹ.',
       'Nhún nhẹ trên nửa bàn chân, gót chỉ rời sàn một chút.',
       'Tay thả lỏng, thở đều, tiếp đất thật êm.',
     ],
     caution:
-      'Giữ bước nhún thấp và êm. Giảm nhịp hoặc dừng nếu đầu gối, mắt cá hoặc lưng đau, hoặc khó thở.',
+      'Giữ bước nhún thấp và êm. Giảm nhịp hoặc dừng nếu đầu gối, mắt cá hoặc lưng đau, hoặc khó thở, chóng mặt, tức ngực.',
   },
   {
     code: 'LEO_NUI_TUA_BAN',
@@ -445,23 +454,23 @@ export const MOVES: MoveSeed[] = [
     demoCode: null,
     steps: [
       'Đặt hai tay lên mép bàn vững, người thẳng từ đầu đến gót.',
-      'Kéo một gối về phía ngực, siết bụng nhẹ.',
+      'Kéo một đầu gối về phía ngực, siết bụng nhẹ.',
       'Đưa chân về và đổi chân, nhịp chậm và đều.',
     ],
     caution:
-      'Chọn bàn thật vững, giữ nhịp chậm. Dừng nếu cổ tay, vai hoặc lưng đau, hoặc khó thở.',
+      'Chọn bàn thật vững, giữ nhịp chậm. Dừng nếu cổ tay, vai hoặc lưng đau, hoặc khó thở, chóng mặt, tức ngực.',
   },
   {
     code: 'DI_BO_CHAM',
-    name: 'Đi bộ chậm lấy lại hơi',
+    name: 'Đi bộ chậm',
     demoCode: null,
     steps: [
-      'Đi chậm, hai tay thả lỏng.',
-      'Hít vào bằng mũi, thở ra từ từ bằng miệng.',
-      'Giảm dần tốc độ cho đến khi nhịp thở trở lại bình thường.',
+      'Chọn chỗ đi bằng phẳng, an toàn; thả lỏng hai tay.',
+      'Đi với tốc độ chậm, bước đều, hít vào bằng mũi và thở ra từ từ.',
+      'Giữ nhịp bước và nhịp thở đều, nhẹ nhàng.',
     ],
     caution:
-      'Không dừng đột ngột. Nếu vẫn chóng mặt hoặc khó thở, hãy ngồi nghỉ.',
+      'Đi chậm vừa sức, không cần nhanh. Nếu thấy chóng mặt, tức ngực hoặc khó thở, dừng lại và ngồi nghỉ.',
   },
   // ------------------------------------------------ breathing and relaxing
   {
@@ -494,11 +503,11 @@ export const MOVES: MoveSeed[] = [
     demoCode: null,
     steps: [
       'Ngồi thoải mái, lưng thẳng.',
-      'Hít vào 4 giây, nghỉ 4 giây, thở ra 4 giây, nghỉ 4 giây.',
+      'Hít vào 4 giây, giữ hơi nhẹ 4 giây, thở ra 4 giây, nghỉ nhẹ 4 giây.',
       'Lặp lại theo nhịp, giữ mặt và vai thả lỏng.',
     ],
     caution:
-      'Rút ngắn quãng nghỉ nếu thấy tức ngực hay hồi hộp. Nếu thấy chóng mặt, quay về thở bình thường.',
+      'Rút ngắn quãng giữ hơi nếu thấy tức ngực hay hồi hộp. Nếu thấy chóng mặt, quay về thở bình thường.',
   },
   {
     code: 'QUET_CO_THE',
@@ -566,6 +575,8 @@ function workout(
   };
 }
 
+const HOLD = 'giữ 20 giây, lặp lại đến hết giờ';
+
 export const WORKOUTS: WorkoutSeed[] = [
   // ------------------------------------------------ the starter set (PLAN Task 21; frame S18)
   workout(
@@ -579,10 +590,10 @@ export const WORKOUTS: WorkoutSeed[] = [
     3,
     [['XOAY_VAI', 30, '30 giây']],
     [
-      ['SQUAT_TAY_TRUOC_NGUC', 80, '12 lần'],
-      ['CHONG_DAY_TUA_BAN', 70, '10 lần'],
+      ['SQUAT_TAY_TRUOC_NGUC', 90, '12 lần'],
+      ['CHONG_DAY_TUA_BAN', 80, '10 lần'],
       ['CHUNG_CHAN_LUI', 90, '8 lần mỗi bên'],
-      ['PLANK_TUA_GOI', 40, 'giữ 20 giây'],
+      ['PLANK_TUA_GOI', 20, 'giữ 20 giây'],
     ],
     [['THA_LONG_VAI', 30, '30 giây']],
   ),
@@ -597,9 +608,9 @@ export const WORKOUTS: WorkoutSeed[] = [
     2,
     [['XOAY_VAI', 40, '40 giây']],
     [
-      ['XOAY_CO', 30, '5 lần mỗi bên'],
-      ['MO_NGUC', 40, 'giữ 15 giây'],
-      ['GIAN_CO_TAY', 30, '10 giây mỗi bên'],
+      ['NGHIENG_CO', 30, '3 lần mỗi bên'],
+      ['MO_NGUC', 40, 'giữ 15 giây, lặp lại đến hết giờ'],
+      ['GIAN_CO_TAY', 30, '12 giây mỗi bên'],
     ],
     [['THA_LONG_VAI', 60, '60 giây']],
   ),
@@ -631,13 +642,13 @@ export const WORKOUTS: WorkoutSeed[] = [
     3,
     [
       ['XOAY_VAI', 60, '60 giây'],
-      ['XOAY_CO', 60, '5 lần mỗi bên'],
+      ['NGHIENG_CO', 60, '5 lần mỗi bên'],
     ],
     [
       ['XOAY_THAN_NGOI', 60, '6 lần mỗi bên'],
-      ['MO_NGUC', 60, 'giữ 20 giây'],
-      ['GIAN_LUNG_NGOI', 50, 'giữ 20 giây'],
-      ['GIAN_CO_TAY', 50, '15 giây mỗi bên'],
+      ['MO_NGUC', 60, HOLD],
+      ['GIAN_LUNG_NGOI', 50, HOLD],
+      ['GIAN_CO_TAY', 50, '20 giây mỗi bên'],
     ],
     [
       ['THA_LONG_VAI', 60, '60 giây'],
@@ -689,7 +700,7 @@ export const WORKOUTS: WorkoutSeed[] = [
     ],
     [
       ['THA_LONG_VAI', 60, '60 giây'],
-      ['GIAN_BAP_CHAN', 60, '30 giây mỗi bên'],
+      ['GIAN_BAP_CHAN', 60, '25 giây mỗi bên'],
     ],
   ),
   workout(
@@ -711,7 +722,7 @@ export const WORKOUTS: WorkoutSeed[] = [
   ),
   workout(
     'DESK_STRETCH_30',
-    'Giãn cơ dài buổi chiều',
+    'Giãn cơ buổi chiều',
     'MOBILITY',
     1800,
     'DESK_SIDE',
@@ -720,15 +731,15 @@ export const WORKOUTS: WorkoutSeed[] = [
     4,
     [
       ['XOAY_VAI', 60, '60 giây'],
-      ['XOAY_CO', 60, '5 lần mỗi bên'],
-      ['GIAN_CO_TAY', 60, '15 giây mỗi bên'],
+      ['NGHIENG_CO', 60, '5 lần mỗi bên'],
+      ['GIAN_CO_TAY', 60, '25 giây mỗi bên'],
     ],
     [
-      ['XOAY_THAN_NGOI', 70, '6 lần mỗi bên'],
-      ['MO_NGUC', 70, 'giữ 20 giây'],
-      ['GIAN_LUNG_NGOI', 70, 'giữ 20 giây'],
-      ['XOAY_HONG', 60, '5 vòng mỗi chiều'],
-      ['GIAN_BAP_CHAN', 60, '30 giây mỗi bên'],
+      ['XOAY_THAN_NGOI', 70, '8 lần mỗi bên'],
+      ['MO_NGUC', 70, HOLD],
+      ['GIAN_LUNG_NGOI', 70, HOLD],
+      ['XOAY_HONG', 60, '8 vòng mỗi chiều'],
+      ['GIAN_BAP_CHAN', 60, '25 giây mỗi bên'],
     ],
     [
       ['THA_LONG_VAI', 100, '100 giây'],
@@ -738,7 +749,7 @@ export const WORKOUTS: WorkoutSeed[] = [
   ),
   workout(
     'DESK_CALM_30',
-    'Thư giãn tại chỗ ngồi nửa tiếng',
+    'Thư giãn tại chỗ ngồi',
     'BREATHING',
     1800,
     'DESK_SIDE',
@@ -764,7 +775,7 @@ export const WORKOUTS: WorkoutSeed[] = [
   ),
   workout(
     'DESK_FLOW_45',
-    'Chuỗi giãn cơ và thở tại bàn',
+    'Giãn cơ và thở tại bàn',
     'MOBILITY',
     2700,
     'DESK_SIDE',
@@ -773,15 +784,15 @@ export const WORKOUTS: WorkoutSeed[] = [
     5,
     [
       ['XOAY_VAI', 100, '100 giây'],
-      ['XOAY_CO', 100, '5 lần mỗi bên'],
+      ['NGHIENG_CO', 100, '8 lần mỗi bên'],
       ['THO_BUNG', 100, '100 giây'],
     ],
     [
-      ['XOAY_THAN_NGOI', 70, '6 lần mỗi bên'],
-      ['MO_NGUC', 70, 'giữ 20 giây'],
+      ['XOAY_THAN_NGOI', 70, '8 lần mỗi bên'],
+      ['MO_NGUC', 70, HOLD],
       ['THO_4_4', 70, '8 nhịp thở'],
-      ['GIAN_LUNG_NGOI', 70, 'giữ 20 giây'],
-      ['XOAY_HONG', 70, '5 vòng mỗi chiều'],
+      ['GIAN_LUNG_NGOI', 70, HOLD],
+      ['XOAY_HONG', 70, '8 vòng mỗi chiều'],
       ['THO_RA_DAI', 70, '7 nhịp thở'],
     ],
     [
@@ -793,7 +804,7 @@ export const WORKOUTS: WorkoutSeed[] = [
   // ------------------------------------------------ in a room: strength
   workout(
     'ROOM_STRENGTH_5',
-    'Năm phút sức mạnh nhanh',
+    'Sức mạnh nhanh tại nhà',
     'RESISTANCE',
     300,
     'ROOM',
@@ -802,15 +813,15 @@ export const WORKOUTS: WorkoutSeed[] = [
     2,
     [['XOAY_VAI', 40, '40 giây']],
     [
-      ['SQUAT_TAY_TRUOC_NGUC', 40, '10 lần'],
+      ['SQUAT_TAY_TRUOC_NGUC', 30, '8 lần'],
       ['CHONG_DAY_TUONG', 30, '8 lần'],
-      ['CAU_MONG', 30, '10 lần'],
+      ['CAU_MONG', 40, '10 lần'],
     ],
     [['THA_LONG_VAI', 60, '60 giây']],
   ),
   workout(
     'ROOM_STRENGTH_30',
-    'Sức mạnh toàn thân nửa tiếng',
+    'Sức mạnh toàn thân',
     'RESISTANCE',
     1800,
     'ROOM',
@@ -819,7 +830,7 @@ export const WORKOUTS: WorkoutSeed[] = [
     4,
     [
       ['XOAY_VAI', 60, '60 giây'],
-      ['XOAY_HONG', 60, '5 vòng mỗi chiều'],
+      ['XOAY_HONG', 60, '8 vòng mỗi chiều'],
       ['NHON_GOT', 60, '12 lần'],
     ],
     [
@@ -827,17 +838,17 @@ export const WORKOUTS: WorkoutSeed[] = [
       ['CHONG_DAY_TUA_BAN', 70, '8 lần'],
       ['CHUNG_CHAN_LUI', 70, '6 lần mỗi bên'],
       ['CAU_MONG', 60, '12 lần'],
-      ['PLANK_TUA_GOI', 60, 'giữ 20 giây'],
+      ['PLANK_TUA_GOI', 60, HOLD],
     ],
     [
       ['THA_LONG_VAI', 100, '100 giây'],
-      ['GIAN_DUI_TRUOC', 100, '30 giây mỗi bên'],
-      ['GIAN_BAP_CHAN', 100, '30 giây mỗi bên'],
+      ['GIAN_DUI_TRUOC', 100, '45 giây mỗi bên'],
+      ['GIAN_BAP_CHAN', 100, '45 giây mỗi bên'],
     ],
   ),
   workout(
     'ROOM_STRENGTH_45',
-    'Buổi sức mạnh dài tại nhà',
+    'Nhiều vòng sức mạnh tại nhà',
     'RESISTANCE',
     2700,
     'ROOM',
@@ -846,7 +857,7 @@ export const WORKOUTS: WorkoutSeed[] = [
     5,
     [
       ['XOAY_VAI', 100, '100 giây'],
-      ['XOAY_HONG', 100, '5 vòng mỗi chiều'],
+      ['XOAY_HONG', 100, '12 vòng mỗi chiều'],
       ['NHON_GOT', 100, '15 lần'],
     ],
     [
@@ -855,11 +866,11 @@ export const WORKOUTS: WorkoutSeed[] = [
       ['CHUNG_CHAN_LUI', 70, '6 lần mỗi bên'],
       ['CAU_MONG', 70, '12 lần'],
       ['TAY_CHAN_DOI_DIEN', 70, '6 lần mỗi bên'],
-      ['PLANK_TUA_GOI', 70, 'giữ 20 giây'],
+      ['PLANK_TUA_GOI', 70, HOLD],
     ],
     [
-      ['GIAN_DUI_TRUOC', 100, '30 giây mỗi bên'],
-      ['GIAN_BAP_CHAN', 100, '30 giây mỗi bên'],
+      ['GIAN_DUI_TRUOC', 100, '45 giây mỗi bên'],
+      ['GIAN_BAP_CHAN', 100, '45 giây mỗi bên'],
       ['THA_LONG_VAI', 100, '100 giây'],
     ],
   ),
@@ -874,7 +885,7 @@ export const WORKOUTS: WorkoutSeed[] = [
     3,
     [
       ['XOAY_VAI', 60, '60 giây'],
-      ['XOAY_HONG', 60, '5 vòng mỗi chiều'],
+      ['XOAY_HONG', 60, '8 vòng mỗi chiều'],
     ],
     [
       ['SQUAT_TA_TAY', 60, '10 lần'],
@@ -884,7 +895,7 @@ export const WORKOUTS: WorkoutSeed[] = [
     ],
     [
       ['THA_LONG_VAI', 60, '60 giây'],
-      ['GIAN_BAP_CHAN', 60, '30 giây mỗi bên'],
+      ['GIAN_BAP_CHAN', 60, '25 giây mỗi bên'],
     ],
   ),
   workout(
@@ -898,7 +909,7 @@ export const WORKOUTS: WorkoutSeed[] = [
     4,
     [
       ['XOAY_VAI', 60, '60 giây'],
-      ['XOAY_HONG', 60, '5 vòng mỗi chiều'],
+      ['XOAY_HONG', 60, '8 vòng mỗi chiều'],
       ['NHON_GOT', 60, '12 lần'],
     ],
     [
@@ -910,14 +921,14 @@ export const WORKOUTS: WorkoutSeed[] = [
     ],
     [
       ['THA_LONG_VAI', 100, '100 giây'],
-      ['GIAN_DUI_TRUOC', 100, '30 giây mỗi bên'],
-      ['GIAN_BAP_CHAN', 100, '30 giây mỗi bên'],
+      ['GIAN_DUI_TRUOC', 100, '45 giây mỗi bên'],
+      ['GIAN_BAP_CHAN', 100, '45 giây mỗi bên'],
     ],
   ),
   // ------------------------------------------------ in a room: cardio and intervals
   workout(
     'ROOM_CARDIO_5',
-    'Khởi động nhịp tim năm phút',
+    'Khởi động nhịp tim',
     'CARDIO',
     300,
     'ROOM',
@@ -968,7 +979,7 @@ export const WORKOUTS: WorkoutSeed[] = [
     [
       ['DI_TAI_CHO', 60, '60 giây'],
       ['XOAY_VAI', 60, '60 giây'],
-      ['XOAY_HONG', 60, '5 vòng mỗi chiều'],
+      ['XOAY_HONG', 60, '8 vòng mỗi chiều'],
     ],
     [
       ['NANG_GOI', 70, '70 giây'],
@@ -979,18 +990,18 @@ export const WORKOUTS: WorkoutSeed[] = [
     ],
     [
       ['DI_BO_CHAM', 100, '100 giây'],
-      ['GIAN_BAP_CHAN', 100, '30 giây mỗi bên'],
+      ['GIAN_BAP_CHAN', 100, '45 giây mỗi bên'],
       ['THA_LONG_VAI', 100, '100 giây'],
     ],
   ),
   workout(
     'ROOM_HIIT_5',
-    'Ngắt quãng nhẹ năm phút',
+    'Ngắt quãng rất nhẹ',
     'HIIT',
     300,
     'ROOM',
     [],
-    6.5,
+    6.0,
     3,
     [
       ['XOAY_VAI', 30, '30 giây'],
@@ -1004,23 +1015,23 @@ export const WORKOUTS: WorkoutSeed[] = [
   ),
   workout(
     'ROOM_HIIT_15',
-    'Ngắt quãng nhẹ mười lăm phút',
+    'Ngắt quãng nhẹ',
     'HIIT',
     900,
     'ROOM',
     [],
-    7.0,
+    6.0,
     3,
     [
       ['DI_TAI_CHO', 60, '60 giây'],
-      ['XOAY_HONG', 60, '5 vòng mỗi chiều'],
+      ['XOAY_HONG', 60, '8 vòng mỗi chiều'],
     ],
     [
       ['NANG_GOI', 50, 'nhanh 30 giây, nhẹ 20 giây'],
       ['DI_TAI_CHO', 40, 'nghỉ 40 giây'],
       ['DANG_TAY_BUOC_NGANG', 50, 'nhanh 30 giây, nhẹ 20 giây'],
       ['DI_TAI_CHO', 40, 'nghỉ 40 giây'],
-      ['NHUN_NHE', 40, '30 giây'],
+      ['NHUN_NHE', 40, 'nhanh 30 giây, nhẹ 10 giây'],
     ],
     [
       ['DI_BO_CHAM', 60, '60 giây'],
@@ -1029,17 +1040,17 @@ export const WORKOUTS: WorkoutSeed[] = [
   ),
   workout(
     'ROOM_HIIT_30',
-    'Ngắt quãng vừa sức nửa tiếng',
+    'Ngắt quãng vừa sức',
     'HIIT',
     1800,
     'ROOM',
     [],
-    7.5,
+    6.0,
     4,
     [
       ['DI_TAI_CHO', 60, '60 giây'],
       ['XOAY_VAI', 60, '60 giây'],
-      ['XOAY_HONG', 60, '5 vòng mỗi chiều'],
+      ['XOAY_HONG', 60, '8 vòng mỗi chiều'],
     ],
     [
       ['NHUN_NHE', 60, 'nhanh 40 giây, nhẹ 20 giây'],
@@ -1047,11 +1058,11 @@ export const WORKOUTS: WorkoutSeed[] = [
       ['NANG_GOI', 70, 'nhanh 40 giây, nhẹ 30 giây'],
       ['DANG_TAY_BUOC_NGANG', 70, 'nhanh 40 giây, nhẹ 30 giây'],
       ['DI_TAI_CHO', 40, 'nghỉ 40 giây'],
-      ['LEO_NUI_TUA_BAN', 40, '30 giây'],
+      ['LEO_NUI_TUA_BAN', 40, '30 giây, nghỉ 10 giây'],
     ],
     [
       ['DI_BO_CHAM', 100, '100 giây'],
-      ['GIAN_BAP_CHAN', 100, '30 giây mỗi bên'],
+      ['GIAN_BAP_CHAN', 100, '45 giây mỗi bên'],
       ['THA_LONG_VAI', 100, '100 giây'],
     ],
   ),
@@ -1062,34 +1073,34 @@ export const WORKOUTS: WorkoutSeed[] = [
     'MOBILITY',
     300,
     'ROOM',
-    ['tham'],
+    [],
     2.2,
     2,
     [['XOAY_VAI', 40, '40 giây']],
     [
-      ['MEO_BO', 40, '6 lần'],
+      ['MEO_BO', 30, '5 lần'],
       ['XOAY_HONG', 30, '5 vòng mỗi chiều'],
-      ['GIAN_DUI_TRUOC', 30, '15 giây mỗi bên'],
+      ['GIAN_DUI_TRUOC', 40, '15 giây mỗi bên'],
     ],
     [['THO_BUNG', 60, '60 giây']],
   ),
   workout(
     'ROOM_MOBILITY_15',
-    'Dẻo dai toàn thân',
+    'Giãn cơ nhẹ toàn thân',
     'MOBILITY',
     900,
     'ROOM',
-    ['tham'],
+    [],
     2.5,
     3,
     [
       ['XOAY_VAI', 60, '60 giây'],
-      ['XOAY_HONG', 60, '5 vòng mỗi chiều'],
+      ['XOAY_HONG', 60, '8 vòng mỗi chiều'],
     ],
     [
-      ['MEO_BO', 60, '8 lần'],
-      ['GIAN_DUI_TRUOC', 60, '20 giây mỗi bên'],
-      ['MO_NGUC', 50, 'giữ 20 giây'],
+      ['XOAY_THAN_NGOI', 60, '8 lần mỗi bên'],
+      ['GIAN_DUI_TRUOC', 60, '25 giây mỗi bên'],
+      ['MO_NGUC', 50, HOLD],
       ['GIAN_BAP_CHAN', 50, '20 giây mỗi bên'],
     ],
     [
@@ -1108,14 +1119,14 @@ export const WORKOUTS: WorkoutSeed[] = [
     4,
     [
       ['XOAY_VAI', 60, '60 giây'],
-      ['XOAY_CO', 60, '5 lần mỗi bên'],
-      ['XOAY_HONG', 60, '5 vòng mỗi chiều'],
+      ['NGHIENG_CO', 60, '5 lần mỗi bên'],
+      ['XOAY_HONG', 60, '8 vòng mỗi chiều'],
     ],
     [
       ['MEO_BO', 70, '8 lần'],
-      ['GIAN_DUI_TRUOC', 70, '20 giây mỗi bên'],
-      ['MO_NGUC', 70, 'giữ 20 giây'],
-      ['GIAN_BAP_CHAN', 60, '20 giây mỗi bên'],
+      ['GIAN_DUI_TRUOC', 70, '30 giây mỗi bên'],
+      ['MO_NGUC', 70, HOLD],
+      ['GIAN_BAP_CHAN', 60, '25 giây mỗi bên'],
       ['XOAY_THAN_NGOI', 60, '6 lần mỗi bên'],
     ],
     [
@@ -1126,11 +1137,11 @@ export const WORKOUTS: WorkoutSeed[] = [
   ),
   workout(
     'ROOM_BREATH_15',
-    'Thở và thả lỏng trước giờ ngủ',
+    'Thở chậm trước giờ ngủ',
     'BREATHING',
     900,
     'ROOM',
-    ['tham'],
+    [],
     1.1,
     3,
     [
@@ -1151,7 +1162,7 @@ export const WORKOUTS: WorkoutSeed[] = [
   // ------------------------------------------------ at the gym
   workout(
     'GYM_STRENGTH_15',
-    'Sức mạnh nhanh ở phòng tập',
+    'Sức mạnh cơ bản ở phòng tập',
     'RESISTANCE',
     900,
     'GYM',
@@ -1160,22 +1171,22 @@ export const WORKOUTS: WorkoutSeed[] = [
     3,
     [
       ['XOAY_VAI', 60, '60 giây'],
-      ['XOAY_HONG', 60, '5 vòng mỗi chiều'],
+      ['XOAY_HONG', 60, '8 vòng mỗi chiều'],
     ],
     [
       ['SQUAT_TA_TAY', 60, '10 lần'],
-      ['CHEO_TA_TAY', 60, '8 lần mỗi bên'],
+      ['GAP_HONG_TA_TAY', 60, '10 lần'],
       ['DAY_VAI_TA_TAY', 50, '8 lần'],
-      ['GAP_HONG_TA_TAY', 50, '10 lần'],
+      ['CHUNG_CHAN_LUI', 50, '6 lần mỗi bên'],
     ],
     [
       ['THA_LONG_VAI', 60, '60 giây'],
-      ['GIAN_BAP_CHAN', 60, '30 giây mỗi bên'],
+      ['GIAN_BAP_CHAN', 60, '25 giây mỗi bên'],
     ],
   ),
   workout(
     'GYM_DUMBBELL_30',
-    'Tạ tay nửa tiếng',
+    'Tạ tay ở phòng tập',
     'RESISTANCE',
     1800,
     'GYM',
@@ -1184,7 +1195,7 @@ export const WORKOUTS: WorkoutSeed[] = [
     4,
     [
       ['XOAY_VAI', 60, '60 giây'],
-      ['XOAY_HONG', 60, '5 vòng mỗi chiều'],
+      ['XOAY_HONG', 60, '8 vòng mỗi chiều'],
       ['NHON_GOT', 60, '12 lần'],
     ],
     [
@@ -1196,8 +1207,8 @@ export const WORKOUTS: WorkoutSeed[] = [
     ],
     [
       ['THA_LONG_VAI', 100, '100 giây'],
-      ['GIAN_DUI_TRUOC', 100, '30 giây mỗi bên'],
-      ['GIAN_BAP_CHAN', 100, '30 giây mỗi bên'],
+      ['GIAN_DUI_TRUOC', 100, '45 giây mỗi bên'],
+      ['GIAN_BAP_CHAN', 100, '45 giây mỗi bên'],
     ],
   ),
   workout(
@@ -1211,7 +1222,7 @@ export const WORKOUTS: WorkoutSeed[] = [
     4,
     [
       ['XOAY_VAI', 60, '60 giây'],
-      ['XOAY_HONG', 60, '5 vòng mỗi chiều'],
+      ['XOAY_HONG', 60, '8 vòng mỗi chiều'],
       ['NHON_GOT', 60, '12 lần'],
     ],
     [
@@ -1223,13 +1234,13 @@ export const WORKOUTS: WorkoutSeed[] = [
     ],
     [
       ['THA_LONG_VAI', 100, '100 giây'],
-      ['GIAN_DUI_TRUOC', 100, '30 giây mỗi bên'],
-      ['GIAN_BAP_CHAN', 100, '30 giây mỗi bên'],
+      ['GIAN_DUI_TRUOC', 100, '45 giây mỗi bên'],
+      ['GIAN_BAP_CHAN', 100, '45 giây mỗi bên'],
     ],
   ),
   workout(
     'GYM_DUMBBELL_45',
-    'Tạ tay toàn thân 45 phút',
+    'Tạ tay toàn thân',
     'RESISTANCE',
     2700,
     'GYM',
@@ -1239,7 +1250,7 @@ export const WORKOUTS: WorkoutSeed[] = [
     [
       ['DI_TAI_CHO', 100, '100 giây'],
       ['XOAY_VAI', 100, '100 giây'],
-      ['XOAY_HONG', 100, '5 vòng mỗi chiều'],
+      ['XOAY_HONG', 100, '12 vòng mỗi chiều'],
     ],
     [
       ['SQUAT_TA_TAY', 70, '10 lần'],
@@ -1250,14 +1261,14 @@ export const WORKOUTS: WorkoutSeed[] = [
       ['CHUNG_CHAN_LUI', 70, '6 lần mỗi bên'],
     ],
     [
-      ['GIAN_DUI_TRUOC', 100, '30 giây mỗi bên'],
-      ['GIAN_BAP_CHAN', 100, '30 giây mỗi bên'],
+      ['GIAN_DUI_TRUOC', 100, '45 giây mỗi bên'],
+      ['GIAN_BAP_CHAN', 100, '45 giây mỗi bên'],
       ['THA_LONG_VAI', 100, '100 giây'],
     ],
   ),
   workout(
     'GYM_CIRCUIT_45',
-    'Vòng tập tạ tay và dây kháng lực',
+    'Vòng tập tạ tay và dây',
     'RESISTANCE',
     2700,
     'GYM',
@@ -1267,7 +1278,7 @@ export const WORKOUTS: WorkoutSeed[] = [
     [
       ['DI_TAI_CHO', 100, '100 giây'],
       ['XOAY_VAI', 100, '100 giây'],
-      ['XOAY_HONG', 100, '5 vòng mỗi chiều'],
+      ['XOAY_HONG', 100, '12 vòng mỗi chiều'],
     ],
     [
       ['SQUAT_TA_TAY', 70, '10 lần'],
@@ -1275,11 +1286,11 @@ export const WORKOUTS: WorkoutSeed[] = [
       ['DAY_VAI_TA_TAY', 70, '8 lần'],
       ['BUOC_NGANG_DAY', 70, '8 bước mỗi hướng'],
       ['GAP_HONG_TA_TAY', 70, '10 lần'],
-      ['PLANK_TUA_GOI', 70, 'giữ 20 giây'],
+      ['PLANK_TUA_GOI', 70, HOLD],
     ],
     [
-      ['GIAN_DUI_TRUOC', 100, '30 giây mỗi bên'],
-      ['GIAN_BAP_CHAN', 100, '30 giây mỗi bên'],
+      ['GIAN_DUI_TRUOC', 100, '45 giây mỗi bên'],
+      ['GIAN_BAP_CHAN', 100, '45 giây mỗi bên'],
       ['THA_LONG_VAI', 100, '100 giây'],
     ],
   ),
@@ -1296,19 +1307,19 @@ export const WORKOUTS: WorkoutSeed[] = [
     [['DI_BO_CHAM', 40, '40 giây']],
     [
       ['THO_4_4', 40, '5 nhịp thở'],
-      ['THO_RA_DAI', 30, '4 nhịp thở'],
+      ['THO_RA_DAI', 30, '3 nhịp thở'],
       ['THO_BUNG', 30, '30 giây'],
     ],
     [['QUET_CO_THE', 60, '60 giây']],
   ),
   workout(
     'OUT_WALK_15',
-    'Đi bộ nhanh mười lăm phút',
+    'Đi bộ nhanh quanh khu phố',
     'CARDIO',
     900,
     'OUTDOOR',
     [],
-    4.3,
+    4.0,
     3,
     [
       ['DI_BO_CHAM', 60, '60 giây'],
@@ -1320,17 +1331,17 @@ export const WORKOUTS: WorkoutSeed[] = [
     ],
     [
       ['DI_BO_CHAM', 60, '60 giây'],
-      ['GIAN_BAP_CHAN', 60, '30 giây mỗi bên'],
+      ['GIAN_BAP_CHAN', 60, '25 giây mỗi bên'],
     ],
   ),
   workout(
     'OUT_WALK_30',
-    'Đi bộ nhanh nửa tiếng',
+    'Đi bộ nhanh ngoài trời',
     'CARDIO',
     1800,
     'OUTDOOR',
     [],
-    4.5,
+    4.0,
     4,
     [
       ['DI_BO_CHAM', 120, '120 giây'],
@@ -1342,8 +1353,8 @@ export const WORKOUTS: WorkoutSeed[] = [
     ],
     [
       ['DI_BO_CHAM', 150, '150 giây'],
-      ['GIAN_BAP_CHAN', 75, '30 giây mỗi bên'],
-      ['GIAN_DUI_TRUOC', 75, '30 giây mỗi bên'],
+      ['GIAN_BAP_CHAN', 75, '35 giây mỗi bên'],
+      ['GIAN_DUI_TRUOC', 75, '35 giây mỗi bên'],
     ],
   ),
   workout(
@@ -1353,11 +1364,11 @@ export const WORKOUTS: WorkoutSeed[] = [
     1800,
     'OUTDOOR',
     [],
-    6.5,
+    4.0,
     4,
     [
       ['DI_BO_NHANH', 120, '120 giây'],
-      ['XOAY_HONG', 60, '5 vòng mỗi chiều'],
+      ['XOAY_HONG', 60, '8 vòng mỗi chiều'],
     ],
     [
       ['CHAY_BO_NHE', 90, '90 giây'],
@@ -1365,8 +1376,8 @@ export const WORKOUTS: WorkoutSeed[] = [
     ],
     [
       ['DI_BO_CHAM', 180, '180 giây'],
-      ['GIAN_BAP_CHAN', 60, '30 giây mỗi bên'],
-      ['GIAN_DUI_TRUOC', 60, '30 giây mỗi bên'],
+      ['GIAN_BAP_CHAN', 60, '25 giây mỗi bên'],
+      ['GIAN_DUI_TRUOC', 60, '25 giây mỗi bên'],
     ],
   ),
   workout(
@@ -1376,11 +1387,11 @@ export const WORKOUTS: WorkoutSeed[] = [
     900,
     'OUTDOOR',
     [],
-    7.0,
+    6.0,
     3,
     [
       ['DI_BO_NHANH', 60, '60 giây'],
-      ['XOAY_HONG', 60, '5 vòng mỗi chiều'],
+      ['XOAY_HONG', 60, '8 vòng mỗi chiều'],
     ],
     [
       ['CHAY_BO_NHE', 40, '40 giây'],
@@ -1390,12 +1401,12 @@ export const WORKOUTS: WorkoutSeed[] = [
     ],
     [
       ['DI_BO_CHAM', 60, '60 giây'],
-      ['GIAN_BAP_CHAN', 60, '30 giây mỗi bên'],
+      ['GIAN_BAP_CHAN', 60, '25 giây mỗi bên'],
     ],
   ),
   workout(
     'OUT_WALK_45',
-    'Đi bộ ngoài trời bốn mươi lăm phút',
+    'Đi bộ đều nhịp ngoài trời',
     'CARDIO',
     2700,
     'OUTDOOR',
@@ -1412,8 +1423,8 @@ export const WORKOUTS: WorkoutSeed[] = [
     ],
     [
       ['DI_BO_CHAM', 180, '180 giây'],
-      ['GIAN_BAP_CHAN', 60, '30 giây mỗi bên'],
-      ['GIAN_DUI_TRUOC', 60, '30 giây mỗi bên'],
+      ['GIAN_BAP_CHAN', 60, '25 giây mỗi bên'],
+      ['GIAN_DUI_TRUOC', 60, '25 giây mỗi bên'],
     ],
   ),
 ];
