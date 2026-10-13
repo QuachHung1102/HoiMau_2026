@@ -334,7 +334,7 @@ test('register validation: every failing field is named with its rule, nothing i
     { password: 'p'.repeat(LIMITS.password.max) },
     { password: '🔑'.repeat(LIMITS.password.max) },
     { password: `  ${'p'.repeat(LIMITS.password.min)}  ` },
-    { displayName: '😀'.repeat(LIMITS.displayName.max) },
+    { displayName: 'a' + '😀'.repeat(LIMITS.displayName.max - 1) },
     { displayName: 'x', unknownProperty: { deep: true } },
   ]) {
     const { res } = await register(over);

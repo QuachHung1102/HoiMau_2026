@@ -13,8 +13,11 @@
 --     with details.allowed), then the prescription. The app sends each to its own screen;
 --   * a snapshot is never updated or deleted (R-01.2), and recorded_at rises strictly per user:
 --     "the latest snapshot" is one row, whatever the clock did;
---   * the functions lock the caller's users row first: profile changes of one user run one after
---     the other;
+--   * the functions lock the caller's users row first, FOR NO KEY UPDATE: profile changes of one
+--     user run one after the other. Never FOR UPDATE: every idempotent request already holds a
+--     key-share lock on that row (the foreign key of its idempotency_keys row), FOR UPDATE
+--     conflicts with it, and two requests of one user would wait for each other until PostgreSQL
+--     ends one as a deadlock. FOR NO KEY UPDATE keeps writers apart and leaves key-share alone;
 --   * changing the archetype touches no ledger and no streak field (R-01.1);
 --   * time is app.now() only.
 
@@ -35,26 +38,44 @@ CREATE TABLE IF NOT EXISTS biometric_snapshots (
 CREATE UNIQUE INDEX IF NOT EXISTS biometric_snapshots_user_recorded_idx
   ON biometric_snapshots (user_id, recorded_at DESC);
 
--- One row per user: the targets in effect. calorie_target is integer-valued; 1200 is the lower
--- of the two floors, the one by sex is checked in app._prescription_put.
+-- One row per user: the targets in effect.
 CREATE TABLE IF NOT EXISTS prescriptions (
   user_id uuid PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
   bmr numeric NOT NULL,
   tdee numeric NOT NULL,
-  calorie_target numeric NOT NULL CHECK (calorie_target >= 1200 AND calorie_target = trunc(calorie_target)),
-  protein_g numeric NOT NULL CHECK (protein_g >= 0),
-  carbs_g numeric NOT NULL CHECK (carbs_g >= 0),
-  fat_g numeric NOT NULL CHECK (fat_g >= 0),
+  calorie_target numeric NOT NULL,
+  protein_g numeric NOT NULL,
+  carbs_g numeric NOT NULL,
+  fat_g numeric NOT NULL,
   water_ml int NOT NULL CHECK (water_ml BETWEEN 1500 AND 4000),
   safety_clamped boolean NOT NULL,
   macro_adjusted boolean NOT NULL,
   computed_at timestamptz NOT NULL,
   created_at timestamptz NOT NULL DEFAULT app.now()
 );
+-- The range of every stored number. calorie_target is integer-valued; 1200 is the lower of the
+-- two floors, the one by sex is checked in app._prescription_put. Each ceiling is a round number
+-- above the largest value calculatePrescription (domain/energy.ts) gives anywhere in the valid
+-- input ranges: bmr 3862.5, tdee 7338.8, calorieTarget 8073, proteinG 500, carbsG 1014, fatG 224
+-- (a test recomputes them and sends every such prescription through the fence). water_ml has its
+-- exact range on the column. Dropped and added again so that an edit reaches a table that
+-- already exists; app._prescription_put repeats the ranges to answer with an error code.
+ALTER TABLE prescriptions DROP CONSTRAINT IF EXISTS prescriptions_bmr_check;
+ALTER TABLE prescriptions ADD CONSTRAINT prescriptions_bmr_check CHECK (bmr > 0 AND bmr <= 5000);
+ALTER TABLE prescriptions DROP CONSTRAINT IF EXISTS prescriptions_tdee_check;
+ALTER TABLE prescriptions ADD CONSTRAINT prescriptions_tdee_check CHECK (tdee > 0 AND tdee <= 10000);
+ALTER TABLE prescriptions DROP CONSTRAINT IF EXISTS prescriptions_calorie_target_check;
+ALTER TABLE prescriptions ADD CONSTRAINT prescriptions_calorie_target_check CHECK (
+  calorie_target >= 1200 AND calorie_target <= 10000 AND calorie_target = trunc(calorie_target));
+ALTER TABLE prescriptions DROP CONSTRAINT IF EXISTS prescriptions_protein_g_check;
+ALTER TABLE prescriptions ADD CONSTRAINT prescriptions_protein_g_check CHECK (protein_g >= 0 AND protein_g <= 1000);
+ALTER TABLE prescriptions DROP CONSTRAINT IF EXISTS prescriptions_carbs_g_check;
+ALTER TABLE prescriptions ADD CONSTRAINT prescriptions_carbs_g_check CHECK (carbs_g >= 0 AND carbs_g <= 2000);
+ALTER TABLE prescriptions DROP CONSTRAINT IF EXISTS prescriptions_fat_g_check;
+ALTER TABLE prescriptions ADD CONSTRAINT prescriptions_fat_g_check CHECK (fat_g >= 0 AND fat_g <= 500);
 
 -- The owner of the row writes six of these columns directly, so their rules are constraints.
 -- sound_enabled is not one of the six and is false in this build (AR-22: the app has no audio).
--- The tags are INGREDIENT_TAGS of domain/types.ts (a test compares the two lists).
 CREATE TABLE IF NOT EXISTS user_settings (
   user_id uuid PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
   nudges_enabled boolean NOT NULL DEFAULT true,
@@ -63,10 +84,24 @@ CREATE TABLE IF NOT EXISTS user_settings (
   hide_streak boolean NOT NULL DEFAULT false,
   sound_enabled boolean NOT NULL DEFAULT false CHECK (NOT sound_enabled),
   motion text NOT NULL DEFAULT 'SYSTEM' CHECK (motion IN ('SYSTEM', 'REDUCED', 'FULL')),
-  excluded_meal_tags text[] NOT NULL DEFAULT '{}' CHECK (excluded_meal_tags <@ ARRAY[
-    'co:thit-do', 'co:gia-cam', 'co:hai-san', 'co:trung', 'co:sua', 'co:dau-phong', 'co:gluten',
-    'co:dau-nanh']),
+  excluded_meal_tags text[] NOT NULL DEFAULT '{}',
   created_at timestamptz NOT NULL DEFAULT app.now()
+);
+-- excluded_meal_tags is a set of INGREDIENT_TAGS (domain/types.ts; a test writes every tag):
+-- only those tags, one dimension, no tag twice, hence never more than eight elements. A CHECK
+-- cannot hold a subquery, so "no tag twice" is written as: there are exactly as many elements
+-- as there are tags of the list present. The list therefore stands here twice; keep both in
+-- step. Dropped and added again so that an edit reaches a table that already exists.
+ALTER TABLE user_settings DROP CONSTRAINT IF EXISTS user_settings_excluded_meal_tags_check;
+ALTER TABLE user_settings ADD CONSTRAINT user_settings_excluded_meal_tags_check CHECK (
+  excluded_meal_tags <@ ARRAY['co:thit-do', 'co:gia-cam', 'co:hai-san', 'co:trung', 'co:sua',
+                              'co:dau-phong', 'co:gluten', 'co:dau-nanh']
+  AND coalesce(array_ndims(excluded_meal_tags), 1) = 1
+  AND cardinality(excluded_meal_tags) =
+        ('co:thit-do' = ANY (excluded_meal_tags))::int + ('co:gia-cam' = ANY (excluded_meal_tags))::int
+      + ('co:hai-san' = ANY (excluded_meal_tags))::int + ('co:trung' = ANY (excluded_meal_tags))::int
+      + ('co:sua' = ANY (excluded_meal_tags))::int + ('co:dau-phong' = ANY (excluded_meal_tags))::int
+      + ('co:gluten' = ANY (excluded_meal_tags))::int + ('co:dau-nanh' = ANY (excluded_meal_tags))::int
 );
 
 ALTER TABLE biometric_snapshots ENABLE ROW LEVEL SECURITY;
@@ -169,8 +204,10 @@ END $$;
 
 -- Stores p (a Prescription of domain/energy.ts, as JSON) as the prescription of p_user,
 -- replacing the one in effect. Refused with VALIDATION_FAILED: a calorieTarget that is not a
--- whole number (calorieTarget, format) or lies below 1200 for FEMALE / 1500 for MALE
--- (calorieTarget, min), and anything that is not a prescription at all (prescription, format).
+-- whole number (calorieTarget, format), lies below 1200 for FEMALE / 1500 for MALE
+-- (calorieTarget, min) or above 10000 (calorieTarget, max), and anything that is not a
+-- prescription at all, which includes a number outside the range its column allows
+-- (prescription, format). The ranges are those of the table constraints above.
 CREATE OR REPLACE FUNCTION app._prescription_put(p_user uuid, p_sex text, p jsonb) RETURNS void
 LANGUAGE plpgsql SET search_path = public, pg_temp
 AS $$
@@ -198,8 +235,13 @@ BEGIN
     -- (in parentheses: plpgsql would end the condition at the THEN inside the CASE)
     ELSIF v_target < (CASE p_sex WHEN 'FEMALE' THEN 1200 ELSE 1500 END) THEN
       v_problem := '{"fields":[{"field":"calorieTarget","rule":"min"}]}';
-    ELSIF (p ->> 'bmr')::numeric <= 0 OR (p ->> 'tdee')::numeric <= 0
-          OR (p ->> 'proteinG')::numeric < 0 OR (p ->> 'carbsG')::numeric < 0 OR (p ->> 'fatG')::numeric < 0
+    ELSIF v_target > 10000 THEN
+      v_problem := '{"fields":[{"field":"calorieTarget","rule":"max"}]}';
+    ELSIF (p ->> 'bmr')::numeric NOT BETWEEN 0 AND 5000 OR (p ->> 'bmr')::numeric = 0
+          OR (p ->> 'tdee')::numeric NOT BETWEEN 0 AND 10000 OR (p ->> 'tdee')::numeric = 0
+          OR (p ->> 'proteinG')::numeric NOT BETWEEN 0 AND 1000
+          OR (p ->> 'carbsG')::numeric NOT BETWEEN 0 AND 2000
+          OR (p ->> 'fatG')::numeric NOT BETWEEN 0 AND 500
           OR v_water NOT BETWEEN 1500 AND 4000 OR v_water <> trunc(v_water) THEN
       v_problem := '{"fields":[{"field":"prescription","rule":"format"}]}';
     END IF;
@@ -235,7 +277,7 @@ SELECT meta.expect_function('app._prescription_put(uuid, text, jsonb)', '{}');
 -- Completes onboarding, once: time zone, archetype, the first snapshot, the prescription,
 -- default settings and the progression row. True when it did; false, with nothing judged and
 -- nothing changed, for a caller who is already onboarded (two requests at once: the second
--- waits on the users row and then answers false).
+-- waits for the first one's lock on the users row and then answers false).
 CREATE OR REPLACE FUNCTION profile_onboard(
   p_timezone text, p_archetype text, p_height_cm numeric, p_weight_kg numeric, p_birth_year int,
   p_sex text, p_activity_level text, p_prescription jsonb
@@ -247,7 +289,7 @@ DECLARE
   v_onboarded_at timestamptz;
 BEGIN
   SELECT u.onboarded_at INTO v_onboarded_at
-    FROM users u WHERE u.id = v_user AND u.deleted_at IS NULL FOR UPDATE;
+    FROM users u WHERE u.id = v_user AND u.deleted_at IS NULL FOR NO KEY UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'SESSION_INVALID' USING ERRCODE = 'HM000', DETAIL = '{}';
   END IF;
@@ -289,7 +331,7 @@ DECLARE
 BEGIN
   SELECT u.timezone, u.archetype INTO v_timezone, v_archetype
     FROM users u
-   WHERE u.id = v_user AND u.deleted_at IS NULL AND u.onboarded_at IS NOT NULL FOR UPDATE;
+   WHERE u.id = v_user AND u.deleted_at IS NULL AND u.onboarded_at IS NOT NULL FOR NO KEY UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'ONBOARDING_REQUIRED' USING ERRCODE = 'HM000', DETAIL = '{}';
   END IF;
@@ -331,7 +373,7 @@ BEGIN
   SELECT u.timezone, u.archetype, u.archetype_set_at + interval '336 hours'
     INTO v_timezone, v_archetype, v_available_at
     FROM users u
-   WHERE u.id = v_user AND u.deleted_at IS NULL AND u.onboarded_at IS NOT NULL FOR UPDATE;
+   WHERE u.id = v_user AND u.deleted_at IS NULL AND u.onboarded_at IS NOT NULL FOR NO KEY UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'ONBOARDING_REQUIRED' USING ERRCODE = 'HM000', DETAIL = '{}';
   END IF;

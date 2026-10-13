@@ -5,12 +5,16 @@ import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { after, before, test } from 'node:test';
 import type { DatabaseError, PoolClient } from 'pg';
-import { calculatePrescription } from '../../domain/energy.ts';
+import {
+  ACTIVITY_FACTOR,
+  ARCHETYPE_FACTOR,
+  calculatePrescription,
+} from '../../domain/energy.ts';
 import type { Prescription } from '../../domain/energy.ts';
 import { logicalDateOf } from '../../domain/logicalDate.ts';
 import { INGREDIENT_TAGS } from '../../domain/types.ts';
 import type { ActivityLevel, Archetype, Sex } from '../../domain/types.ts';
-import { ageFrom, allowedArchetypes } from '../../domain/validation.ts';
+import { LIMITS, ageFrom, allowedArchetypes } from '../../domain/validation.ts';
 import {
   asAnon,
   asJob,
@@ -774,6 +778,12 @@ test('a signed-in user reads the own snapshot, prescription and settings, and wr
       ['user_settings_excluded_meal_tags_check', "UPDATE user_settings SET excluded_meal_tags = '{co:sua,co:ca-heo}'"],
       ['user_settings_excluded_meal_tags_check', "UPDATE user_settings SET excluded_meal_tags = '{chay}'"],
       ['user_settings_excluded_meal_tags_check', "UPDATE user_settings SET excluded_meal_tags = ARRAY[NULL]::text[]"],
+      // a set: no tag twice, however often; one dimension; so never more than there are tags
+      ['user_settings_excluded_meal_tags_check', "UPDATE user_settings SET excluded_meal_tags = '{co:sua,co:sua}'"],
+      ['user_settings_excluded_meal_tags_check', "UPDATE user_settings SET excluded_meal_tags = array_fill('co:sua'::text, ARRAY[100000])"],
+      ['user_settings_excluded_meal_tags_check', `UPDATE user_settings SET excluded_meal_tags = '{${[...INGREDIENT_TAGS, INGREDIENT_TAGS[0]].join(',')}}'`],
+      ['user_settings_excluded_meal_tags_check', "UPDATE user_settings SET excluded_meal_tags = '{{co:sua},{co:trung}}'"],
+      ['user_settings_excluded_meal_tags_check', "UPDATE user_settings SET excluded_meal_tags = '{{co:sua,co:trung}}'"],
     ]) {
       await assert.rejects(
         asUser(db.app, a, c => c.query(sql)),
@@ -893,4 +903,122 @@ test('app._archetypes_allowed is allowedArchetypes of the domain, also right at 
   // both answers occur in the sample, on both sides of the edge
   assert.ok(rows.some(row => row.allowed.length === 2) && rows.some(row => row.allowed.length === 3));
   assert.deepEqual(allowedArchetypes(200, 74), ['TANKER', 'ASSASSIN', 'SUPPORTER']);
+});
+
+test('excluded_meal_tags holds every tag of INGREDIENT_TAGS, alone and all together, written by its owner', async () => {
+  await frozen(async () => {
+    const user = await register();
+    await onboard(user);
+    const write = (tags: string[]) =>
+      asUser(db.app, user, c =>
+        c.query('UPDATE user_settings SET excluded_meal_tags = $1 RETURNING excluded_meal_tags', [tags]),
+      );
+    for (const tags of [
+      ...INGREDIENT_TAGS.map(tag => [tag]),
+      [...INGREDIENT_TAGS],
+      [...INGREDIENT_TAGS].reverse(),
+      [],
+    ]) {
+      assert.deepEqual((await write(tags)).rows, [{ excluded_meal_tags: tags }]);
+    }
+  });
+});
+
+// ---------------------------------------------------------------- ceilings of the last fence
+
+/** What 21-profile.sql refuses above, per stored number: its JSON member, its column. */
+const CEILINGS = [
+  { member: 'bmr', column: 'bmr', ceiling: 5000 },
+  { member: 'tdee', column: 'tdee', ceiling: 10000 },
+  { member: 'calorieTarget', column: 'calorie_target', ceiling: 10000 },
+  { member: 'proteinG', column: 'protein_g', ceiling: 1000 },
+  { member: 'carbsG', column: 'carbs_g', ceiling: 2000 },
+  { member: 'fatG', column: 'fat_g', ceiling: 500 },
+  { member: 'waterMl', column: 'water_ml', ceiling: 4000 },
+] as const;
+
+test('every prescription the domain can compute passes the SQL fence, and each ceiling is the first number it refuses above', async () => {
+  await frozen(async () => {
+    // The corners of the valid ranges: every output is a maximum of sums that rise or fall
+    // steadily in height, weight and age, so its largest value sits on a corner.
+    const grid: { sex: Sex; p: Prescription }[] = [];
+    for (const heightCm of [LIMITS.heightCm.min, LIMITS.heightCm.max]) {
+      for (const weightKg of [LIMITS.weightKg.min, LIMITS.weightKg.max]) {
+        for (const ageYears of [LIMITS.age.min, LIMITS.age.max]) {
+          for (const sex of ['MALE', 'FEMALE'] as const) {
+            for (const activityLevel of Object.keys(ACTIVITY_FACTOR) as ActivityLevel[]) {
+              for (const archetype of Object.keys(ARCHETYPE_FACTOR) as Archetype[]) {
+                grid.push({
+                  sex,
+                  p: calculatePrescription({ heightCm, weightKg, ageYears, sex, activityLevel, archetype }),
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+    assert.equal(grid.length, 240);
+    const largest = Object.fromEntries(
+      CEILINGS.map(({ member }) => [member, Math.max(...grid.map(({ p }) => p[member]))]),
+    );
+    for (const { member, ceiling } of CEILINGS) {
+      assert.ok(largest[member] <= ceiling, `${member}: the domain reaches ${largest[member]}, the ceiling is ${ceiling}`);
+      // round, and not far off: a ceiling ten times the largest value would fence nothing
+      assert.ok(ceiling < 2.5 * largest[member], `${member}: ${ceiling} is far above ${largest[member]}`);
+    }
+
+    const user = await register();
+    await onboard(user);
+    // all 240 through the fence itself, as the owner (no request role may call it)
+    await db.admin.query(
+      `SELECT app._prescription_put($1, x ->> 'sex', x -> 'p') FROM jsonb_array_elements($2::jsonb) x`,
+      [user, JSON.stringify(grid)],
+    );
+
+    // through a function a client can call: exactly the ceiling is stored, one above is refused
+    const put = (prescription: string) =>
+      asUser(db.app, user, c =>
+        c.query('SELECT profile_add_biometrics($1, $2, $3, $4, $5, $6)', [170, 65, 1996, 'FEMALE', 'LIGHT', prescription]),
+      );
+    const withMember = (member: string, value: string) =>
+      JSON.stringify({ ...ANY_PRESCRIPTION, [member]: 'VALUE' }).replace('"VALUE"', value);
+    const earlier = await profile(user);
+    for (const { member, column, ceiling } of CEILINGS) {
+      const expected =
+        member === 'calorieTarget' ? fields(['calorieTarget', 'max']) : fields(['prescription', 'format']);
+      // 1e400 does not fit a double: it is written into the JSON text as the client would have to
+      for (const tooMuch of [String(ceiling + 1), '1e9', '1e400']) {
+        await refused(put(withMember(member, tooMuch)), 'VALIDATION_FAILED', expected);
+      }
+      // and the column refuses it whoever writes
+      await assert.rejects(
+        db.admin.query(`UPDATE prescriptions SET ${column} = $2 WHERE user_id = $1`, [user, ceiling + 1]),
+        (e: unknown) => {
+          assert.deepEqual(
+            [(e as DatabaseError).code, (e as DatabaseError).constraint],
+            [CHECK, `prescriptions_${column}_check`],
+          );
+          return true;
+        },
+      );
+    }
+    assert.deepEqual((await profile(user)).snapshots, earlier.snapshots, 'a refusal leaves nothing');
+    for (const { member, column, ceiling } of CEILINGS) {
+      await put(withMember(member, String(ceiling)));
+      const { rows } = await db.admin.query(
+        `SELECT ${column}::float8 AS value FROM prescriptions WHERE user_id = $1`,
+        [user],
+      );
+      assert.deepEqual(rows, [{ value: ceiling }], member);
+    }
+    // not a number at all for a numeric column: as far from the fence as a value can be
+    for (const column of ['bmr', 'tdee', 'calorie_target', 'protein_g', 'carbs_g', 'fat_g']) {
+      await assert.rejects(
+        db.admin.query(`UPDATE prescriptions SET ${column} = 'NaN' WHERE user_id = $1`, [user]),
+        (e: unknown) => (e as DatabaseError).code === CHECK,
+        column,
+      );
+    }
+  });
 });
