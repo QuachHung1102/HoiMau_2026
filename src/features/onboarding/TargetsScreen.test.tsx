@@ -13,7 +13,7 @@ const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 const posts = () => sent().filter(r => r.method === 'POST' && r.path === '/onboarding');
 const keys = () => posts().map(r => r.headers['Idempotency-Key']);
 const ready = () => onStep(TITLES.OnbTargets);
-const finish = () => press('Hoàn tất');
+const finish = () => press('Đến Hôm nay');
 const MAIN = 'Phần này đang được hoàn thiện'; // the main group's notice while no tab root is registered
 // what the kit's draft says, as the numbers the domain takes
 const person = { heightCm: 171.5, weightKg: 63.25, ageYears: 30, sex: 'MALE', activityLevel: 'LIGHT', archetype: 'TANKER' } as const;
@@ -33,9 +33,9 @@ describe('S08: the preview', () => {
     expect(screen.getByText(`${dotted(expected.waterMl)} ml / ngày`)).toBeTruthy();
     expect(screen.getByRole('header', { name: 'Phân bổ dinh dưỡng ước tính' })).toBeTruthy();
     expect(screen.getByText(`Đạm ${expected.proteinG} g · Béo ${expected.fatG} g · Carb ${expected.carbsG} g`)).toBeTruthy();
-    // an estimate, never a prescription; and the disclaimer of spec 9.2 closes onboarding
-    expect(screen.getByText(healthVi.estimate.prescription)).toBeTruthy();
+    // one closing paragraph, the disclaimer of spec 9.2 (getByText: exactly one), not a second one stacked on it
     expect(screen.getByText(healthVi.disclaimer)).toBeTruthy();
+    expect(screen.queryByText(healthVi.estimate.prescription)).toBeNull();
     // nothing was adjusted for these values, so nothing claims it was
     expect(expected.safetyClamped).toBe(false);
     expect(screen.queryByText(healthVi.safetyClamped.chip)).toBeNull();
@@ -99,7 +99,7 @@ function Probe() {
   return null;
 }
 
-describe('"Hoàn tất"', () => {
+describe('"Đến Hôm nay"', () => {
   test('after a finished onboarding the provider has forgotten the measurements, and not before the answer', async () => {
     let finishRequest!: (response: unknown) => void;
     serve({ 'POST /onboarding': () => new Promise(resolve => (finishRequest = resolve)) });
@@ -168,14 +168,14 @@ describe('"Hoàn tất"', () => {
     serve({ 'POST /onboarding': never });
     await mount('OnbTargets', { draft });
     await ready();
-    const button = screen.getByRole('button', { name: 'Hoàn tất' });
+    const button = screen.getByRole('button', { name: 'Đến Hôm nay' });
     await act(async () => {
       fireEvent.press(button);
       fireEvent.press(button);
     });
     await waitFor(() => expect(posts()).toHaveLength(1));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Hoàn tất' }).props.accessibilityState).toMatchObject({ busy: true }));
-    fireEvent.press(screen.getByRole('button', { name: 'Hoàn tất' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Đến Hôm nay' }).props.accessibilityState).toMatchObject({ busy: true }));
+    fireEvent.press(screen.getByRole('button', { name: 'Đến Hôm nay' }));
     await act(async () => undefined);
     expect(posts()).toHaveLength(1);
   });
@@ -261,7 +261,7 @@ describe('"Hoàn tất"', () => {
       finish();
       expect(await screen.findByText('Không kết nối được mạng. Bạn kiểm tra kết nối rồi thử lại nhé.')).toBeTruthy();
       expect(posts()).toHaveLength(1);
-      expect(screen.getByRole('button', { name: 'Hoàn tất' }).props.accessibilityState).toMatchObject({ busy: false });
+      expect(screen.getByRole('button', { name: 'Đến Hôm nay' }).props.accessibilityState).toMatchObject({ busy: false });
     } finally {
       onlineManager.setOnline(true);
     }
@@ -385,6 +385,6 @@ test('an incomplete draft shows no numbers and can send nothing', async () => {
   await waitFor(() => expect(requests('/me')).toHaveLength(1));
   await settle();
   expect(screen.queryByRole('header', { name: 'Đang lấy hành trình' })).toBeNull(); // the gate has let the screen in
-  expect(screen.queryByRole('button', { name: 'Hoàn tất' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Đến Hôm nay' })).toBeNull();
   expect(screen.queryByText(/kcal/)).toBeNull();
 });

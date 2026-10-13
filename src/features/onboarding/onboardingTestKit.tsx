@@ -151,7 +151,8 @@ export function installOnboardingTestEnv() {
     const complaints = errors.mock.calls
       // bottom-tabs clears its previous screen on a 32 ms timer of its own (see src/app/navigation.test.tsx)
       .filter(call => !(String(call[0]).includes('not wrapped in act') && call[1] === 'BottomTabView'))
-      .map(call => String(call[0]));
+      // with the component React names, so a complaint says where the update came from
+      .map(call => String(call[0]).replace('%s', String(call[1])));
     // RNTL has already unmounted the tree: only now is it safe to drop the cache (never while screens are mounted).
     if (client) wipeQueries(client);
     client = undefined;

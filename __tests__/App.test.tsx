@@ -92,7 +92,7 @@ test('while the session and GET /me load: the S39 loading state', async () => {
   screen.unmount();
 });
 
-test('signed in and not onboarded: onboarding opens on its first step (S05)', async () => {
+test('signed in and not onboarded: onboarding opens on its first step (S05), with a way out', async () => {
   await signedIn();
   fetchMock.mockResolvedValue(respond(200, meOf(false)));
   render(<App />);
@@ -100,6 +100,13 @@ test('signed in and not onboarded: onboarding opens on its first step (S05)', as
   expect(screen.getByText('Hồ sơ · Bước 1 trong 3')).toBeTruthy();
   expect(requests()[0]).toBe('GET /me');
   expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${TOKEN}`);
+
+  fetchMock.mockResolvedValue(respond(204));
+  fireEvent.press(screen.getByRole('link', { name: 'Đăng xuất' }));
+  expect(await screen.findByRole('button', { name: 'Bắt đầu hành trình' })).toBeTruthy();
+  expect(requests().filter(request => request === 'POST /auth/logout')).toHaveLength(1);
+  expect(requests().at(-1)).toBe('POST /auth/logout');
+  expect(await Keychain.getGenericPassword()).toBe(false);
   screen.unmount();
 });
 

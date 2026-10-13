@@ -64,7 +64,7 @@ test('a new user goes S05 → S06 → S07 → S08 → the main app with one POST
   // up to here nothing about the person has left the phone
   expect(sent().every(r => r.method === 'GET')).toBe(true);
 
-  press('Hoàn tất');
+  press('Đến Hôm nay');
   // the root gate switches by itself: the tab navigator with its (stub) root and the tab bar
   expect(await screen.findByText('tab root Today')).toBeTruthy();
   expect(screen.getByRole('tab', { name: 'Hôm nay' }).props.accessibilityState).toMatchObject({ selected: true });
@@ -94,7 +94,10 @@ test('a new user goes S05 → S06 → S07 → S08 → the main app with one POST
   expect(screen.getByText(`Đạm ${fromServer.proteinG} g · Béo ${fromServer.fatG} g · Carb ${fromServer.carbsG} g`)).toBeTruthy();
   expect(screen.getByText(healthVi.safetyClamped.body(fromServer.calorieTarget))).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Chỉnh lại hồ sơ' })).toBeTruthy();
-  expect(screen.queryByRole('button', { name: 'Hoàn tất' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Đến Hôm nay' })).toBeNull();
+  // the same single closing paragraph as on S08
+  expect(screen.getByText(healthVi.disclaimer)).toBeTruthy();
+  expect(screen.queryByText(healthVi.estimate.prescription)).toBeNull();
   const prescriptionRequest = sent().findIndex(r => r.path === '/me/prescription');
   expect(prescriptionRequest).toBeGreaterThan(-1);
   await settle();
