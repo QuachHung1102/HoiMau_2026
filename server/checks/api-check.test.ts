@@ -1231,7 +1231,7 @@ test('control: a new own_rw table with INSERT, UPDATE and DELETE granted', async
 // column, so checks 3 and 10 do not look) without a row of the decoy.
 test('control: check 12 judges a table by its foreign keys, whatever it was registered as', async () => {
   const { admin } = control.db;
-  const before = await runCheck(12, control);
+  const intact = await runCheck(12, control);
   await admin.query(`
     CREATE TABLE fx_diary (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES users (id), body text);
     GRANT SELECT ON fx_diary TO app_auth;
@@ -1278,14 +1278,14 @@ test('control: check 12 judges a table by its foreign keys, whatever it was regi
       [DECOY_1],
     );
     const line = await runCheck(12, control);
-    assert.notEqual(line, before);
+    assert.notEqual(line, intact);
     console.log(`fx_vault and fx_vault_items, a decoy row in each -> ${line}`);
   } finally {
     await admin.query(
       "DROP TABLE fx_vault_items; DROP TABLE fx_vault; DELETE FROM meta.expected_tables WHERE name LIKE 'fx_vault%'",
     );
   }
-  assert.equal(await runCheck(12, control), before);
+  assert.equal(await runCheck(12, control), intact);
 });
 
 // No function is STRICT today. A strict one called with NULL is answered without the EXECUTE
