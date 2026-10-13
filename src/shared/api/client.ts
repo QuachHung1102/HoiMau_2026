@@ -33,18 +33,60 @@ export function isValidationDetails(details: unknown): details is ValidationDeta
   );
 }
 
-type BoundSession = { token: string; onInvalid: () => void };
+type BoundSession = { token: string; userId: string; onInvalid: () => void };
 let session: BoundSession | null = null;
 
-/** For the session store only: the token requests carry, and what to do when the server says it is dead. */
+/** For the session store only: the token requests carry, whose it is, and what to do when the server says it is dead. */
 export function bindApiSession(next: BoundSession | null) {
   session = next;
+}
+
+/**
+ * The user whose token a request started right now would carry; null when nobody is signed in. Read it in the same
+ * tick as the request (no `await` in between) to be sure of the account a write is recorded under.
+ */
+export const boundUserId = () => session?.userId ?? null;
+
+type Outcome = 'ok' | ApiError['code'];
+const outcomeListeners = new Set<(outcome: Outcome) => void>();
+
+/**
+ * Tells `listener` how every request ended: `'ok'` for a 2xx, otherwise the code of its `ApiError`. A request its
+ * caller aborted has no outcome. Nothing else about the request is passed on. Returns the unsubscribe function.
+ */
+export function onRequestOutcome(listener: (outcome: Outcome) => void): () => void {
+  outcomeListeners.add(listener);
+  return () => {
+    outcomeListeners.delete(listener);
+  };
+}
+
+function report(outcome: Outcome) {
+  for (const listener of [...outcomeListeners]) {
+    try {
+      listener(outcome);
+    } catch {
+      // a listener's own failure must not turn an answered request into a failed one
+    }
+  }
 }
 
 type Method = 'GET' | 'POST' | 'PATCH';
 type RequestOptions = { body?: unknown; idempotencyKey?: string; signal?: AbortSignal };
 
-async function request<T>(method: Method, path: string, { body, idempotencyKey, signal: callerSignal }: RequestOptions = {}): Promise<T> {
+async function request<T>(method: Method, path: string, options?: RequestOptions): Promise<T> {
+  let result: T;
+  try {
+    result = await exchange<T>(method, path, options);
+  } catch (failure) {
+    if (failure instanceof ApiError) report(failure.code);
+    throw failure;
+  }
+  report('ok');
+  return result;
+}
+
+async function exchange<T>(method: Method, path: string, { body, idempotencyKey, signal: callerSignal }: RequestOptions = {}): Promise<T> {
   const sent = session;
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (sent) headers.Authorization = `Bearer ${sent.token}`;
