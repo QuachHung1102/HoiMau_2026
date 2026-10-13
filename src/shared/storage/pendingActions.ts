@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useSyncExternalStore } from 'react';
+import type { ErrorCode } from '../../../domain/contract/common.ts';
 import { ApiError, api, boundUserId } from '../api/client';
 
 /**
@@ -42,6 +43,10 @@ export class QueueError extends Error {
 
 export const QUEUE_LIMIT = 500;
 const LATE_AFTER_MS = 60_000;
+// The server keeps a key only together with the 2xx of its request, and this client never gives one id to two
+// records. So "key reused with another request" can only be the retry of a send that was committed while its answer
+// was lost: the body of the retry differs once `occurredAt` is added. It means delivered, not refused.
+const ALREADY_COMMITTED = 'IDEMPOTENCY_KEY_REUSED' satisfies ErrorCode;
 
 // NFR-03: the only writes that may wait for the network. Each is a POST the API contract marks idempotent.
 const QUEUEABLE = new RegExp('^/(?:day/quests/[^/]+/progress|day/bedtime|nutrition/log|workout/complete)$');
@@ -57,7 +62,7 @@ type Queue = {
   rejected: RejectedAction[];
   /** The stored queue could not be read: shown once, until dismissed. */
   corrupt: boolean;
-  /** The last attempt got no usable answer, so everything in `pending` is waiting for the network. */
+  /** An attempt got no usable answer and the queue has not been emptied since: everything in `pending` is waiting. */
   stalled: boolean;
   loading: Promise<void> | null;
   /** Disk operations of this user, one at a time and in call order. */
@@ -170,6 +175,7 @@ function commit<K extends 'pending' | 'rejected'>(
       if (mustPersist) throw failure;
     }
     queue[list] = change(queue[list]);
+    if (!queue.pending.length) queue.stalled = false; // nothing is waiting any more
     publish();
   });
 }
@@ -239,34 +245,39 @@ async function run(userId: string, queue: Queue): Promise<FlushReport> {
       if (!action || signal.aborted || boundUserId() !== userId) break;
       const { id, path, body, createdAt } = action;
       mark(queue, id, 'sending');
+      // What the server said: its answer, its refusal, or (null) that it already has this record.
+      let settled: Settled | null;
       try {
         const late = Date.now() - Date.parse(createdAt) > LATE_AFTER_MS;
         const result = await api.write<unknown>('POST', path, late ? { ...body, occurredAt: createdAt } : body, { idempotencyKey: id, signal });
-        if (signal.aborted) break;
-        queue.stalled = false;
-        if (awaited.has(id)) awaited.set(id, { state: 'confirmed', result });
-        await commit(userId, queue, 'pending', items => items.filter(item => item.id !== id), { signal });
-        report.sent.push(id);
+        settled = { state: 'confirmed', result };
       } catch (failure) {
         if (signal.aborted) break;
-        if (!isRefusal(failure)) {
+        if (failure instanceof ApiError && failure.code === ALREADY_COMMITTED) {
+          settled = null;
+        } else if (isRefusal(failure)) {
+          settled = { state: 'failed', code: failure.code, details: failure.details };
+        } else {
+          // ponytail: a head action that always fails with 5xx blocks the queue; cap by attempts + surface to the
+          // user if it ever happens in the field.
           queue.stalled = true;
           mark(queue, id, 'queued');
           break;
         }
-        const { code, details } = failure;
-        queue.stalled = false;
-        if (awaited.has(id)) {
-          awaited.set(id, { state: 'failed', code, details });
-        } else {
-          // Nobody is waiting for the answer: keep it for the notice. Recorded before the action is removed, so
-          // a crash in between repeats the refusal instead of losing it.
-          const rejection = { id, path, code, at: new Date().toISOString() };
-          await commit(userId, queue, 'rejected', items => (items.some(item => item.id === id) ? items : [...items, rejection]), { signal });
-        }
-        await commit(userId, queue, 'pending', items => items.filter(item => item.id !== id), { signal });
-        report.rejected.push({ id, code });
       }
+      if (signal.aborted) break;
+      const refusal = settled?.state === 'failed' ? settled : null;
+      if (settled && awaited.has(id)) {
+        awaited.set(id, settled);
+      } else if (refusal) {
+        // Nobody is waiting for the answer: keep it for the notice. Recorded before the action is removed, so
+        // a crash in between repeats the refusal instead of losing it.
+        const rejection = { id, path, code: refusal.code, at: new Date().toISOString() };
+        await commit(userId, queue, 'rejected', items => (items.some(item => item.id === id) ? items : [...items, rejection]), { signal });
+      }
+      await commit(userId, queue, 'pending', items => items.filter(item => item.id !== id), { signal });
+      if (refusal) report.rejected.push({ id, code: refusal.code });
+      else report.sent.push(id);
     }
   } catch {
     // the stored queue could not be read: nothing was sent, and the next flush reads again
@@ -299,7 +310,11 @@ export function flushPending(userId: string): Promise<FlushReport> {
   return queue.flight;
 }
 
-/** For `useQueuedWrite`: flushes now and tells what became of this one action. A refusal goes to this caller only. */
+/**
+ * For `useQueuedWrite`: flushes now and tells what became of this one action. A refusal goes to this caller only.
+ * An action the server turns out to have already (`ALREADY_COMMITTED`) settles as `queued`: it is delivered, but there
+ * is no answer to hand over; the screens get the result through the refreshed queries.
+ */
 export async function deliver(userId: string, id: string): Promise<Settled | { state: 'queued' }> {
   awaited.set(id, null);
   try {
@@ -309,6 +324,13 @@ export async function deliver(userId: string, id: string): Promise<Settled | { s
     awaited.delete(id);
   }
 }
+
+/** How many records of this user are still only on this device; `undefined` when the stored queue cannot be read. */
+export const unsentCount = (userId: string): Promise<number | undefined> =>
+  ready(userId).then(
+    queue => queue.pending.length,
+    () => undefined,
+  );
 
 /** Sign-out: forgets everything kept for this user (queue, rejections, corrupt copy) and stops its flush. */
 export function clearPendingFor(userId: string): Promise<void> {

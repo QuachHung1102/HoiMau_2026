@@ -18,6 +18,7 @@ import {
   pendingKey,
   queryClient,
   refuse,
+  rejectedKey,
   requested,
   respond,
   seedQueue,
@@ -62,6 +63,50 @@ test('session ready: what an earlier run left is sent in order with its ids, the
   expect(invalidated()).toEqual(['["day"]', '["me"]', '["progression"]']);
   // GET /me: the gate's first load, then the refresh after the flush
   expect(requested('/me')).toBe(2);
+  view.unmount();
+});
+
+test('a flush that only refused a record still refreshes day, me and progression: the optimistic value must not stay', async () => {
+  await seedQueue([stored('a1')]);
+  server.write = () => refuse(409, 'DAY_CLOSED');
+  const invalidated = watchInvalidations();
+  const view = await mountApp();
+  expect(screen.getByRole('header', { name: 'Ghi nhận không được tính' })).toBeTruthy();
+  expect(invalidated()).toEqual(['["day"]', '["me"]', '["progression"]']);
+  expect(requested('/me')).toBe(2);
+  view.unmount();
+});
+
+test('first send committed but its answer lost, retry after 61 s answered 409 IDEMPOTENCY_KEY_REUSED: delivered, no "not counted" notice', async () => {
+  const createdAt = new Date(Date.now() - 30_000).toISOString();
+  await seedQueue([stored('a1', { createdAt })]);
+  const committed = new Map<string, string>(); // Idempotency-Key -> body, as the server's request hash
+  server.write = () => {
+    const [, init] = fetchMock.mock.calls.at(-1)!;
+    const key = init.headers['Idempotency-Key'];
+    const had = committed.get(key);
+    if (had === undefined) {
+      committed.set(key, init.body ?? ''); // the server committed it ...
+      throw new TypeError('Network request failed'); // ... and the answer never reached the phone
+    }
+    return had === init.body ? respond(200, { ok: true }) : refuse(409, 'IDEMPOTENCY_KEY_REUSED');
+  };
+  const view = await mountApp();
+  expect(writes().map(request => request.body)).toEqual([{ amount: 1 }]);
+  expect(screen.getByText(waitingOnDevice(1))).toBeTruthy();
+
+  const invalidated = watchInvalidations();
+  const now = Date.now();
+  jest.spyOn(Date, 'now').mockImplementation(() => now + 61_000);
+  fireEvent.press(screen.getByRole('button', { name: retry }));
+  await settle();
+
+  expect(writes().map(request => request.body)).toEqual([{ amount: 1 }, { amount: 1, occurredAt: createdAt }]);
+  expect(screen.queryByRole('header', { name: 'Ghi nhận không được tính' })).toBeNull();
+  expect(await idsOnDisk()).toEqual([]);
+  expect(await AsyncStorage.getItem(rejectedKey())).toBeNull();
+  expect(invalidated()).toEqual(['["day"]', '["me"]', '["progression"]']);
+  expect(screen.getByText(synced)).toBeTruthy();
   view.unmount();
 });
 

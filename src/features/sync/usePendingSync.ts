@@ -13,8 +13,8 @@ const REFRESHED = [['day'], ['me'], ['progression']] as const;
 /**
  * Keeps the signed-in user's pending queue moving. Mount it once (`PendingBanner` does). It flushes when the
  * session is ready, when the app returns to the foreground, after any request that got through, every 30 s while
- * something is queued, and on `retry`; after a flush that delivered something it refreshes the day, the profile
- * and the progression.
+ * something is queued, and on `retry`; after a flush that delivered or refused something it refreshes the day,
+ * the profile and the progression.
  */
 export function usePendingSync() {
   const session = useSession();
@@ -60,7 +60,8 @@ export function usePendingSync() {
       onFlushed((flushedFor, report, caughtUp) => {
         // A flush that ends after its user has left (or another has arrived) must not touch what the cache holds now.
         if (flushedFor !== userId || boundUserId() !== userId) return;
-        if (report.sent.length) for (const queryKey of REFRESHED) queryClient.invalidateQueries({ queryKey });
+        // Delivered or refused, what the screens show (an optimistic value included) is no longer the server's state.
+        if (report.sent.length || report.rejected.length) for (const queryKey of REFRESHED) queryClient.invalidateQueries({ queryKey });
         if (caughtUp) setSyncedFor(userId);
       }),
     [userId, queryClient],

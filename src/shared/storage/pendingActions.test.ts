@@ -12,6 +12,8 @@ import {
   enqueueAction,
   flushPending,
   isQueueable,
+  onFlushed,
+  unsentCount,
   usePendingActions,
   useRejectedActions,
   useWaitingCount,
@@ -178,6 +180,17 @@ describe('persist before send', () => {
     expect(keysSent()).toEqual(['a1']);
   });
 
+  test('unsentCount: the length of the queue, and "cannot tell" (not 0) while the disk cannot be read', async () => {
+    await AsyncStorage.setItem(`pending:v1:${A}`, JSON.stringify([{ ...action('old'), attempts: 0, status: 'queued' }]));
+    const fresh = restart(A);
+    const read = jest.spyOn(AsyncStorage, 'getMany').mockRejectedValue(new Error('io'));
+    expect(await fresh.flushPending(A)).toEqual({ sent: [], rejected: [], remaining: 0 });
+    expect(await fresh.unsentCount(A)).toBeUndefined();
+    read.mockRestore();
+    expect(await fresh.unsentCount(A)).toBe(1);
+    expect(await unsentCount(B)).toBe(0);
+  });
+
   test('a disk that cannot be read is not mistaken for an empty queue', async () => {
     await AsyncStorage.setItem(`pending:v1:${A}`, JSON.stringify([{ ...action('old'), attempts: 0, status: 'queued' }]));
     const fresh = restart(A);
@@ -236,7 +249,6 @@ describe('flush', () => {
   test.each([
     [409, 'DAY_CLOSED'],
     [422, 'VALIDATION_FAILED'],
-    [409, 'IDEMPOTENCY_KEY_REUSED'],
     [404, 'QUEST_NOT_FOUND'],
   ])('%i %s removes the action, records the rejection without its body and goes on', async (status, code) => {
     await enqueueAction(action('a1', A, { path: '/nutrition/log', body: { kcal: 640 } }));
@@ -251,6 +263,65 @@ describe('flush', () => {
     // a removed action is final: nothing is sent again
     await flushPending(A);
     expect(keysSent()).toEqual(['a1', 'a2']);
+  });
+
+  describe('an answer that was lost (the server compares the body per key, as docs/backend.md says)', () => {
+    /** Commits what it has not seen and answers; a repeated key answers the same again only for the same body. */
+    function bodyComparingServer(loseFirstAnswer: boolean) {
+      const committed = new Map<string, string>();
+      fetchMock.mockImplementation(async (_url, init) => {
+        const key = init.headers['Idempotency-Key'];
+        const had = committed.get(key);
+        if (had === undefined) {
+          committed.set(key, init.body ?? '');
+          if (loseFirstAnswer && committed.size === 1) throw new TypeError('Network request failed');
+          return respond(200, { ok: true });
+        }
+        return had === init.body ? respond(200, { ok: true }) : refuse(409, 'IDEMPOTENCY_KEY_REUSED');
+      });
+      return committed;
+    }
+
+    test('committed inside 60 s, answer lost, retried after 61 s with occurredAt: 409 IDEMPOTENCY_KEY_REUSED means delivered', async () => {
+      const committed = bodyComparingServer(true);
+      await enqueueAction(action('a1'));
+      await enqueueAction(action('a2'));
+      expect(await flushPending(A)).toEqual({ sent: [], rejected: [], remaining: 2 });
+      expect([...committed.keys()]).toEqual(['a1']); // the server has it; the phone does not know
+
+      jest.setSystemTime(T0 + 61_000);
+      expect(await flushPending(A)).toEqual({ sent: ['a1', 'a2'], rejected: [], remaining: 0 });
+      expect(sent().map(request => [request.key, 'occurredAt' in request.body])).toEqual([
+        ['a1', false],
+        ['a1', true],
+        ['a2', true],
+      ]);
+      expect(await idsOnDisk(A)).toEqual([]);
+      expect(await AsyncStorage.getItem(`rejected:v1:${A}`)).toBeNull();
+    });
+
+    test('the flush listener is told it was delivered (so the screens are refreshed) and, after a wait, that the queue caught up', async () => {
+      bodyComparingServer(true);
+      const heard: unknown[] = [];
+      const stop = onFlushed((userId, report, caughtUp) => heard.push([userId, report, caughtUp]));
+      await enqueueAction(action('a1'));
+      await flushPending(A);
+      jest.setSystemTime(T0 + 61_000);
+      await flushPending(A);
+      stop();
+      expect(heard).toEqual([
+        [A, { sent: [], rejected: [], remaining: 1 }, false],
+        [A, { sent: ['a1'], rejected: [], remaining: 0 }, true],
+      ]);
+    });
+
+    test('a caller still waiting for such an action is told "queued" (delivered, no answer to hand over), never "failed"', async () => {
+      await enqueueAction(action('a1'));
+      fetchMock.mockImplementation(async () => refuse(409, 'IDEMPOTENCY_KEY_REUSED'));
+      expect(await deliver(A, 'a1')).toEqual({ state: 'queued' });
+      expect(await idsOnDisk(A)).toEqual([]);
+      expect(await AsyncStorage.getItem(`rejected:v1:${A}`)).toBeNull();
+    });
   });
 
   test('two concurrent flushes send each action once', async () => {
@@ -481,6 +552,32 @@ describe('what the screens read', () => {
     await act(() => flushPending(A).then(() => undefined));
     expect(view.result.current.pending).toEqual([]);
     expect(view.result.current.waiting).toBe(0);
+    view.unmount();
+  });
+
+  test('what is left behind a first success is still waiting: the count is the rest of the queue, during the flush and after it stops', async () => {
+    const view = renderHook(() => useWaitingCount(A));
+    fetchMock.mockImplementation(offline);
+    for (const id of ['a1', 'a2', 'a3']) await act(() => enqueueAction(action(id)));
+    await act(() => flushPending(A).then(() => undefined));
+    expect(view.result.current).toBe(3);
+
+    let fail!: (reason: unknown) => void;
+    fetchMock.mockImplementation((_url, init) =>
+      init.headers['Idempotency-Key'] === 'a1' ? Promise.resolve(respond(200, { ok: true })) : new Promise((_resolve, reject) => (fail = reject)),
+    );
+    let flushing!: Promise<unknown>;
+    await act(async () => {
+      flushing = flushPending(A);
+      await jest.advanceTimersByTimeAsync(0);
+    });
+    expect(keysSent().slice(-2)).toEqual(['a1', 'a2']); // a1 delivered, a2 on its way
+    expect(view.result.current).toBe(2);
+    await act(async () => {
+      fail(new TypeError('Network request failed'));
+      await flushing;
+    });
+    expect(view.result.current).toBe(2);
     view.unmount();
   });
 

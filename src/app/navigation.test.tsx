@@ -3,7 +3,9 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { StyleSheet } from 'react-native';
 import * as Keychain from 'react-native-keychain';
 import type { Me } from '../../domain/contract/core.ts';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SessionProvider } from '../shared/api/session';
+import { enqueueAction, resetPendingForTests } from '../shared/storage/pendingActions';
 import { MotionPreferenceProvider } from '../shared/motion/useReducedMotion';
 import { AppNavigation, stateForRoute } from './navigation';
 import { TAB_BAR_HEIGHT } from './TabBar';
@@ -347,4 +349,29 @@ test('stateForRoute opens an auth or onboarding route directly in the root stack
   expect(stateForRoute('SignIn')).toEqual({ routes: [{ name: 'SignIn', params: undefined }] });
   await open({ signedIn: false, initialState: stateForRoute('SignIn') });
   expect(await screen.findByText('screen SignIn {}')).toBeTruthy();
+});
+
+test('"Đăng xuất" on the start-up error works again after "Ở lại": the button does not stay busy', async () => {
+  const busy = () => screen.getByRole('button', { name: 'Đăng xuất' }).props.accessibilityState.busy;
+  try {
+    await Keychain.setGenericPassword(USER, 'tok-1');
+    await enqueueAction({ id: 'a1', userId: USER, method: 'POST', path: '/day/bedtime', body: {}, createdAt: new Date().toISOString() });
+    // GET /me fails (the S39 error with its sign-out button) and the record cannot leave either
+    fetchMock.mockImplementation(async (url: string) => (url.endsWith('/auth/logout') ? respond(204) : respond(500, { error: { code: 'INTERNAL', message: 'x' } })));
+    render(app());
+    fireEvent.press(await screen.findByRole('button', { name: 'Đăng xuất' }));
+    expect(busy()).toBe(true);
+    fireEvent.press(await screen.findByRole('button', { name: 'Ở lại' }));
+    await waitFor(() => expect(busy()).toBe(false));
+
+    // pressed again: the question is asked again, and this time the user leaves
+    fireEvent.press(screen.getByRole('button', { name: 'Đăng xuất' }));
+    fireEvent.press(await screen.findByRole('button', { name: 'Đăng xuất và bỏ các ghi nhận này' }));
+    expect(await screen.findByText('screen Welcome {}')).toBeTruthy();
+    expect(await AsyncStorage.getAllKeys()).toEqual([]);
+  } finally {
+    screen.unmount();
+    resetPendingForTests();
+    await AsyncStorage.clear();
+  }
 });

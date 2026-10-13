@@ -35,17 +35,27 @@ export function isValidationDetails(details: unknown): details is ValidationDeta
 
 type BoundSession = { token: string; userId: string; onInvalid: () => void };
 let session: BoundSession | null = null;
+// False from the moment the bound user's sign-out begins: the token still goes out (it revokes the session on the
+// server), but nothing more is recorded or sent for that user.
+let recording = false;
 
 /** For the session store only: the token requests carry, whose it is, and what to do when the server says it is dead. */
 export function bindApiSession(next: BoundSession | null) {
   session = next;
+  recording = next !== null;
+}
+
+/** For the session store only: the bound user's sign-out has begun (see `boundUserId`). */
+export function stopRecording() {
+  recording = false;
 }
 
 /**
- * The user whose token a request started right now would carry; null when nobody is signed in. Read it in the same
- * tick as the request (no `await` in between) to be sure of the account a write is recorded under.
+ * The user records may be filed and sent for right now: the owner of the bound token, or null when nobody is signed
+ * in or that user's sign-out has begun. Read it in the same tick as the request (no `await` in between) to be sure
+ * of the account a write is recorded under.
  */
-export const boundUserId = () => session?.userId ?? null;
+export const boundUserId = () => (recording ? session?.userId ?? null : null);
 
 type Outcome = 'ok' | ApiError['code'];
 const outcomeListeners = new Set<(outcome: Outcome) => void>();

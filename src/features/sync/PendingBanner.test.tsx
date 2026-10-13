@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { Animated, AppState } from 'react-native';
+import { Animated, AppState, StyleSheet } from 'react-native';
 import { api } from '../../shared/api/client';
 import { saved } from '../../shared/i18n/vi/common';
 import { MotionPreferenceProvider } from '../../shared/motion/useReducedMotion';
@@ -53,6 +53,34 @@ test('the count follows the queue', async () => {
   await settle();
   expect(screen.getByText(waitingText(2))).toBeTruthy();
   expect(screen.queryByText(waitingText(3))).toBeNull();
+  view.unmount();
+});
+
+test('three waiting, the first goes through and the second fails: the two that remain are shown all along, never an empty row', async () => {
+  const view = await offlineWith(3);
+  let fail!: (reason: unknown) => void;
+  server.down = false;
+  server.write = () => (writes().at(-1)?.id === 'a1' ? respond(200, { ok: true }) : new Promise((_resolve, reject) => (fail = reject)));
+  fireEvent.press(screen.getByRole('button', { name: 'Thử lại' }));
+  await settle();
+  // a1 is confirmed, a2 is on its way: a2 and a3 are still only on this device
+  expect(writes().map(request => request.id)).toEqual(['a1', 'a1', 'a2']);
+  expect(screen.getByText(waitingText(2))).toBeTruthy();
+  expect(screen.queryByText(SYNCED)).toBeNull();
+
+  server.down = true; // the network is gone again: a2 fails, and so does whatever is tried next
+  await act(async () => fail(new TypeError('Network request failed')));
+  await settle();
+  expect(screen.getByText(waitingText(2))).toBeTruthy();
+  expect(screen.getByText(OFFLINE)).toBeTruthy();
+  expect(retryButton()).toBeTruthy();
+  view.unmount();
+});
+
+test('"Thử lại" is a full 48 dp target of its own (not hit slop that the row would clip)', async () => {
+  const view = await offlineWith(1);
+  const style = StyleSheet.flatten(screen.getByRole('button', { name: 'Thử lại' }).props.style);
+  expect(style).toMatchObject({ minHeight: 48, minWidth: 48 });
   view.unmount();
 });
 

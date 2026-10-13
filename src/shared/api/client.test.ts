@@ -1,4 +1,4 @@
-import { ApiError, api, bindApiSession, boundUserId, isValidationDetails, onRequestOutcome } from './client';
+import { ApiError, api, bindApiSession, boundUserId, isValidationDetails, onRequestOutcome, stopRecording } from './client';
 import { API_BASE_URL } from './config';
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -425,5 +425,17 @@ describe('onRequestOutcome and boundUserId (Task 24)', () => {
     bindApiSession({ token: TOKEN, userId: USER, onInvalid: jest.fn() });
     bindApiSession(null);
     expect(boundUserId()).toBeNull();
+  });
+
+  test('once the sign-out of the bound user has begun nobody is recorded for, while the token still goes out to revoke the session', async () => {
+    bindApiSession({ token: TOKEN, userId: USER, onInvalid: jest.fn() });
+    stopRecording();
+    expect(boundUserId()).toBeNull();
+    fetchMock.mockResolvedValue(respond(204));
+    await api.write('POST', '/auth/logout');
+    expect(lastCall()[1].headers.Authorization).toBe(`Bearer ${TOKEN}`);
+    // the next sign-in records again
+    bindApiSession({ token: 'next', userId: 'user-2', onInvalid: jest.fn() });
+    expect(boundUserId()).toBe('user-2');
   });
 });
