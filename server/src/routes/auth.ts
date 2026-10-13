@@ -6,6 +6,7 @@ import {
   isDisplayName,
   isEmail,
   normalizeEmail,
+  normalizePassword,
 } from '../../../domain/validation.ts';
 import type { FieldError } from '../../../domain/validation.ts';
 import type { Route } from '../app.ts';
@@ -84,13 +85,14 @@ function emailOf(
   return email;
 }
 
-/** A password to be stored: LIMITS.password, never trimmed. */
+/** A password to be stored: NFC, then LIMITS.password; never trimmed. */
 function newPasswordOf(
   body: Record<string, unknown>,
   field: 'password' | 'newPassword',
   problems: FieldError[],
 ): string | null {
-  const password = member(body, field, problems);
+  const raw = member(body, field, problems);
+  const password = raw === null ? null : normalizePassword(raw);
   const rule = password === null ? null : sizeRule(password, LIMITS.password);
   if (rule !== null) {
     problems.push({ field, rule });
@@ -152,7 +154,8 @@ export function checkLogin(body: unknown): { email: string; password: string } {
   const input = members(body);
   const problems: FieldError[] = [];
   const email = emailOf(input, problems);
-  const password = member(input, 'password', problems);
+  const raw = member(input, 'password', problems);
+  const password = raw === null ? null : normalizePassword(raw);
   if (password !== null && size(password) > LIMITS.password.max) {
     problems.push({ field: 'password', rule: 'max' });
   }

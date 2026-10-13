@@ -9,6 +9,7 @@ import {
   isDisplayName,
   isEmail,
   normalizeEmail,
+  normalizePassword,
   validateBiometrics,
 } from './validation.ts';
 
@@ -225,9 +226,12 @@ const UNSEEN: [string, string][] = [
   ['DEL U+007F', cp(0x7f)],
   ['NEL U+0085', cp(0x85)],
   ['U+009F', cp(0x9f)],
+  ['soft hyphen U+00AD', cp(0xad)],
   ['zero-width space U+200B', cp(0x200b)],
   ['zero-width joiner U+200D', cp(0x200d)],
   ['right-to-left mark U+200F', cp(0x200f)],
+  ['line separator U+2028', cp(0x2028)],
+  ['paragraph separator U+2029', cp(0x2029)],
   ['U+202A', cp(0x202a)],
   ['right-to-left override U+202E', cp(0x202e)],
   ['word joiner U+2060', cp(0x2060)],
@@ -335,4 +339,19 @@ test('isDisplayName refuses control, invisible and text-direction characters', (
     false,
   );
   assert.equal(isDisplayName(42 as unknown as string), false);
+});
+
+test('normalizePassword is NFC and nothing else', () => {
+  const composed = 'mật khẩu'; // precomposed Vietnamese
+  const decomposed = composed.normalize('NFD');
+  assert.notEqual(decomposed, composed);
+  assert.equal(normalizePassword(decomposed), composed);
+  assert.equal(normalizePassword(composed), composed);
+  // a deeper stack of marks composes as far as Unicode allows: e + circumflex + acute
+  assert.equal(normalizePassword('e' + cp(0x302) + cp(0x301)), cp(0x1ebf));
+  // not trimmed, not lower-cased, no compatibility folding (the fi ligature stays)
+  assert.equal(normalizePassword('  Aa  '), '  Aa  ');
+  assert.equal(normalizePassword(cp(0xfb01)), cp(0xfb01));
+  assert.equal(normalizePassword(cp(0xff21)), cp(0xff21)); // fullwidth A
+  assert.equal(normalizePassword(''), '');
 });

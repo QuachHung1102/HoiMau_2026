@@ -81,7 +81,10 @@ try {
   // the development server mails to the outbox unless the environment names something else
   const api = await serve(
     config,
-    mailerFromEnv({ MAIL_MODE: process.env.MAIL_MODE || 'outbox' }),
+    mailerFromEnv({
+      MAIL_MODE: process.env.MAIL_MODE || 'outbox',
+      NODE_ENV: 'development',
+    }),
   );
   guardProcess(async () => {
     try {

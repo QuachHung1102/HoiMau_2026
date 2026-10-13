@@ -1,4 +1,4 @@
-import { appendFile, mkdir } from 'node:fs/promises';
+import { chmod, mkdir, open } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Mailer } from './app.ts';
@@ -15,9 +15,21 @@ export const DEFAULT_OUTBOX = fileURLToPath(
  */
 export function outboxMailer(filePath: string): Mailer {
   return async ({ to, subject, text }) => {
-    // owner only: the lines hold live reset codes (mode is mostly ignored on Windows)
-    await mkdir(dirname(filePath), { recursive: true, mode: 0o700 });
+    // Owner only: the lines hold live reset codes. The modes of mkdir and open apply only when
+    // the directory or the file is created, so an existing one is chmod-ed before anything is
+    // written. Windows ignores modes (the ACL of the parent decides): nothing to do there.
+    const dir = dirname(filePath);
+    await mkdir(dir, { recursive: true, mode: 0o700 });
     const line = JSON.stringify({ ts: new Date().toISOString(), to, subject, text });
-    await appendFile(filePath, `${line}\n`, { encoding: 'utf8', mode: 0o600 });
+    const file = await open(filePath, 'a', 0o600);
+    try {
+      if (process.platform !== 'win32') {
+        await chmod(dir, 0o700);
+        await file.chmod(0o600);
+      }
+      await file.appendFile(`${line}\n`, 'utf8');
+    } finally {
+      await file.close();
+    }
   };
 }
