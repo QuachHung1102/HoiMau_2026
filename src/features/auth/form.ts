@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, type RefObject } from 'react';
 import type { TextFieldInput } from '../../shared/ui/TextField';
 import type { ErrorCode } from '../../../domain/contract/common.ts';
-import { isDisplayName, isEmail, LIMITS, normalizeEmail } from '../../../domain/validation.ts';
+import { isDisplayName, isEmail, LIMITS, normalizeEmail, normalizePassword } from '../../../domain/validation.ts';
 import { ApiError, isValidationDetails } from '../../shared/api/client';
 import * as vi from '../../shared/i18n/vi/auth';
 import * as common from '../../shared/i18n/vi/common';
@@ -28,8 +28,9 @@ export function emailProblem(raw: string): string | undefined {
   return isEmail(email) ? undefined : vi.emailInvalid;
 }
 
-/** A new password: the minimum and maximum of LIMITS, nothing else. Never trimmed. */
-export function newPasswordProblem(password: string): string | undefined {
+/** A new password: the minimum and maximum of LIMITS, judged on its NFC form as the server does. Never trimmed. */
+export function newPasswordProblem(raw: string): string | undefined {
+  const password = normalizePassword(raw);
   if (password === '') return vi.passwordRequired;
   if (length(password) < LIMITS.password.min) return vi.passwordTooShort(LIMITS.password.min);
   return length(password) > LIMITS.password.max ? vi.passwordTooLong(LIMITS.password.max) : undefined;

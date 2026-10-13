@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { ScreenProps } from '../../app/routes';
-import { normalizeEmail } from '../../../domain/validation.ts';
+import { normalizeEmail, normalizePassword } from '../../../domain/validation.ts';
 import { useSession } from '../../shared/api/session';
 import * as vi from '../../shared/i18n/vi/auth';
 import { errorText } from '../../shared/i18n/vi/common';
@@ -41,7 +41,7 @@ export function SignInScreen({ navigation }: ScreenProps<'SignIn'>) {
     try {
       await run(async signal => {
         // reset(): the variables hold the password, so they go as soon as the request has settled
-        const session = await login.mutateAsync({ body: { email: normalizeEmail(email), password }, signal }).finally(() => login.reset());
+        const session = await login.mutateAsync({ body: { email: normalizeEmail(email), password: normalizePassword(password) }, signal }).finally(() => login.reset());
         // The root gate unmounts the auth screens once signed in, so this runs only while signed out, and once.
         await signIn(session.token, session.userId);
         // Cleared only now: if the keychain write failed, the person keeps what they typed.

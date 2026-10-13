@@ -385,3 +385,26 @@ describe('one request at a time', () => {
     expect(signal.aborted).toBe(true);
   });
 });
+
+// e + combining circumflex + combining acute: three code points that NFC joins into U+1EBF.
+const ECIRC_ACUTE_NFD = String.fromCodePoint(0x65, 0x302, 0x301);
+const ECIRC_ACUTE_NFC = String.fromCodePoint(0x1ebf);
+
+test('the new password typed decomposed is sent in NFC; the repeat may be typed in either form', async () => {
+  answer('/auth/password/reset', respond(204));
+  open();
+  await ready();
+  fill({ password: `${ECIRC_ACUTE_NFD}abcdefg`, repeat: `${ECIRC_ACUTE_NFC}abcdefg` });
+  save();
+  await waitFor(() => expect(resets()).toHaveLength(1));
+  expect(resets()[0].body?.newPassword).toBe(`${ECIRC_ACUTE_NFC}abcdefg`);
+});
+
+test('a decomposed new password whose NFC form is shorter than the minimum is refused locally and nothing is sent', async () => {
+  open();
+  await ready();
+  fill({ password: `${ECIRC_ACUTE_NFD}abcdef` });
+  save();
+  expect(await screen.findByText('Mật khẩu cần ít nhất 8 ký tự.')).toBeTruthy();
+  expect(fetchMock).not.toHaveBeenCalled();
+});

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { LIMITS, normalizeEmail } from '../../../domain/validation.ts';
+import { LIMITS, normalizeEmail, normalizePassword } from '../../../domain/validation.ts';
 import type { ScreenProps } from '../../app/routes';
 import { useSession } from '../../shared/api/session';
 import * as vi from '../../shared/i18n/vi/auth';
@@ -54,7 +54,7 @@ export function SignUpScreen({ navigation }: ScreenProps<'SignUp'>) {
       await run(async signal => {
         // reset(): the variables hold the password, so they go as soon as the request has settled
         const session = await register
-          .mutateAsync({ body: { email: normalizeEmail(email), password, displayName: displayName.trim(), acceptedTerms: true }, signal })
+          .mutateAsync({ body: { email: normalizeEmail(email), password: normalizePassword(password), displayName: displayName.trim(), acceptedTerms: true }, signal })
           .finally(() => register.reset());
         // The root gate unmounts the auth screens once signed in, so this runs only while signed out, and once.
         try {
