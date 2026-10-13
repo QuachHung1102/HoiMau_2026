@@ -22,6 +22,9 @@ import {
 } from './syncTestKit';
 import type { QueuedWriteResult } from './useQueuedWrite';
 
+// The main group without its screens: every tab shows the notice with "Đăng xuất", whatever tabs the app has by now.
+jest.mock('../../app/screens', () => ({ ...jest.requireActual('../../app/screens'), tabRoots: [] }));
+
 installSyncTestEnv();
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;

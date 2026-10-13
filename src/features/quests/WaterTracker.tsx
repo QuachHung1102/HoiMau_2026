@@ -143,11 +143,12 @@ type Props = {
 export function WaterTracker({ state, onTick }: Props) {
   const { target, done, queued, saving, full, reward, failed } = state;
   const count = done + queued + saving;
-  // "đã lưu" only while the server's answer is fresh; a waiting part never says it.
-  const status = saving ? vi.saving : reward ? vi.saved : undefined;
+  // "đã lưu" only while the server's answer is fresh, and only when every part counted is the server's: with a
+  // part still waiting on this device the count as a whole is not saved.
+  const status = saving ? vi.saving : reward && !queued ? vi.saved : undefined;
   const countText = status ? vi.withStatus(vi.waterCount(count, target), status) : vi.waterCount(count, target);
   const hint = full ? vi.waterFull(target) : vi.waterHint;
-  const label = [vi.waterTitle, countText, queued ? vi.waterWaiting(queued) : undefined, full ? vi.waterFull(target) : vi.tapToRecord].filter(Boolean).join('. ');
+  const label = [vi.waterTitle, countText, queued ? vi.waterWaiting : undefined, full ? vi.waterFull(target) : vi.tapToRecord].filter(Boolean).join('. ');
   return (
     <View style={styles.block}>
       <View style={styles.head}>

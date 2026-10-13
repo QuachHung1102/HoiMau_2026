@@ -116,7 +116,8 @@ function PressTracker() {
 
 type Options = {
   route?: 'Today' | 'StatsExplainer';
-  day?: DayState;
+  /** null: nothing in the query cache (the day comes from what the storage holds, as on a cold start). */
+  day?: DayState | null;
   me?: Me;
   settings?: Settings;
   storage?: Record<string, unknown>;
@@ -142,11 +143,7 @@ const app = ({ route = 'Today', day = dayOf(), me = meOf(), settings = settingsO
     {
       session: { userId: USER },
       motion: 'REDUCED',
-      queries: [
-        [meKey, me],
-        [dayKey, day],
-        [settingsKey, settings],
-      ],
+      queries: [[meKey, me], ...(day ? [[dayKey, day] as [readonly unknown[], unknown]] : []), [settingsKey, settings]],
       fetchStub,
     },
   );
@@ -183,6 +180,16 @@ export const entries: Entries = {
   // Two parts recorded without a network (no fetch stub: every request fails), found again at the next start.
   's09-today-pending': () =>
     app({ storage: { [`pending:v1:${USER}`]: [waiting('8a3f6c1e-2b47-4d19-9c05-71e2a4b6d801'), waiting('8a3f6c1e-2b47-4d19-9c05-71e2a4b6d802')] } }),
+  // The morning after, without a network: the day kept on this device is over (everything in it was done), so a
+  // provisional day is shown, and the first part recorded on it waits.
+  's09-today-new-day-offline': () =>
+    app({
+      day: null,
+      storage: {
+        [`cache:v1:${USER}:day`]: dayOf(8, { closesAt: new Date(Date.now() - 2 * HOUR).toISOString(), caloriesIn: 2380, story: { done: 2, total: 2 } }),
+        [`pending:v1:${USER}`]: [waiting('8a3f6c1e-2b47-4d19-9c05-71e2a4b6d804')],
+      },
+    }),
   's47-stats-explainer': () => app({ route: 'StatsExplainer' }),
 };
 

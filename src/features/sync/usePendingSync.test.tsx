@@ -28,6 +28,9 @@ import {
   writes,
 } from './syncTestKit';
 
+// The main group without its screens: every tab shows the notice with "Đăng xuất", whatever tabs the app has by now.
+jest.mock('../../app/screens', () => ({ ...jest.requireActual('../../app/screens'), tabRoots: [] }));
+
 installSyncTestEnv();
 
 const sentIds = () => writes().map(request => request.id);

@@ -1,6 +1,7 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fireEvent, screen, within } from '@testing-library/react-native';
 import { healthVi } from '../../shared/i18n/vi/health';
-import { dayOf, installTodayTestEnv, openToday, settle, world } from './todayTestKit';
+import { dayOf, installTodayTestEnv, openToday, settle, USER, world } from './todayTestKit';
 
 // The real registry; the explainer's `navigate` is recorded on its way to the navigator, so a link to a route that no
 // task has registered yet (inert, AR-25) can still be asserted by name.
@@ -68,6 +69,22 @@ test('S47: a bedtime mark the server has is said in words', async () => {
   world.day = dayOf({ bedtimeMarkedAt: new Date().toISOString(), waterMl: 2000, streak: { current: 12, best: 12 } });
   const view = await openExplainer();
   expect(screen.getByText('Hôm nay: 2.000 / 2.000 ml nước, đã ghi giờ nghỉ, chuỗi 12 ngày.')).toBeTruthy();
+  view.unmount();
+});
+
+test('S47 on a provisional day (the kept one is over, no network): no inputs are stated as if they were known', async () => {
+  world.down = true;
+  await AsyncStorage.setItem('cache:v1:' + USER + ':me', JSON.stringify(world.me));
+  await AsyncStorage.setItem('cache:v1:' + USER + ':day', JSON.stringify(dayOf({ closesAt: new Date(Date.now() - 60_000).toISOString() })));
+  const view = await openToday();
+  await screen.findByText('Ngày mới chưa được đồng bộ. Các con số sẽ cập nhật khi có mạng trở lại.');
+  fireEvent.press(screen.getByRole('link', { name: 'Hiểu các chỉ số' }));
+  await screen.findByRole('header', { name: 'Hiểu chỉ số của bạn' });
+  await settle();
+  expect(screen.queryByText(/^Hôm nay:/)).toBeNull();
+  // what each stat is made of, and the kept profile's numbers, are still there
+  expect(screen.getByText('Từ phần nước đã ghi, dấu ghi giờ nghỉ và chuỗi ngày giữ nhịp.')).toBeTruthy();
+  expect(within(bar('Sức sống')).getByText('26/100')).toBeTruthy();
   view.unmount();
 });
 

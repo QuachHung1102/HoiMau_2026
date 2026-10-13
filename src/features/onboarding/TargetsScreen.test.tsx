@@ -18,6 +18,15 @@ const keys = () => posts().map(r => r.headers['Idempotency-Key']);
 const ready = () => onStep(TITLES.OnbTargets);
 const finish = () => press('Đến Hôm nay');
 const MAIN = 'Phần này đang được hoàn thiện'; // the notice of a tab whose root is not registered
+/** The main group is on screen and its tab shell has finished mounting (bottom-tabs' own 32 ms timer included). */
+async function mainGroup() {
+  const notice = await screen.findByText(MAIN);
+  await act(async () => {
+    if ('clock' in setTimeout) await jest.advanceTimersByTimeAsync(60);
+    else await new Promise(resolve => setTimeout(resolve, 60));
+  });
+  return notice;
+}
 // what the kit's draft says, as the numbers the domain takes
 const person = { heightCm: 171.5, weightKg: 63.25, ageYears: 30, sex: 'MALE', activityLevel: 'LIGHT', archetype: 'TANKER' } as const;
 
@@ -112,7 +121,7 @@ describe('"Đến Hôm nay"', () => {
     await waitFor(() => expect(posts()).toHaveLength(1));
     expect(onboarding.draft).toEqual(draft);
     await act(async () => finishRequest(respond(200, meOnboarded)));
-    expect(await screen.findByText(MAIN)).toBeTruthy();
+    expect(await mainGroup()).toBeTruthy();
     expect(onboarding.draft).toEqual({ birthYear: '', heightCm: '', weightKg: '', sex: null, timezone: null, activityLevel: null, archetype: null });
     expect(onboarding.errors).toEqual({ fields: {} });
   });
@@ -148,7 +157,7 @@ describe('"Đến Hôm nay"', () => {
     await mount('OnbTargets', { draft });
     await ready();
     finish();
-    expect(await screen.findByText(MAIN)).toBeTruthy();
+    expect(await mainGroup()).toBeTruthy();
     expect(posts()).toHaveLength(1);
     expect(posts()[0].body).toEqual({
       heightCm: 171.5,
@@ -197,7 +206,7 @@ describe('"Đến Hôm nay"', () => {
     await screen.findByText('Không kết nối được mạng. Bạn kiểm tra kết nối rồi thử lại nhé.');
     online = true;
     finish(); // the main button retries as well
-    expect(await screen.findByText(MAIN)).toBeTruthy();
+    expect(await mainGroup()).toBeTruthy();
     expect(keys()).toHaveLength(3);
     expect(keys()[0]).toMatch(UUID_V4);
     expect(new Set(keys()).size).toBe(1);
@@ -313,7 +322,7 @@ describe('a refusal from the server goes back to the step that owns it', () => {
     await ready();
     expect(screen.getByText('Hỗ Trợ')).toBeTruthy();
     finish();
-    expect(await screen.findByText(MAIN)).toBeTruthy();
+    expect(await mainGroup()).toBeTruthy();
     expect(posts().map(r => r.body?.archetype)).toEqual(['ASSASSIN', 'SUPPORTER']);
     // another direction is another attempt
     expect(keys()[1]).not.toBe(keys()[0]);
