@@ -73,10 +73,21 @@ export type Ctx = {
   log: Logger;
   /** What the route's `prepare` returned; `undefined` without one. */
   prepared: unknown;
+  /**
+   * Queues `run` for after the request transaction is committed AND the answer has been
+   * written to the client: the place to send a mail, so that neither its latency nor its
+   * failure reaches the answer. Not run when the request ends in a thrown error (the
+   * transaction was rolled back); run also for a returned `errorResponse`. A rejection is
+   * logged without its message and reaches nobody.
+   */
+  afterCommit(run: () => Promise<void>): void;
 };
 
 /** What exists before the request transaction: no client, no user, no clock. */
-export type PreCtx = Omit<Ctx, 'db' | 'userId' | 'now' | 'prepared'>;
+export type PreCtx = Omit<
+  Ctx,
+  'db' | 'userId' | 'now' | 'prepared' | 'afterCommit'
+>;
 
 export type RouteResponse = { status: number; body?: unknown };
 
@@ -271,7 +282,11 @@ export function createApp(deps: AppDeps): Server {
 
   async function respond(
     req: IncomingMessage,
-    seen: { route: string | null; userId: string | null },
+    seen: {
+      route: string | null;
+      userId: string | null;
+      after: (() => Promise<void>)[];
+    },
   ): Promise<Out> {
     const target = splitTarget(req.url ?? '');
     const found = target && find(req.method ?? '', target.path);
@@ -428,6 +443,9 @@ export function createApp(deps: AppDeps): Server {
           userId,
           now: rows[0].now,
           prepared,
+          afterCommit: run => {
+            seen.after.push(run);
+          },
         }),
       );
       if (actionId !== null) {
@@ -453,13 +471,17 @@ export function createApp(deps: AppDeps): Server {
     const seen = {
       route: null as string | null,
       userId: null as string | null,
+      after: [] as (() => Promise<void>)[],
     };
     /** null: the client went away while sending; nobody is left to read an answer. */
     let answer: Out | null;
     let bug: unknown;
     let note: string | undefined;
+    /** `respond` returned: the transaction, if there was one, is committed. */
+    let committed = false;
     try {
       answer = await respond(req, seen);
+      committed = true;
     } catch (thrown) {
       const refusal = refusalOf(thrown);
       if (thrown instanceof ClientGone) {
@@ -501,6 +523,22 @@ export function createApp(deps: AppDeps): Server {
       ...(note === undefined ? {} : { note }),
       ...(bug === undefined ? {} : describeError(bug)),
     });
+    // After the answer is written: what the route queued with ctx.afterCommit (a mail). Only
+    // when the transaction committed; a failure is logged without its message and ends here.
+    if (committed && answer !== null) {
+      for (const run of seen.after) {
+        Promise.resolve()
+          .then(run)
+          .catch((thrown: unknown) =>
+            log.line({
+              level: 'error',
+              evt: 'after_commit',
+              route: seen.route,
+              ...describeError(thrown),
+            }),
+          );
+      }
+    }
   }
 
   const server = createServer((req, res) => {

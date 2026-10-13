@@ -400,6 +400,9 @@ Server là `node:http` trần: không framework, không middleware. Mọi route 
 | `log.ts` | Log JSON, `log.ledger`. |
 | `config.ts`, `main.ts` | Đọc môi trường (`DATABASE_URL`, `JOURNAL_KEY`, `HOST`, `PORT`); tiến trình server. |
 | `routes/meta.ts` | `GET /healthz`, `GET /meta/timezones`. |
+| `routes/auth.ts` | Năm route xác thực: đăng ký, đăng nhập, đăng xuất, quên và đặt lại mật khẩu. |
+| `password.ts` | `deriveKey` (scrypt), `newSalt`, cổng giới hạn scrypt. |
+| `mailer.ts` | `outboxMailer`: thư ghi vào file, chỉ để phát triển. |
 
 ### Chạy
 
@@ -413,7 +416,7 @@ node server/src/main.ts   # tiến trình thật: cần DATABASE_URL và JOURNAL
 - `main.ts` đọc `server/.env` nếu có (biến đã có trong môi trường thắng). `config.ts` dừng ngay với thông báo nêu **tên biến** và điều sai, không bao giờ in giá trị: `DATABASE_URL` phải là URL `postgres://` có người dùng, máy chủ và tên cơ sở dữ liệu (vai trò `app_conn`); `JOURNAL_KEY` là đúng 32 byte viết bằng base64 (44 ký tự); `PORT` mặc định 8787.
 - **`HOST` mặc định là `127.0.0.1`**: API chỉ nghe trên chính máy đó. Server thật nhận request từ mạng phải đặt `HOST` (địa chỉ của nó, hoặc `0.0.0.0` cho mọi giao diện); mở API ra mạng là một quyết định, không phải mặc định.
 - Lỗi không ai bắt (`unhandledRejection`) được ghi một dòng log và server chạy tiếp. Exception không ai bắt (`uncaughtException`) được ghi log, server được dừng như khi nhận tín hiệu, và tiến trình thoát với mã 1. Cả hai dòng log đều không có thông báo của lỗi (xem "Log").
-- Chưa có mailer: cho tới nhiệm vụ về xác thực, `ctx.mailer` của tiến trình thật ném `mail is not configured`.
+- **`MAIL_MODE=outbox` là chế độ thư duy nhất** và bắt buộc phải đặt: thiếu hay giá trị khác thì `main.ts` dừng ngay lúc khởi động, trước khi nối cơ sở dữ liệu, với thông báo trỏ về mục "Thư" ở cuối file này. `server:dev` mặc định `outbox`. Chi tiết ở mục "Route xác thực và thư".
 
 ### Đường đi của một request
 
@@ -440,7 +443,7 @@ Quy tắc của transaction:
 - **Mức cô lập là `READ COMMITTED`** (mặc định), không đặt `REPEATABLE READ` hay `SERIALIZABLE` ở đâu cả. Đã đo với `auth_login`: dưới `REPEATABLE READ`, chín trong mười lần đăng nhập gửi cùng lúc hỏng với `40001` và bộ đếm đếm thiếu. Các hàm của dự án tự tuần tự hóa bằng khóa dòng và khóa advisory, và cần thấy dữ liệu vừa được commit sau khi chờ khóa.
 - **Chuyển vai và điều khiển transaction chỉ nằm trong `db.ts`.** `app.user_id` **luôn** được đặt, rỗng với request ẩn danh, nên giá trị ai đó để lại trên kết nối không bao giờ thành danh tính. Một test đọc toàn bộ `server/src` (trừ `db.ts` và `migrate.ts`) và đỏ khi thấy lệnh mở, kết thúc transaction hay đổi vai ở bất kỳ file nào khác: route không bao giờ tự quản transaction.
 - **Kết nối bẩn không quay lại pool.** Khi kết thúc transaction, `withRole` hỏi luôn (cùng một lượt gửi) kết nối còn là `app_conn` trần không có `app.user_id` hay không. Không phải (ai đó đã kết thúc transaction giữa chừng và đặt vai trò cho cả phiên), hoặc kết nối đã chết, hoặc không rollback được: kết nối bị hủy thay vì trả về pool.
-- **Không giữ transaction qua việc chậm.** scrypt, gọi mạng, gửi thư đặt trong `prepare`. Có test: trong lúc `prepare` chạy, pool không có kết nối nào đang được mượn.
+- **Không giữ transaction qua việc chậm.** scrypt và gọi mạng đặt trong `prepare`. Có test: trong lúc `prepare` chạy, pool không có kết nối nào đang được mượn. Gửi thư không nằm trong request: handler gọi `ctx.afterCommit(…)` (xem "Route xác thực và thư").
 - **Mỗi request giữ nhiều nhất một kết nối.** Handler đã giữ một kết nối (`ctx.db`) và **không bao giờ được lấy kết nối thứ hai**: đủ số request làm vậy là mọi kết nối cùng chờ một kết nối không bao giờ tới. `ctx.pool` trong handler ném lỗi ngay khi bị chạm vào. Kết nối thứ hai chỉ có trong `prepare` (và trong `direct`): `withRole(pre.pool, vai trò, userId, fn)`, một transaction ngắn kết thúc trước khi transaction của request bắt đầu.
 - Câu lệnh chạy **ngoài** `withRole` chạy bằng `app_conn` trần và hỏng với `42501` / `42P01` / `42883`. Đó là hàng rào; đừng bao giờ "sửa" nó bằng một GRANT.
 - Client ngắt kết nối giữa chừng không hủy việc đang chạy: handler chạy hết, transaction được commit và kết nối trở về pool (có test). Với request ghi, lần gửi lại cùng khóa nhận đúng phản hồi đã lưu.
@@ -589,3 +592,54 @@ test('GET /me cần một phiên', async () => {
 - `db.app` không có giới hạn thời gian nào. Test về giới hạn thời gian hay về kích thước pool dùng `serverPool(db, { lockMs: 300, … })`: một pool tạo bằng chính `createPool` của server, rồi `startTestApp({ ...db, app: pool })`; test tự `pool.end()`.
 - `app.call(method, path, { token?, body?, key?, headers?, rawBody?, signal? })` trả `{ status, body, headers }`. `app.logs` / `app.logText()` là log đã ghi, `app.mail` là thư đã "gửi".
 - `newUser(db)` trả `{ userId, token, email }`: một tài khoản có phiên, **chưa onboarding**, tạo thẳng qua `auth_register` bằng `app_anon`.
+- Thư của `ctx.afterCommit` tới `app.mail` **sau** phản hồi: test chờ tới khi thư xuất hiện (và chờ một nhịp ngắn trước khi khẳng định rằng *không* có thư).
+
+## Route xác thực và thư (`routes/auth.ts`, `password.ts`, `mailer.ts`)
+
+Năm route đặt trên các hàm `auth_*` của `10-auth.sql`. Hợp đồng (mã HTTP, mã lỗi, tên trường) nằm ở `docs/api/openapi.yaml`; mục này ghi cách server giữ nó.
+
+| Route | Thành công | Lỗi |
+|---|---|---|
+| `POST /auth/register` | `201 { token, userId, onboarded: false }` | `409 REGISTRATION_UNAVAILABLE` (email đã có, kể cả tài khoản đã xóa), `422 VALIDATION_FAILED`, `422 NAME_NOT_ALLOWED` |
+| `POST /auth/login` | `200 { token, userId, onboarded }` | `401 INVALID_CREDENTIALS`, `422 VALIDATION_FAILED` |
+| `POST /auth/logout` (`session`) | `204` | `401 SESSION_INVALID` |
+| `POST /auth/password/forgot` | `202 {}` luôn luôn | `422 VALIDATION_FAILED` |
+| `POST /auth/password/reset` | `204` | `400 RESET_CODE_INVALID`, `422 VALIDATION_FAILED` |
+
+Không route nào nhận `Idempotency-Key` (app không gửi). Token do `newToken()` của `session.ts` tạo (43 ký tự base64url); cơ sở dữ liệu chỉ giữ `hashToken(token)`.
+
+### Kiểm tra đầu vào
+
+Dùng đúng luật của `domain/validation.ts` (app dùng cùng file). Mọi trường sai được liệt kê một lượt, theo thứ tự `displayName, email, password, acceptedTerms` / `email, code, newPassword`:
+
+- email: cắt dấu cách và đổi chữ thường (`normalizeEmail`), rồi `isEmail`. **Thư và bản băm của mã đều dùng địa chỉ đã chuẩn hóa đó.**
+- `displayName`: cắt dấu cách, 1–40 ký tự (đếm theo code point), `isDisplayName` (không ký tự điều khiển hay vô hình), rồi mới tới từ cấm: `422 NAME_NOT_ALLOWED` chỉ khi mọi trường khác hợp lệ.
+- mật khẩu mới (`password` khi đăng ký, `newPassword` khi đặt lại): 8–128 ký tự theo code point, **không bao giờ cắt khoảng trắng**. Đăng nhập chỉ đòi không rỗng và không quá 128 (mật khẩu ngắn hơn 8 chỉ là sai, nhận `401`).
+- `code`: đúng 8 chữ số (`^[0-9]{8}$`), độ dài lấy từ `LIMITS.resetCode.length`, không có số 8 nào trong code server.
+- `acceptedTerms` phải đúng là `true`.
+- Mọi chuỗi có U+0000 là `VALIDATION_FAILED` của chính trường đó (nếu để lọt, PostgreSQL trả `22021`); thân request không phải object coi như thiếu mọi trường.
+
+### Đường đi của từng route
+
+- **scrypt chỉ chạy trong `prepare`**, trước khi request mở transaction (không giữ kết nối nào). Đăng ký: kiểm tra, salt mới, scrypt. Đăng nhập: kiểm tra, `auth_salt` (một transaction ngắn riêng, `withRole(pre.pool, 'app_anon', …)`), **đúng một** scrypt, cả với email không có tài khoản (salt giả), rồi handler gọi `auth_login`. Đặt lại: kiểm tra, salt mới, scrypt; mã sai hay đúng đều tốn như nhau.
+- **Cổng scrypt** (`password.ts`): tối đa 4 lần chạy đồng thời và 32 lần chờ; lần thứ 37 trở đi nhận `429 RATE_LIMITED` (`deriveKey` ném `AppError`). Phản hồi `429` này **chưa có header `Retry-After`**, vì `AppError` không mang header.
+- **Thất bại được trả về, không ném.** Đăng nhập thất bại là `return errorResponse('INVALID_CREDENTIALS')`, nên lần thử mà `auth_login` vừa đếm được commit: sau 5 lần sai, mật khẩu đúng cũng bị `401` trong 15 phút (có test qua HTTP, dời đồng hồ test). Email lạ, mật khẩu sai, tài khoản bị khóa và tài khoản đã xóa nhận **cùng từng byte**. Đặt lại thất bại cũng được trả về: mã sai đã tiêu một lần thử, và sau 5 lần sai, mã đúng cũng nhận `400`.
+- `onboarded` của đăng nhập được đọc từ `users` sau khi đổi sang `app_auth`, vẫn trong transaction đó.
+- **Quên mật khẩu** luôn `202 {}` (email lạ, vượt 3 lần/giờ, hay có tài khoản). Mã (`crypto.randomInt`, đệm số 0 tới `LIMITS.resetCode.length` chữ số) được tạo và băm `sha256(email + ':' + mã)` dù tài khoản có hay không; `auth_reset_request` trả `true` thì thư được xếp hàng bằng `ctx.afterCommit`.
+- **Mã, mật khẩu và token không bao giờ vào log**; test gom log của cả lượt chạy rồi tìm từng giá trị.
+
+### `ctx.afterCommit(run)`
+
+Việc được xếp hàng chạy **sau khi transaction đã commit và phản hồi đã được ghi**. Nhờ vậy thời gian gửi thư không nằm trong thời gian trả lời (không lộ email nào có tài khoản), và không bao giờ có thư cho một transaction bị rollback. Không chạy khi request kết thúc bằng lỗi bị ném (kể cả `500` do transaction hỏng); chạy khi handler *trả về* `errorResponse`. Lỗi của `run` (reject hay ném) chỉ được ghi một dòng `{evt:'after_commit', route, error, code, stack}` (không có thông báo lỗi) và không ảnh hưởng ai. Hệ quả: **thư có thể tới sau phản hồi**; thư gửi hỏng thì người dùng bấm "Gửi lại" (tối đa 3 lần/giờ); server dừng giữa chừng có thể làm mất thư đang chờ gửi.
+
+### Giới hạn tần suất của năm route
+
+`rateLimit: { perMinute: 10 }` trên mỗi route: **10 request/phút cho mỗi địa chỉ client trên từng route ẩn danh** (đếm trước body, trước scrypt, trước cơ sở dữ liệu, nên không phụ thuộc tài khoản có tồn tại hay không) và 10/phút cho mỗi tài khoản với `logout` (route cần phiên chỉ có giới hạn theo tài khoản). Mỗi route một cửa sổ riêng, không dùng chung.
+
+### Thư
+
+`Mailer = ({ to, subject, text }) => Promise<void>` (khai báo ở `app.ts`). Chủ đề "Mã đặt lại mật khẩu Hồi Máu"; nội dung có mã và câu "Mã có hiệu lực trong 10 phút", **không có đường dẫn** (mã được gõ vào màn hình S55).
+
+- `MAIL_MODE=outbox` (`server/.env.example`) là chế độ duy nhất: `outboxMailer` thêm một dòng JSON `{ts, to, subject, text}` cho mỗi thư vào `server/.outbox/mail.jsonl` (thư mục tự tạo, đã nằm trong `.gitignore`). **Chỉ để phát triển**: file chứa mã đặt lại ở dạng đọc được. Giá trị khác, hoặc không đặt, thì `main.ts` dừng khi khởi động.
+- Lấy mã khi chạy `npm run server:dev`: dòng cuối của file đó.
+- **Cắm SMTP: chưa kiểm chứng, chưa có dòng code nào được chạy.** Việc cần làm: viết một hàm `Mailer` (ví dụ `smtpMailer(options)` dùng một thư viện như `nodemailer`, thêm vào `server/package.json`); thêm nhánh `MAIL_MODE=smtp` vào `mailerFromEnv` của `main.ts`, đọc máy chủ, cổng, tài khoản và người gửi từ môi trường (mật khẩu SMTP không vào log hay repo); `server:dev` có thể giữ `outbox`. Hàm phải reject khi gửi hỏng (`ctx.afterCommit` ghi log không có thông báo lỗi; thông báo của máy chủ thư thường chứa địa chỉ người nhận). Chưa kiểm chứng: nhịp gửi, thử lại, hàng đợi khi tiến trình dừng.

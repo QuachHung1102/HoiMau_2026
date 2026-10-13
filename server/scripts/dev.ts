@@ -4,7 +4,12 @@
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { loadConfig } from '../src/config.ts';
-import { guardProcess, loadEnvFile, serve } from '../src/main.ts';
+import {
+  guardProcess,
+  loadEnvFile,
+  mailerFromEnv,
+  serve,
+} from '../src/main.ts';
 import { migrate } from '../src/migrate.ts';
 import { APP_CONN, DEV, SUPERUSER, startCluster } from './cluster.ts';
 
@@ -73,7 +78,11 @@ try {
     // always the cluster started above, whatever the environment names
     DATABASE_URL: `postgres://${APP_CONN.user}:${APP_CONN.password}@${HOST}:${DEV.port}/${DATABASE}`,
   });
-  const api = await serve(config);
+  // the development server mails to the outbox unless the environment names something else
+  const api = await serve(
+    config,
+    mailerFromEnv({ MAIL_MODE: process.env.MAIL_MODE || 'outbox' }),
+  );
   guardProcess(async () => {
     try {
       await api.stop();
