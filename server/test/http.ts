@@ -4,6 +4,9 @@ import { randomBytes } from 'node:crypto';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Pool } from 'pg';
+import type { OnboardingRequest } from '../../domain/contract/core.ts';
+import { calculatePrescription } from '../../domain/energy.ts';
+import { ageFrom } from '../../domain/validation.ts';
 import { APP_CONN, TEST } from '../scripts/cluster.ts';
 import { createApp, routes as realRoutes } from '../src/app.ts';
 import type { Mailer, Route } from '../src/app.ts';
@@ -165,4 +168,64 @@ export async function newUser(
     ]),
   );
   return { userId: rows[0].id, token, email };
+}
+
+/** What `newOnboardedUser` onboards with unless overridden: BMI 22.5, every archetype allowed. */
+export const ONBOARDING_INPUT: OnboardingRequest = {
+  timezone: 'Asia/Ho_Chi_Minh',
+  archetype: 'SUPPORTER',
+  heightCm: 170,
+  weightKg: 65,
+  birthYear: 1996,
+  sex: 'FEMALE',
+  activityLevel: 'LIGHT',
+};
+
+/**
+ * `newUser` plus onboarding: `profile_onboard` called as that user on the app pool, with the
+ * prescription computed the way the route computes it (age at `app.now()`, so a frozen test clock
+ * counts). `input` is what was stored. Like `newUser` the account has no usable password (a
+ * random key): a test that signs in registers over HTTP instead.
+ */
+export async function newOnboardedUser(
+  db: TestDb,
+  overrides: Partial<OnboardingRequest> = {},
+): Promise<{
+  userId: string;
+  token: string;
+  email: string;
+  input: OnboardingRequest;
+}> {
+  const user = await newUser(db);
+  const input = { ...ONBOARDING_INPUT, ...overrides };
+  const { heightCm, weightKg, birthYear, sex, activityLevel, archetype } =
+    input;
+  await withRole(db.app, 'app_auth', user.userId, async c => {
+    const now = await c.query<{ now: Date }>('SELECT app.now() AS now');
+    const prescription = calculatePrescription({
+      heightCm,
+      weightKg,
+      ageYears: ageFrom(birthYear, now.rows[0].now.getTime(), input.timezone),
+      sex,
+      activityLevel,
+      archetype,
+    });
+    const { rows } = await c.query<{ done: boolean }>(
+      'SELECT profile_onboard($1, $2, $3, $4, $5, $6, $7, $8) AS done',
+      [
+        input.timezone,
+        archetype,
+        heightCm,
+        weightKg,
+        birthYear,
+        sex,
+        activityLevel,
+        JSON.stringify(prescription),
+      ],
+    );
+    if (!rows[0].done) {
+      throw new Error('newOnboardedUser: profile_onboard answered false');
+    }
+  });
+  return { ...user, input };
 }
