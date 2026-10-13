@@ -15,8 +15,9 @@ export const DEFAULT_OUTBOX = fileURLToPath(
  */
 export function outboxMailer(filePath: string): Mailer {
   return async ({ to, subject, text }) => {
-    await mkdir(dirname(filePath), { recursive: true });
+    // owner only: the lines hold live reset codes (mode is mostly ignored on Windows)
+    await mkdir(dirname(filePath), { recursive: true, mode: 0o700 });
     const line = JSON.stringify({ ts: new Date().toISOString(), to, subject, text });
-    await appendFile(filePath, `${line}\n`, 'utf8');
+    await appendFile(filePath, `${line}\n`, { encoding: 'utf8', mode: 0o600 });
   };
 }

@@ -17,11 +17,12 @@ import { DEFAULT_OUTBOX, outboxMailer } from './mailer.ts';
 export function mailerFromEnv(
   env: Record<string, string | undefined> = process.env,
 ): Mailer {
-  if (env.MAIL_MODE === 'outbox') {
+  // the outbox file holds live reset codes: never in production
+  if (env.MAIL_MODE === 'outbox' && env.NODE_ENV !== 'production') {
     return outboxMailer(DEFAULT_OUTBOX);
   }
   throw new Error(
-    'MAIL_MODE must be "outbox", the only mode there is; see "Thư" in docs/backend.md and server/.env.example.',
+    'MAIL_MODE must be "outbox", the only mode there is, and not with NODE_ENV=production; see "Thư" in docs/backend.md and server/.env.example.',
   );
 }
 
