@@ -3,7 +3,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import * as Keychain from 'react-native-keychain';
 import type { Me } from '../domain/contract/core.ts';
 import App from '../src/app/App';
@@ -38,6 +38,14 @@ const respond = (status: number, body?: unknown) => ({
 const requests = () =>
   fetchMock.mock.calls.map(([url, init]) => `${init.method} ${url.replace('http://localhost:8787/api/v1', '')}`);
 const signedIn = () => Keychain.setGenericPassword(USER, TOKEN);
+/** Onboarding is on its first step (S05) and the request that step starts (the zone list) has landed inside act(). */
+async function onboardingOpened() {
+  const header = await screen.findByRole('header', { name: 'Bắt đầu từ bạn' });
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 10));
+  });
+  return header;
+}
 
 const realFetch = globalThis.fetch;
 let errors: jest.SpyInstance;
@@ -84,19 +92,14 @@ test('while the session and GET /me load: the S39 loading state', async () => {
   screen.unmount();
 });
 
-test('signed in and not onboarded: the onboarding group (its notice until Task 19), with a way out', async () => {
+test('signed in and not onboarded: onboarding opens on its first step (S05)', async () => {
   await signedIn();
   fetchMock.mockResolvedValue(respond(200, meOf(false)));
   render(<App />);
-  expect(await screen.findByText('Phần này đang được hoàn thiện')).toBeTruthy();
-  expect(requests()).toEqual(['GET /me']);
+  expect(await onboardingOpened()).toBeTruthy();
+  expect(screen.getByText('Hồ sơ · Bước 1 trong 3')).toBeTruthy();
+  expect(requests()[0]).toBe('GET /me');
   expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${TOKEN}`);
-
-  fetchMock.mockResolvedValue(respond(204));
-  fireEvent.press(screen.getByRole('button', { name: 'Đăng xuất' }));
-  expect(await screen.findByRole('button', { name: 'Bắt đầu hành trình' })).toBeTruthy();
-  expect(requests()).toEqual(['GET /me', 'POST /auth/logout']);
-  expect(await Keychain.getGenericPassword()).toBe(false);
   screen.unmount();
 });
 
@@ -121,8 +124,8 @@ test('GET /me 500: the error state, "Thử lại" refetches, "Đăng xuất" is 
 
   fetchMock.mockResolvedValue(respond(200, meOf(false)));
   fireEvent.press(screen.getByRole('button', { name: 'Thử lại' }));
-  expect(await screen.findByText('Phần này đang được hoàn thiện')).toBeTruthy();
-  expect(requests()).toEqual(['GET /me', 'GET /me']);
+  expect(await onboardingOpened()).toBeTruthy();
+  expect(requests().filter(request => request === 'GET /me')).toHaveLength(2);
   expect(screen.queryByText('Chưa tải được dữ liệu')).toBeNull();
   screen.unmount();
 });
@@ -132,7 +135,7 @@ test('offline start with a cached Me: the user gets in from the cache', async ()
   await writeCache(USER, 'me', meOf(false));
   fetchMock.mockRejectedValue(new TypeError('Network request failed'));
   render(<App />);
-  expect(await screen.findByText('Phần này đang được hoàn thiện')).toBeTruthy();
+  expect(await onboardingOpened()).toBeTruthy();
   expect(screen.queryByText('Chưa tải được dữ liệu')).toBeNull();
   screen.unmount();
 });
@@ -181,7 +184,7 @@ test('a successful GET /me is written to this user cache', async () => {
   await signedIn();
   fetchMock.mockResolvedValue(respond(200, meOf(false)));
   render(<App />);
-  await screen.findByText('Phần này đang được hoàn thiện');
+  await onboardingOpened();
   expect(JSON.parse((await AsyncStorage.getItem(`cache:v1:${USER}:me`)) ?? 'null')).toEqual(meOf(false));
   // and the token is nowhere on disk
   const disk = JSON.stringify(Object.entries(await AsyncStorage.getMany(await AsyncStorage.getAllKeys())));
@@ -207,7 +210,7 @@ test('unmounting the app leaves no timer behind', async () => {
   await signedIn();
   fetchMock.mockResolvedValue(respond(200, meOf(false)));
   render(<App />);
-  await screen.findByText('Phần này đang được hoàn thiện');
+  await onboardingOpened();
   // Timers only: a microtask queued by the unmount itself is not something that keeps Jest alive.
   jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
   screen.unmount();

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { OnboardingProvider } from '../features/onboarding/OnboardingProvider';
 import { SessionProvider, wipeQueries } from '../shared/api/session';
 import { ThemeProvider } from '../shared/theme/ThemeProvider';
 import { AppNavigation } from './navigation';
@@ -16,8 +17,10 @@ function App() {
         <QueryClientProvider client={queryClient}>
           <SessionProvider>
             {/* Slot: a provider that must sit above every navigator wraps <AppNavigation /> right here.
-                Task 19 owns this one line (its OnboardingProvider); nothing else in this file moves. */}
-            <AppNavigation />
+                OnboardingProvider keeps what was typed while Back moves between the onboarding steps. */}
+            <OnboardingProvider>
+              <AppNavigation />
+            </OnboardingProvider>
           </SessionProvider>
         </QueryClientProvider>
       </ThemeProvider>

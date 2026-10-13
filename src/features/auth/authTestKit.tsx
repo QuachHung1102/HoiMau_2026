@@ -4,14 +4,16 @@
 // every request so a test can read the path, headers and body that were actually sent.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import * as Keychain from 'react-native-keychain';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppNavigation, stateForRoute } from '../../app/navigation';
 import type { RouteName } from '../../app/routes';
 import { SessionProvider, wipeQueries } from '../../shared/api/session';
+import { profileTitle } from '../../shared/i18n/vi/onboarding';
 import { MotionPreferenceProvider, resetSystemMotionForTests } from '../../shared/motion/useReducedMotion';
 import { ThemeProvider } from '../../shared/theme/ThemeProvider';
+import { OnboardingProvider } from '../onboarding/OnboardingProvider';
 
 export const USER = '5f0c2a8e-1d37-4a55-9c1b-0c8a4d2e7b10';
 export const TOKEN = 'tok-auth-test-secret';
@@ -76,13 +78,32 @@ export function mount(name: RouteName, params?: object) {
         <MotionPreferenceProvider value="REDUCED">
           <QueryClientProvider client={client}>
             <SessionProvider>
-              <AppNavigation initialState={stateForRoute(name, params)} />
+              {/* as in App.tsx: after a sign-in the gate opens onboarding, whose screens need their provider */}
+              <OnboardingProvider>
+                <AppNavigation initialState={stateForRoute(name, params)} />
+              </OnboardingProvider>
             </SessionProvider>
           </QueryClientProvider>
         </MotionPreferenceProvider>
       </ThemeProvider>
     </SafeAreaProvider>,
   );
+}
+
+/**
+ * Lets a request that a screen has only just started (the stub answers at once) land inside act(), so that nothing
+ * updates the tree between the end of a test and its cleanup. Real timers only.
+ */
+export const settle = () =>
+  act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 10));
+  });
+
+/** The gate has moved on to onboarding: its first step (S05) is on screen and its zone-list request has settled. */
+export async function onboardingOpened() {
+  const header = await screen.findByRole('header', { name: profileTitle });
+  await settle();
+  return header;
 }
 
 /**

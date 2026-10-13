@@ -7,6 +7,11 @@ import { NewPasswordScreen } from '../features/auth/NewPasswordScreen';
 import { SignInScreen } from '../features/auth/SignInScreen';
 import { SignUpScreen } from '../features/auth/SignUpScreen';
 import { WelcomeScreen } from '../features/auth/WelcomeScreen';
+import { ActivityStepScreen } from '../features/onboarding/ActivityStepScreen';
+import { ArchetypeStepScreen } from '../features/onboarding/ArchetypeStepScreen';
+import { ProfileStepScreen } from '../features/onboarding/ProfileStepScreen';
+import { stepOptions } from '../features/onboarding/StepScreen';
+import { OnbTargetsScreen, TargetsScreen } from '../features/onboarding/TargetsScreen';
 import type { ScreenEntry, TabRoot } from './routes';
 
 /** Signed out. */
@@ -19,13 +24,18 @@ export const authScreens: ScreenEntry[] = [
 ];
 
 /** Signed in, onboarding not finished. */
-export const onboardingScreens: ScreenEntry[] = [];
+export const onboardingScreens: ScreenEntry[] = [
+  { name: 'OnbProfile', component: ProfileStepScreen, options: stepOptions },
+  { name: 'OnbActivity', component: ActivityStepScreen, options: stepOptions },
+  { name: 'OnbArchetype', component: ArchetypeStepScreen, options: stepOptions },
+  { name: 'OnbTargets', component: OnbTargetsScreen, options: stepOptions },
+];
 
 /** The first screen of each tab. */
 export const tabRoots: TabRoot[] = [];
 
 /** Screens that open inside the stack of whichever tab they were opened from. */
-export const detailScreens: ScreenEntry[] = [];
+export const detailScreens: ScreenEntry[] = [{ name: 'Targets', component: TargetsScreen }];
 
 /** Full-screen modal flow above the tabs; the tab bar cannot interrupt it. */
 export const focusScreens: ScreenEntry[] = [];
