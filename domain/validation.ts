@@ -140,7 +140,7 @@ export function normalizeEmail(value: string): string {
 
 /**
  * The one spelling of a password before its length is judged and before it is derived into a
- * key: Unicode NFC, so that "ế" typed as one character (iOS) or as e + two marks (some
+ * key: Unicode NFC, so that "e" with circumflex and acute typed as one character (iOS) or as e + two marks (some
  * Android keyboards) is the same password. Nothing else: no trimming, no case change, no NFKC.
  * Client and server both call it; changing it afterwards orphans every stored key.
  */
