@@ -1,7 +1,12 @@
-import { screen } from '@testing-library/react-native';
+import { render, screen } from '@testing-library/react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import type { Archetype } from '../../../domain/types.ts';
 import { allowedArchetypes, bmi } from '../../../domain/validation.ts';
 import { healthVi } from '../../shared/i18n/vi/health';
+import { MotionPreferenceProvider } from '../../shared/motion/useReducedMotion';
+import { ThemeProvider } from '../../shared/theme/ThemeProvider';
 import { choose, draft, installOnboardingTestEnv, mount, onStep, press, sent, TITLES } from './onboardingTestKit';
+import { SafetySheet } from './SafetySheet';
 
 installOnboardingTestEnv();
 
@@ -13,6 +18,9 @@ const TANKER = /^Khỏe hơn mỗi ngày/;
 const ASSASSIN = /^Nhẹ nhàng, bền bỉ/;
 const SUPPORTER = /^Cân bằng lại nhịp sống/;
 const sheet = () => screen.queryByRole('header', { name: healthVi.blockedArchetype.title });
+// the directions the open sheet offers, read from its buttons
+const BUTTON_OF: Record<Archetype, string> = { TANKER: 'Chọn hướng tăng sức mạnh', ASSASSIN: 'Chọn hướng giảm mỡ', SUPPORTER: 'Chọn hướng cân bằng' };
+const offered = () => (Object.keys(BUTTON_OF) as Archetype[]).filter(archetype => screen.queryByRole('button', { name: BUTTON_OF[archetype] }));
 
 test('the test measurements are what they claim', () => {
   expect(bmi(175, 55)).toBeLessThan(18.5);
@@ -72,6 +80,32 @@ describe('S43: the reduce-fat direction is not offered for these measurements', 
     expect(sheet()).toBeNull();
     expect(checked()).toEqual([false, false, false]);
     expect(sent().every(r => r.method === 'GET')).toBe(true);
+  });
+
+  test('the directions offered are exactly the ones the domain allows for these measurements', async () => {
+    await mount('OnbArchetype', { draft: low });
+    await onStep(TITLES.OnbArchetype);
+    choose(ASSASSIN);
+    expect(offered()).toEqual(allowedArchetypes(175, 55));
+  });
+
+  test.each<[string, Archetype[]]>([
+    ['one direction', ['SUPPORTER']],
+    ['the other direction', ['TANKER']],
+    ['none', []],
+    ['all three (a refusal by the server only)', ['TANKER', 'ASSASSIN', 'SUPPORTER']],
+  ])('the sheet never offers a direction outside the allowed list: %s', (_name, allowed) => {
+    render(
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <MotionPreferenceProvider value="REDUCED">
+            <SafetySheet allowed={allowed} onChoose={() => undefined} onDismiss={() => undefined} />
+          </MotionPreferenceProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>,
+    );
+    // the reduce-fat direction is the one this sheet refuses, whatever the list says
+    expect(offered()).toEqual(allowed.filter(archetype => archetype !== 'ASSASSIN'));
   });
 
   test('it never shows a number or a word about the body', async () => {

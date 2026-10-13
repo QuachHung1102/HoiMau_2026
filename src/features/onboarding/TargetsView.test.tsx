@@ -27,7 +27,10 @@ test('the numbers are shown as given, with the band of calorieWindow and the est
   expect(screen.getByText(`Nhiệm vụ dinh dưỡng được tính khi bạn ghi nhận từ ${dotted(band.min)} đến ${dotted(band.max)} kcal.`)).toBeTruthy();
   expect(screen.getByText(`${dotted(plain.waterMl)} ml / ngày`)).toBeTruthy();
   expect(screen.getByText(`Đạm ${plain.proteinG} g · Béo ${plain.fatG} g · Carb ${plain.carbsG} g`)).toBeTruthy();
-  expect(screen.getByText(healthVi.estimate.prescription)).toBeTruthy();
+  // one closing paragraph (spec 9.2); the numbers are named as estimates by their labels
+  expect(screen.getByText(healthVi.disclaimer)).toBeTruthy();
+  expect(screen.queryByText(healthVi.estimate.prescription)).toBeNull();
+  for (const label of ['Năng lượng ước tính', 'Nước ước tính', 'Phân bổ dinh dưỡng ước tính']) expect(screen.getByText(label)).toBeTruthy();
   expect(screen.getByText('host actions')).toBeTruthy();
   expect(screen.queryByText(healthVi.safetyClamped.title)).toBeNull();
   expect(screen.queryByText(healthVi.macroAdjusted.title)).toBeNull();

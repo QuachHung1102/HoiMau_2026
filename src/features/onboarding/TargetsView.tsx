@@ -17,7 +17,7 @@ type Props = {
   archetype: Archetype;
   /** Shown as given: the numbers are the domain's (or the server's), never rounded or derived again here. */
   prescription: Prescription;
-  /** The actions of the screen that hosts the view (and, at the end of onboarding, the disclaimer). */
+  /** The actions of the screen that hosts the view; they come after the closing disclaimer. */
   children?: ReactNode;
 };
 
@@ -81,7 +81,8 @@ export function TargetsView({ archetype, prescription, children }: Props) {
         <AppText variant="secondary">{vi.macros(proteinG, fatG, carbsG)}</AppText>
       </View>
       {macroAdjusted ? <Explanation title={healthVi.macroAdjusted.title} body={healthVi.macroAdjusted.body} /> : null}
-      <AppText variant="caption">{healthVi.estimate.prescription}</AppText>
+      {/* the one closing paragraph (spec 9.2); each number above is named an estimate by its own label */}
+      <AppText variant="caption">{healthVi.disclaimer}</AppText>
       {children}
     </View>
   );

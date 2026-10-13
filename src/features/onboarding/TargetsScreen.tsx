@@ -9,11 +9,9 @@ import type { ScreenProps } from '../../app/routes';
 import { ApiError, isValidationDetails } from '../../shared/api/client';
 import { useSession } from '../../shared/api/session';
 import * as common from '../../shared/i18n/vi/common';
-import { healthVi } from '../../shared/i18n/vi/health';
 import * as vi from '../../shared/i18n/vi/onboarding';
 import { writeCache } from '../../shared/storage/cache';
 import { spacing } from '../../shared/theme/tokens';
-import { AppText } from '../../shared/ui/AppText';
 import { Button } from '../../shared/ui/Button';
 import { InlineError } from '../../shared/ui/Notices';
 import { Screen } from '../../shared/ui/Screen';
@@ -28,7 +26,7 @@ import { TargetsView } from './TargetsView';
 
 const isField = (name: string): name is OnboardingField => ONBOARDING_FIELDS.some(field => field === name);
 
-/** S08 / S62 at the end of onboarding: the estimates for what was entered, then "Hoàn tất" sends it once. */
+/** S08 / S62 at the end of onboarding: the estimates for what was entered, then the primary action sends it once. */
 export function OnbTargetsScreen({ navigation }: ScreenProps<'OnbTargets'>) {
   const { draft, edit, fail, setBlock, attemptKey, reset } = useOnboarding();
   const { userId } = useSession();
@@ -109,7 +107,6 @@ export function OnbTargetsScreen({ navigation }: ScreenProps<'OnbTargets'>) {
   return (
     <StepScreen title={vi.targetsTitle} subtitle={vi.targetsSubtitle} onBack={navigation.goBack}>
       <TargetsView archetype={request.archetype} prescription={preview}>
-        <AppText variant="caption">{healthVi.disclaimer}</AppText>
         {formError ? <InlineError message={formError} action={{ label: common.retry, onPress: submit }} /> : null}
         <View style={styles.actions}>
           <Button label={vi.finish} loading={send.isPending} onPress={submit} />

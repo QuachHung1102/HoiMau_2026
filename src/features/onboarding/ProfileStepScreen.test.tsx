@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { BackHandler, Platform } from 'react-native';
+import * as Keychain from 'react-native-keychain';
 import { healthVi } from '../../shared/i18n/vi/health';
 import { bornAt, deviceZone, draft, fetchMock, focusLog, installOnboardingTestEnv, mount, never, onStep, press, requests, respond, select, sent, serve, type, watchFocus, ZONES } from './onboardingTestKit';
 
@@ -28,6 +29,8 @@ test('S05 shows the step, the five fields, the privacy card and the action; the 
   expect(screen.getByText('Số đo chỉ mình bạn thấy')).toBeTruthy();
   expect(screen.getByText('Tổ đội không xem được cân nặng hay mục tiêu năng lượng của bạn.')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Tiếp tục' })).toBeTruthy();
+  // quiet, after the main action: the way out for someone who is on the wrong account
+  expect(screen.getByRole('link', { name: 'Đăng xuất' })).toBeTruthy();
   // the first step has nowhere to go back to
   expect(screen.queryByRole('button', { name: 'Quay lại' })).toBeNull();
   expect(sent().map(r => `${r.method} ${r.path}`).sort()).toEqual(['GET /me', 'GET /meta/timezones']);
@@ -47,11 +50,35 @@ test('valid values, written with a comma or a dot, move on to S06 and keep what 
   fill({ height: '170,5', weight: '65.2' });
   next();
   expect(await onActivity()).toBeTruthy();
+  // the later steps keep Back only
+  expect(screen.queryByRole('link', { name: 'Đăng xuất' })).toBeNull();
   press('Quay lại');
   await ready();
   expect(screen.getByLabelText('Chiều cao · cm').props.value).toBe('170,5');
   expect(screen.getByLabelText('Cân nặng · kg').props.value).toBe('65.2');
   expect(screen.getByRole('combobox', { name: 'Giới tính dùng trong công thức, Nam' })).toBeTruthy();
+});
+
+test('"Đăng xuất" on S05 revokes the session once and returns to Welcome; S61 does not offer it', async () => {
+  serve({ 'POST /auth/logout': respond(204) });
+  await mount();
+  await ready();
+  fill({ birthYear: bornAt(15) });
+  next();
+  await screen.findByRole('header', { name: healthVi.under16.title });
+  expect(screen.queryByRole('link', { name: 'Đăng xuất' })).toBeNull();
+  press('Kiểm tra lại năm sinh');
+  await ready();
+  const link = screen.getByRole('link', { name: 'Đăng xuất' });
+  await act(async () => {
+    fireEvent.press(link);
+    fireEvent.press(link);
+  });
+  expect(await screen.findByRole('button', { name: 'Bắt đầu hành trình' })).toBeTruthy();
+  expect(sent().filter(r => r.path === '/auth/logout').map(r => r.method)).toEqual(['POST']);
+  expect(await Keychain.getGenericPassword()).toBe(false);
+  // nothing that was typed went anywhere
+  expect(sent().filter(r => r.body !== undefined)).toEqual([]);
 });
 
 describe('S60: a value outside its limit', () => {
@@ -197,6 +224,9 @@ describe('S61: under 16', () => {
   });
 
   test('"Tìm hiểu thêm" opens the health information, which closes again', async () => {
+    // Mounted straight into S61, nothing below waits for the zone list the step asks for: its answer would re-render
+    // the step at a moment this test does not control (after its last line, before the cleanup). Here it never comes.
+    serve({ 'GET /meta/timezones': never });
     await mount('OnbProfile', { draft, block: 'age' });
     await blocked();
     press('Tìm hiểu thêm');

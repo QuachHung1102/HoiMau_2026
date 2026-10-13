@@ -9,7 +9,9 @@ import { Card } from '../../shared/ui/Card';
 import { Icon } from '../../shared/ui/Icon';
 
 type Props = {
-  /** One of the two directions that are offered instead. */
+  /** What `allowedArchetypes` gives for this profile: a direction outside it is never offered. */
+  allowed: readonly Archetype[];
+  /** One of the directions that are offered instead. */
   onChoose: (archetype: Archetype) => void;
   /** Go back to the measurements; without it the button is not shown. */
   onReviewProfile?: () => void;
@@ -18,10 +20,11 @@ type Props = {
 
 /**
  * S43: the reduce-fat direction is not applied to this profile. It explains (the reviewed copy of health.ts, never
- * a judgement of the person) and offers the two directions that are; there is no way to confirm the refused one.
+ * a judgement of the person) and offers the directions that are, and only those the domain allows for this profile;
+ * there is no way to confirm the refused one.
  * Mount it only while it is open.
  */
-export function SafetySheet({ onChoose, onReviewProfile, onDismiss }: Props) {
+export function SafetySheet({ allowed, onChoose, onReviewProfile, onDismiss }: Props) {
   const copy = healthVi.blockedArchetype;
   return (
     <BottomSheet title={copy.title} onDismiss={onDismiss}>
@@ -32,9 +35,11 @@ export function SafetySheet({ onChoose, onReviewProfile, onDismiss }: Props) {
         <AppText variant="secondary">{copy.body}</AppText>
       </Card>
       <View style={styles.actions}>
-        {copy.directions.map(direction => (
-          <Button key={direction.archetype} label={vi.chooseDirection(direction.label)} onPress={() => onChoose(direction.archetype)} />
-        ))}
+        {copy.directions
+          .filter(direction => allowed.includes(direction.archetype))
+          .map(direction => (
+            <Button key={direction.archetype} label={vi.chooseDirection(direction.label)} onPress={() => onChoose(direction.archetype)} />
+          ))}
         {onReviewProfile ? <Button variant="secondary" label={vi.reviewProfile} onPress={onReviewProfile} /> : null}
       </View>
       <AppText variant="caption">{copy.footer}</AppText>

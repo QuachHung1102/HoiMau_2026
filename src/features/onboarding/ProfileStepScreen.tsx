@@ -2,6 +2,8 @@ import { useIsFocused } from '@react-navigation/native';
 import { useEffect, useRef, useState } from 'react';
 import { BackHandler, Platform, StyleSheet, View } from 'react-native';
 import type { ScreenProps } from '../../app/routes';
+import { useSession } from '../../shared/api/session';
+import * as authVi from '../../shared/i18n/vi/auth';
 import * as common from '../../shared/i18n/vi/common';
 import { healthVi } from '../../shared/i18n/vi/health';
 import * as vi from '../../shared/i18n/vi/onboarding';
@@ -14,6 +16,7 @@ import { Mam } from '../../shared/ui/mam/Mam';
 import { InlineError } from '../../shared/ui/Notices';
 import type { TextFieldInput } from '../../shared/ui/TextField';
 import { focusFirstInvalid } from '../auth/form';
+import { TextLink } from '../auth/TextLink';
 import { BiometricsFields, checkBiometrics, TimezoneField, timezoneProblem, useTimezoneChoice } from './BiometricsFields';
 import { ONBOARDING_FIELDS, useOnboarding } from './OnboardingProvider';
 import { StepScreen } from './StepScreen';
@@ -61,6 +64,7 @@ function UnderSixteen({ onCheck }: { onCheck: () => void }) {
 export function ProfileStepScreen({ navigation }: ScreenProps<'OnbProfile'>) {
   const { draft, errors, block, focusRequest, edit, fail, setBlock } = useOnboarding();
   const focused = useIsFocused();
+  const { signOut } = useSession();
   const { zone, zones } = useTimezoneChoice(draft.timezone);
   const birthYear = useRef<TextFieldInput>(null);
   const heightCm = useRef<TextFieldInput>(null);
@@ -119,6 +123,10 @@ export function ProfileStepScreen({ navigation }: ScreenProps<'OnbProfile'>) {
       </Card>
       {errors.form ? <InlineError message={errors.form} /> : null}
       <Button label={common.next} onPress={next} style={styles.next} />
+      {/* The only step with a way out of the account (wrong account, shared phone); the session makes it one flight. */}
+      <View style={styles.signOut}>
+        <TextLink label={authVi.signOut} onPress={() => signOut()} />
+      </View>
     </StepScreen>
   );
 }
@@ -129,4 +137,5 @@ const styles = StyleSheet.create({
   paragraph: { marginTop: 12, gap: 2 },
   privacy: { gap: 4, marginTop: spacing.section - 8 },
   next: { marginTop: spacing.section - 8 },
+  signOut: { alignItems: 'center', marginTop: 8 },
 });

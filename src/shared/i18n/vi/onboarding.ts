@@ -81,7 +81,7 @@ export const archetypeNext = 'Xem lộ trình của tôi';
 export const chooseDirection = (label: string) => `Chọn hướng ${label.charAt(0).toLowerCase()}${label.slice(1)}`;
 export const reviewProfile = 'Kiểm tra lại hồ sơ';
 
-// S08 / S62 and the Targets screen (the explanations are healthVi.safetyClamped, .macroAdjusted, .estimate, .disclaimer)
+// S08 / S62 and the Targets screen (the explanations are healthVi.safetyClamped, .macroAdjusted, .disclaimer)
 export const targetsTitle = 'Lộ trình dành cho bạn';
 export const targetsSubtitle = 'Bắt đầu vừa sức, điều chỉnh khi cần.';
 export const targetsDetailTitle = 'Mục tiêu cá nhân';
@@ -98,5 +98,6 @@ export const waterLabel = 'Nước ước tính';
 export const mlPerDay = (ml: number) => `${grouped(ml)} ml / ngày`;
 export const macrosTitle = 'Phân bổ dinh dưỡng ước tính';
 export const macros = (proteinG: number, fatG: number, carbsG: number) => `Đạm ${proteinG} g · Béo ${fatG} g · Carb ${carbsG} g`;
-export const finish = 'Hoàn tất';
+// the primary of S08, as in the frame; it finishes onboarding (POST /onboarding) and the gate opens Today
+export const finish = 'Đến Hôm nay';
 export const editProfile = 'Chỉnh lại hồ sơ';

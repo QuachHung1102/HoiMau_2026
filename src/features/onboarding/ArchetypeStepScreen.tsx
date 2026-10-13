@@ -76,6 +76,7 @@ export function ArchetypeStepScreen({ navigation }: ScreenProps<'OnbArchetype'>)
       <Button label={vi.archetypeNext} onPress={next} style={styles.next} />
       {block === 'archetype' ? (
         <SafetySheet
+          allowed={allowed}
           onChoose={archetype => {
             edit({ archetype });
             setBlock(null);
