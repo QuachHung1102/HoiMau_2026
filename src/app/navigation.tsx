@@ -14,7 +14,7 @@ import {
   type Theme,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useMe } from '../features/auth/api';
 import { ApiError } from '../shared/api/client';
@@ -101,6 +101,13 @@ function MainTabs() {
 function SignOutButton() {
   const { signOut } = useSession();
   const [leaving, setLeaving] = useState(false);
+  const mounted = useRef(true);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    [],
+  );
   return (
     <Button
       variant="secondary"
@@ -108,7 +115,11 @@ function SignOutButton() {
       loading={leaving}
       onPress={() => {
         setLeaving(true);
-        signOut();
+        // `signOut` also settles when the user chose to stay (records still waiting): the button must work again.
+        // After a real sign-out this screen is gone before the promise settles.
+        signOut().finally(() => {
+          if (mounted.current) setLeaving(false);
+        });
       }}
     />
   );

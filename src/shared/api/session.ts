@@ -3,9 +3,9 @@ import { createContext, createElement, useCallback, useContext, useEffect, useMe
 import * as Keychain from 'react-native-keychain';
 import * as syncVi from '../i18n/vi/sync';
 import { clearUserCache } from '../storage/cache';
-import { clearPendingFor, flushPending } from '../storage/pendingActions';
+import { clearPendingFor, flushPending, unsentCount } from '../storage/pendingActions';
 import { Dialog } from '../ui/Dialog';
-import { api, bindApiSession } from './client';
+import { api, bindApiSession, stopRecording } from './client';
 
 export type Session = {
   status: 'loading' | 'signedOut' | 'signedIn';
@@ -66,8 +66,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<Pick<Session, 'status' | 'userId' | 'expired'>>({ status: 'loading', userId: null, expired: false });
   const userIdRef = useRef<string | null>(null);
   const leaving = useRef<Promise<void> | null>(null);
-  // Sign-out guard: how many records would be dropped, while the person is being asked; and where the answer goes.
-  const [unsent, setUnsent] = useState<number | null>(null);
+  // Sign-out guard: how many records would be dropped ('unknown': the stored queue could not be read), while the
+  // person is being asked; and where the answer goes.
+  const [unsent, setUnsent] = useState<number | 'unknown' | null>(null);
   const answer = useRef<((discard: boolean) => void) | null>(null);
   const reply = useCallback((discard: boolean) => {
     answer.current?.(discard);
@@ -80,6 +81,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     (expired: boolean) => {
       leaving.current ??= (async () => {
         const userId = userIdRef.current;
+        // From here on nothing more is recorded for this user: a record accepted during the wait below would be
+        // wiped at the end without the question having been asked about it.
+        if (!expired) stopRecording();
         if (userId && !expired) {
           // Revoke on the server while the token is still bound. Best effort: signing out must work offline, so a
           // failure or a timeout (the client's 10 s) just continues on the device.
@@ -108,13 +112,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     const userId = userIdRef.current;
     if (userId && !leaving.current) {
-      // One last attempt to deliver, then the truth about what is left.
-      const { remaining } = await flushPending(userId);
-      if (remaining > 0 && userIdRef.current === userId) {
+      // One last attempt to deliver, then the truth about what is left. A queue that cannot be read is not an
+      // empty one: the question is asked without a number.
+      await flushPending(userId);
+      const left = (await unsentCount(userId)) ?? 'unknown';
+      if (left !== 0 && userIdRef.current === userId) {
         const discard = await new Promise<boolean>(resolve => {
           answer.current?.(false); // a second request replaces the first question
           answer.current = resolve;
-          setUnsent(remaining);
+          setUnsent(left);
         });
         if (!discard) return;
       }
@@ -171,8 +177,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     unsent === null
       ? null
       : createElement(Dialog, {
-          title: syncVi.signOutPendingTitle(unsent),
-          body: syncVi.signOutPendingBody,
+          title: unsent === 'unknown' ? syncVi.signOutUnreadTitle : syncVi.signOutPendingTitle(unsent),
+          body: unsent === 'unknown' ? syncVi.signOutUnreadBody : syncVi.signOutPendingBody,
           primary: { label: syncVi.stay, onPress: () => reply(false) },
           secondary: { label: syncVi.signOutAndDiscard, onPress: () => reply(true) },
           onDismiss: () => reply(false),

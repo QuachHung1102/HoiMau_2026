@@ -5,7 +5,7 @@ import * as vi from '../../shared/i18n/vi/sync';
 import { motion } from '../../shared/motion/motion';
 import { useLoopGate } from '../../shared/motion/useLoopGate';
 import { useTheme } from '../../shared/theme/ThemeProvider';
-import { spacing } from '../../shared/theme/tokens';
+import { sizes, spacing } from '../../shared/theme/tokens';
 import { AppText } from '../../shared/ui/AppText';
 import { Icon } from '../../shared/ui/Icon';
 import { Touchable } from '../../shared/ui/Touchable';
@@ -100,5 +100,6 @@ const styles = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingBottom: 8, paddingHorizontal: spacing.screen, borderBottomWidth: StyleSheet.hairlineWidth },
   dot: { width: DOT, height: DOT, borderRadius: DOT / 2, margin: 4 },
   text: { flex: 1, gap: 2 },
-  retry: { justifyContent: 'center' },
+  // A real 48 dp box: hit slop outside the row would be clipped by it on Android.
+  retry: { minHeight: sizes.minTouch, minWidth: sizes.minTouch, alignItems: 'center', justifyContent: 'center' },
 });

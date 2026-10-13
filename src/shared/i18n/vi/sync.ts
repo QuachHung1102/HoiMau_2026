@@ -51,5 +51,8 @@ export const corruptBody = 'Một số ghi nhận đang chờ gửi trên máy k
 // Signing out while records are still waiting.
 export const signOutPendingTitle = (count: number) => `Còn ${count} ghi nhận chưa gửi`;
 export const signOutPendingBody = 'Các ghi nhận này mới chỉ lưu trên máy. Nếu đăng xuất bây giờ, chúng sẽ bị bỏ và không được tính.';
+// The stored queue could not be read at that moment: no number can be named.
+export const signOutUnreadTitle = 'Có thể còn ghi nhận chưa gửi';
+export const signOutUnreadBody = 'Máy chưa đọc được các ghi nhận đang chờ gửi. Nếu đăng xuất bây giờ, những ghi nhận chưa gửi trên máy này sẽ bị bỏ và không được tính.';
 export const stay = 'Ở lại';
 export const signOutAndDiscard = 'Đăng xuất và bỏ các ghi nhận này';

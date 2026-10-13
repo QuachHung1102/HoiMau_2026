@@ -492,6 +492,30 @@ describe('signing out while records are still waiting to be sent', () => {
     expect(await idsOnDisk()).toEqual(['a1']);
   });
 
+  test('a queue that cannot be read is not an empty one: the question is asked without a number, and "Ở lại" leaves the stored queue untouched', async () => {
+    const storedQueue = JSON.stringify([{ ...record('a1'), attempts: 0, status: 'queued' }]);
+    await AsyncStorage.setItem(QUEUE, storedQueue);
+    mount();
+    await screen.findByText('signedOut|-|ok');
+    await act(() => session.signIn(TOKEN, USER));
+    jest.spyOn(AsyncStorage, 'getMany').mockRejectedValue(new Error('io'));
+    let leaving!: Promise<void>;
+    act(() => {
+      leaving = session.signOut();
+    });
+    expect(await screen.findByRole('header', { name: 'Có thể còn ghi nhận chưa gửi' })).toBeTruthy();
+    expect(screen.queryByText(/Còn \d+ ghi nhận chưa gửi/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Đăng xuất và bỏ các ghi nhận này' })).toBeTruthy();
+    expect(paths()).toEqual([]); // nothing sent, nothing revoked
+
+    fireEvent.press(screen.getByRole('button', { name: 'Ở lại' }));
+    await act(() => leaving);
+    expect(screen.queryByRole('header', { name: 'Có thể còn ghi nhận chưa gửi' })).toBeNull();
+    expect(screen.getByText(`signedIn|${USER}|ok`)).toBeTruthy();
+    expect(await AsyncStorage.getItem(QUEUE)).toBe(storedQueue);
+    expect(await Keychain.getGenericPassword()).toMatchObject({ username: USER, password: TOKEN });
+  });
+
   test('the session ends while the question is open: the question goes, the queue stays', async () => {
     const { leaving } = await signOutWithTwoWaiting();
     fetchMock.mockResolvedValue(sessionInvalid());

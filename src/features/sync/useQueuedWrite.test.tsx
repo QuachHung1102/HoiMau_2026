@@ -171,3 +171,34 @@ test('a screen that outlived its session files nothing for the user who left', a
   expect(await AsyncStorage.getAllKeys()).toEqual([]);
   view.unmount();
 });
+
+test('once a sign-out is under way (the revoke is out, the token still bound) a record is refused, not accepted and then wiped', async () => {
+  const view = await mountApp();
+  let finishLogout!: (response: unknown) => void;
+  fetchMock.mockImplementation(async (url, init) => {
+    if (url.endsWith('/auth/logout')) return new Promise(resolve => (finishLogout = resolve));
+    if (init.method === 'GET') return server.me();
+    throw new TypeError('Network request failed'); // no record could leave
+  });
+  let leaving!: Promise<void>;
+  await act(async () => {
+    leaving = app.session.signOut(); // nothing is waiting: no question, straight to the revoke
+  });
+  await settle();
+  expect(typeof finishLogout).toBe('function');
+  expect(app.session.status).toBe('signedIn');
+
+  const result = await send();
+  expect(result).toMatchObject({ state: 'failed', code: 'SESSION_INVALID' });
+  expect(writes()).toEqual([]);
+  expect(await idsOnDisk()).toEqual([]);
+
+  await act(async () => {
+    finishLogout(respond(204));
+    await leaving;
+  });
+  await settle();
+  expect(app.session.status).toBe('signedOut');
+  expect(await AsyncStorage.getAllKeys()).toEqual([]);
+  view.unmount();
+});
