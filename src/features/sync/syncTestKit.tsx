@@ -1,7 +1,8 @@
 /* eslint-env jest */
 // Test kit for the sync feature (used by its *.test.tsx files; never imported by app code).
 // The queue runs inside the same providers and navigators as the app, exactly as App.tsx mounts them, against a
-// stubbed `fetch`; a signed-in, onboarded user lands on the main group, where "Đăng xuất" is on screen.
+// stubbed `fetch`; a signed-in, onboarded user lands on a tab that has no screen yet, where "Đăng xuất" is on screen
+// (the app itself opens on Hôm nay, which has its own tests and would add its own requests to these).
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen } from '@testing-library/react-native';
@@ -9,7 +10,8 @@ import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import * as Keychain from 'react-native-keychain';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AppNavigation } from '../../app/navigation';
+import { AppNavigation, stateForRoute } from '../../app/navigation';
+import type { TabRootName } from '../../app/routes';
 import { SessionProvider, useSession, wipeQueries, type Session } from '../../shared/api/session';
 import { groupPendingTitle } from '../../shared/i18n/vi/nav';
 import { MotionPreferenceProvider } from '../../shared/motion/useReducedMotion';
@@ -67,10 +69,13 @@ function Recorder() {
 let client: QueryClient | undefined;
 export const queryClient = () => client as QueryClient;
 
-type Options = { signedIn?: boolean; motion?: 'REDUCED' | 'FULL'; extra?: ReactNode; landed?: boolean };
+type Options = { signedIn?: boolean; motion?: 'REDUCED' | 'FULL'; extra?: ReactNode; landed?: boolean; tab?: TabRootName };
 
-/** The app as App.tsx mounts it. `signedIn: false` starts on Welcome; `landed: false` does not wait for the main group. */
-export async function mountApp({ signedIn = true, motion = 'REDUCED', extra, landed = signedIn }: Options = {}) {
+/**
+ * The app as App.tsx mounts it, opened on `tab` (default: one without a screen yet). `signedIn: false` starts on
+ * Welcome; `landed: false` does not wait for that tab's notice.
+ */
+export async function mountApp({ signedIn = true, motion = 'REDUCED', extra, landed = signedIn, tab = 'Profile' }: Options = {}) {
   if (signedIn) await Keychain.setGenericPassword(USER, TOKEN);
   if (client) wipeQueries(client); // a second mount in one test: the first tree is unmounted, its cache must not keep timers
   client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -83,7 +88,7 @@ export async function mountApp({ signedIn = true, motion = 'REDUCED', extra, lan
               <OnboardingProvider>
                 <View style={styles.fill}>
                   <PendingBanner />
-                  <AppNavigation />
+                  <AppNavigation initialState={signedIn ? stateForRoute(tab) : undefined} />
                 </View>
                 <RejectedNotice />
                 <Recorder />
@@ -97,6 +102,7 @@ export async function mountApp({ signedIn = true, motion = 'REDUCED', extra, lan
   );
   if (landed) await screen.findByText(groupPendingTitle);
   await settle(); // the flush that starts with the session has landed
+  if (landed) await settle(); // and the tab shell's mount animations have ended (16 ms each in Jest's Animated)
   return view;
 }
 
@@ -116,7 +122,9 @@ export function installSyncTestEnv() {
     Object.assign(server, { down: false, write: () => respond(200, { ok: true }), me: () => respond(200, onboarded) });
     fetchMock.mockImplementation(async (url, init) => {
       if (server.down) throw new TypeError('Network request failed');
-      if (init.method === 'GET') return url.endsWith('/me') ? server.me() : respond(200, {});
+      // This server has no day: when a test ends up on Hôm nay (a second sign-in opens the first tab), that screen
+      // shows its own error state and stays out of the way.
+      if (init.method === 'GET') return url.endsWith('/me') ? server.me() : url.endsWith('/day') ? respond(404) : respond(200, {});
       return url.endsWith('/auth/logout') ? respond(204) : server.write();
     });
   });

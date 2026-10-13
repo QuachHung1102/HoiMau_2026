@@ -110,12 +110,23 @@ test('signed in and not onboarded: onboarding opens on its first step (S05), wit
   screen.unmount();
 });
 
-test('signed in and onboarded: the main group (its notice until the first tab root lands)', async () => {
+test('signed in and onboarded: the four tabs, opened on Hôm nay; a tab without a screen yet shows its notice and "Đăng xuất"', async () => {
   await signedIn();
-  fetchMock.mockResolvedValue(respond(200, meOf(true)));
+  // this server knows the profile only: Hôm nay shows its own load failure (that screen has its own tests)
+  fetchMock.mockImplementation(async url => (url.endsWith('/me') ? respond(200, meOf(true)) : respond(404)));
   render(<App />);
+  expect(await screen.findByRole('tab', { name: 'Hôm nay', selected: true })).toBeTruthy();
+  expect(screen.getAllByRole('tab').map(tab => tab.props.accessibilityLabel)).toEqual(['Hôm nay', 'Lộ trình', 'Tổ đội', 'Cá nhân']);
+  expect(screen.getByRole('header', { name: 'Hôm nay' })).toBeTruthy();
+  expect(await screen.findByText('Chưa tải được dữ liệu')).toBeTruthy();
+
+  fireEvent.press(screen.getByRole('tab', { name: 'Cá nhân' }));
   expect(await screen.findByText('Phần này đang được hoàn thiện')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Đăng xuất' })).toBeTruthy();
+  // bottom-tabs lets go of the tab left behind on a 32 ms timer of its own
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 40));
+  });
   screen.unmount();
 });
 

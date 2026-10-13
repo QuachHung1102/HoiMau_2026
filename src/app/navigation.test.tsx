@@ -340,6 +340,8 @@ test.each([
   const shown = await screen.findByText(text);
   if (tabLabel) expect(screen.getByRole('tab', { name: tabLabel, selected: true })).toBeTruthy();
   else {
+    // opened directly on a detail or a focus screen: no tab bar there either
+    expect(tabNames()).toEqual([]);
     fireEvent.press(within(shown.parent!.parent!).getByText('back'));
     expect(await screen.findByRole('tab', { name: 'Hôm nay', selected: true })).toBeTruthy();
   }

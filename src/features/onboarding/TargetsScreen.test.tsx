@@ -7,6 +7,9 @@ import { healthVi } from '../../shared/i18n/vi/health';
 import { useOnboarding, type Onboarding } from './OnboardingProvider';
 import { bornAt, diskText, dotted, draft, focusLog, installOnboardingTestEnv, meOnboarded, mount, never, onStep, press, queryClient, refuse, requests, respond, sent, serve, settle, TITLES, TOKEN, type } from './onboardingTestKit';
 
+// These tests end where onboarding hands over: the main group without its screens (Hôm nay has its own tests).
+jest.mock('../../app/screens', () => ({ ...jest.requireActual('../../app/screens'), tabRoots: [] }));
+
 installOnboardingTestEnv();
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -14,7 +17,7 @@ const posts = () => sent().filter(r => r.method === 'POST' && r.path === '/onboa
 const keys = () => posts().map(r => r.headers['Idempotency-Key']);
 const ready = () => onStep(TITLES.OnbTargets);
 const finish = () => press('Đến Hôm nay');
-const MAIN = 'Phần này đang được hoàn thiện'; // the main group's notice while no tab root is registered
+const MAIN = 'Phần này đang được hoàn thiện'; // the notice of a tab whose root is not registered
 // what the kit's draft says, as the numbers the domain takes
 const person = { heightCm: 171.5, weightKg: 63.25, ageYears: 30, sex: 'MALE', activityLevel: 'LIGHT', archetype: 'TANKER' } as const;
 
