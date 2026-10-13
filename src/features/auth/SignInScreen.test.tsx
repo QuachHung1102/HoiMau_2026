@@ -1,7 +1,7 @@
 import { onlineManager } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import * as Keychain from 'react-native-keychain';
-import { answer, fetchMock, mount, pendingRequest, queryClient, refuse, respond, sent, session, TOKEN, USER, installAuthTestEnv, watchFocus } from './authTestKit';
+import { answer, fetchMock, mount, onboardingOpened, pendingRequest, queryClient, refuse, respond, sent, session, TOKEN, USER, installAuthTestEnv, watchFocus } from './authTestKit';
 
 installAuthTestEnv();
 
@@ -59,7 +59,7 @@ test('"next" on the email moves to the password; "go" on the password submits', 
   expect(fetchMock).not.toHaveBeenCalled();
   fireEvent(screen.getByLabelText('Mật khẩu'), 'submitEditing');
   await waitFor(() => expect(sent().map(r => r.path)).toContain('/auth/login'));
-  await screen.findByText('Phần này đang được hoàn thiện');
+  await onboardingOpened();
 });
 
 test('happy path: POST /auth/login with the normalised email and the password as typed, no Idempotency-Key, one sign-in', async () => {
@@ -69,7 +69,7 @@ test('happy path: POST /auth/login with the normalised email and the password as
   fill('  An@Example.VN ', ' mật khẩu có khoảng trắng ');
   signIn();
   // the root gate moves on by itself: the new account has no profile yet
-  expect(await screen.findByText('Phần này đang được hoàn thiện')).toBeTruthy();
+  expect(await onboardingOpened()).toBeTruthy();
   const [login] = sent();
   expect(login).toMatchObject({ method: 'POST', path: '/auth/login', body: { email: 'an@example.vn', password: ' mật khẩu có khoảng trắng ' } });
   const headers = Object.keys(login.headers).map(h => h.toLowerCase());
@@ -96,7 +96,7 @@ test('the password stays in the field until the sign-in has succeeded, and the m
   // but the request is over, so the variables that held it are gone from the query client
   await waitFor(() => expect(queryClient().getMutationCache().getAll()).toEqual([]));
   await act(async () => finishKeychain());
-  await screen.findByText('Phần này đang được hoàn thiện');
+  await onboardingOpened();
 });
 
 describe('client validation blocks the request and names the field', () => {
@@ -246,7 +246,7 @@ describe('failed requests', () => {
     fill();
     signIn();
     expect(await screen.findByText('Có lỗi xảy ra. Bạn thử lại nhé.')).toBeTruthy();
-    expect(screen.queryByText('Phần này đang được hoàn thiện')).toBeNull();
+    expect(screen.queryByText('Bắt đầu từ bạn')).toBeNull();
     // the form keeps what was typed
     expect(screen.getByLabelText('Mật khẩu').props.value).toBe('mat-khau-dung');
     expect(screen.getByLabelText('Email').props.value).toBe('an@example.vn');
@@ -287,7 +287,7 @@ describe('one request at a time', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Đăng nhập' }));
     expect(sent().filter(r => r.path === '/auth/login')).toHaveLength(1);
     await act(async () => request.finish(respond(200, session)));
-    await screen.findByText('Phần này đang được hoàn thiện');
+    await onboardingOpened();
     expect(Keychain.setGenericPassword).toHaveBeenCalledTimes(1);
   });
 
@@ -358,7 +358,7 @@ describe('the session ended on the server', () => {
     expect(liveRegionOf(SESSION_ENDED)).toBe('polite');
     fill();
     signIn();
-    await screen.findByText('Phần này đang được hoàn thiện');
+    await onboardingOpened();
     expect(screen.queryByText(SESSION_ENDED)).toBeNull();
     expect(Keychain.setGenericPassword).toHaveBeenCalledTimes(1);
   });

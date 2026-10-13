@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import * as Keychain from 'react-native-keychain';
 import { legalVi } from '../../shared/i18n/vi/legal';
-import { answer, fetchMock, mount, pendingRequest, queryClient, refuse, respond, sent, session, TOKEN, USER, installAuthTestEnv, watchFocus } from './authTestKit';
+import { answer, fetchMock, mount, onboardingOpened, pendingRequest, queryClient, refuse, respond, sent, session, TOKEN, USER, installAuthTestEnv, watchFocus } from './authTestKit';
 
 installAuthTestEnv();
 
@@ -56,7 +56,7 @@ test('"next" walks name, email, password; "go" on the password submits', async (
   expect(focusPassword).toHaveBeenCalledTimes(1);
   expect(fetchMock).not.toHaveBeenCalled();
   fireEvent(screen.getByLabelText('Mật khẩu'), 'submitEditing');
-  await screen.findByText('Phần này đang được hoàn thiện');
+  await onboardingOpened();
 });
 
 test('happy path: POST /auth/register with the contract body and no Idempotency-Key, one sign-in, then the gate moves on', async () => {
@@ -65,7 +65,7 @@ test('happy path: POST /auth/register with the contract body and no Idempotency-
   await ready();
   fill({ name: '  Nguyễn Thị An  ', email: ' An@Example.VN ', password: ' mật khẩu có khoảng trắng ' });
   create();
-  expect(await screen.findByText('Phần này đang được hoàn thiện')).toBeTruthy();
+  expect(await onboardingOpened()).toBeTruthy();
   const [register] = sent();
   expect(register).toMatchObject({
     method: 'POST',
@@ -92,7 +92,7 @@ test('the password stays in the field until the sign-in has succeeded, and the m
   expect(screen.getByLabelText('Mật khẩu').props.value).toBe('mat-khau-dung');
   await waitFor(() => expect(queryClient().getMutationCache().getAll()).toEqual([]));
   await act(async () => finishKeychain());
-  await screen.findByText('Phần này đang được hoàn thiện');
+  await onboardingOpened();
 });
 
 test('the keychain failing after the account was created: the form keeps its values and says the account exists', async () => {
@@ -103,7 +103,7 @@ test('the keychain failing after the account was created: the form keeps its val
   fill();
   create();
   expect(await screen.findByText('Tài khoản đã được tạo nhưng chưa đăng nhập được. Bạn thử đăng nhập bằng email vừa dùng nhé.')).toBeTruthy();
-  expect(screen.queryByText('Phần này đang được hoàn thiện')).toBeNull();
+  expect(screen.queryByText('Bắt đầu từ bạn')).toBeNull();
   expect(screen.getByLabelText('Mật khẩu').props.value).toBe('mat-khau-dung');
   expect(screen.getByLabelText('Email').props.value).toBe('an@example.vn');
   expect(screen.getByLabelText('Tên hiển thị').props.value).toBe('An');
@@ -183,7 +183,7 @@ describe('client validation blocks the request and names the field', () => {
     type('Mật khẩu, lỗi: Mật khẩu cần ít nhất 8 ký tự.', '12345678');
     create();
     await waitFor(() => expect(registers()).toHaveLength(1));
-    await screen.findByText('Phần này đang được hoàn thiện');
+    await onboardingOpened();
   });
 
   test('a password over the limit is refused', async () => {
@@ -332,7 +332,7 @@ describe('one request at a time', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Tạo tài khoản' }));
     expect(registers()).toHaveLength(1);
     await act(async () => request.finish(respond(201, session)));
-    await screen.findByText('Phần này đang được hoàn thiện');
+    await onboardingOpened();
     expect(Keychain.setGenericPassword).toHaveBeenCalledTimes(1);
   });
 
