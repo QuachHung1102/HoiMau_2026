@@ -46,6 +46,15 @@ test('findBannedTerms reports each term once, in list order', () => {
   );
 });
 
+test('findBannedTerms folds fullwidth letters and drops invisible characters before matching', () => {
+  const cp = String.fromCodePoint;
+  const fullwidth = 'ｋｅ ｌｕｏｉ'; // NFKC: "ke luoi"
+  assert.deepEqual(findBannedTerms(fullwidth), ['kẻ lười']);
+  assert.deepEqual(findBannedTerms('ＢＵＡ ＡＮ'), []); // fullwidth letters of something harmless stay harmless
+  assert.deepEqual(findBannedTerms(`k${cp(0x200b)}ẻ l${cp(0x3164)}ười`), ['kẻ lười']);
+  assert.deepEqual(findBannedTerms(`ng${cp(0xe0041)}ủ nư${cp(0x2800)}ớng`), ['ngủ nướng']);
+});
+
 test('findBannedTerms matches whole words only', () => {
   assert.deepEqual(findBannedTerms('Chất béo tốt cho bữa ăn hôm nay.'), []);
   assert.deepEqual(findBannedTerms('chất béo'), []);
