@@ -363,3 +363,18 @@ describe('the session ended on the server', () => {
     expect(Keychain.setGenericPassword).toHaveBeenCalledTimes(1);
   });
 });
+
+// e + combining circumflex + combining acute: three code points that NFC joins into U+1EBF.
+const ECIRC_ACUTE_NFD = String.fromCodePoint(0x65, 0x302, 0x301);
+const ECIRC_ACUTE_NFC = String.fromCodePoint(0x1ebf);
+
+test('the password typed decomposed is sent in NFC (normalizePassword), nothing else changed', async () => {
+  answer('/auth/login', respond(200, session));
+  mount('SignIn');
+  await ready();
+  fill('an@example.vn', `${ECIRC_ACUTE_NFD}abcdefg `);
+  signIn();
+  expect(await onboardingOpened()).toBeTruthy();
+  const [login] = sent();
+  expect(login.body?.password).toBe(`${ECIRC_ACUTE_NFC}abcdefg `); // not trimmed
+});

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { LIMITS, normalizeEmail } from '../../../domain/validation.ts';
+import { LIMITS, normalizeEmail, normalizePassword } from '../../../domain/validation.ts';
 import type { ScreenProps } from '../../app/routes';
 import * as vi from '../../shared/i18n/vi/auth';
 import { AppText } from '../../shared/ui/AppText';
@@ -37,17 +37,18 @@ export function NewPasswordScreen({ navigation, route }: ScreenProps<'NewPasswor
 
   const submit = async () => {
     const trimmed = code.trim();
+    const password = normalizePassword(newPassword); // what the server judges and hashes
     const fields: FormErrors<Field>['fields'] = {
       code: isResetCode(trimmed) ? undefined : vi.codeInvalid(LIMITS.resetCode.length),
       newPassword: newPasswordProblem(newPassword),
-      repeat: repeat === '' ? vi.repeatRequired : repeat === newPassword ? undefined : vi.repeatMismatch,
+      repeat: repeat === '' ? vi.repeatRequired : normalizePassword(repeat) === password ? undefined : vi.repeatMismatch,
     };
     if (FIELDS.some(field => fields[field])) return show({ fields });
     setErrors(noErrors);
     try {
       await run(async signal => {
         // reset(): the variables hold the new password, so they go as soon as the request has settled
-        await reset.mutateAsync({ body: { email, code: trimmed, newPassword }, signal }).finally(() => reset.reset());
+        await reset.mutateAsync({ body: { email, code: trimmed, newPassword: password }, signal }).finally(() => reset.reset());
         setNewPassword('');
         setRepeat('');
         snackbar.show({ message: vi.newPasswordSaved });
