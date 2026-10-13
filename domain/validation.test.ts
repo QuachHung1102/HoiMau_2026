@@ -237,6 +237,15 @@ const UNSEEN: [string, string][] = [
   ['word joiner U+2060', cp(0x2060)],
   ['U+2069', cp(0x2069)],
   ['BOM U+FEFF', cp(0xfeff)],
+  ['Hangul choseong filler U+115F', cp(0x115f)],
+  ['Hangul jungseong filler U+1160', cp(0x1160)],
+  ['Hangul filler U+3164', cp(0x3164)],
+  ['halfwidth Hangul filler U+FFA0', cp(0xffa0)],
+  ['braille blank U+2800', cp(0x2800)],
+  ['Mongolian vowel separator U+180E', cp(0x180e)],
+  ['tag space U+E0020', cp(0xe0020)],
+  ['first of the tag range U+E0000', cp(0xe0000)],
+  ['last of the tag range U+E007F', cp(0xe007f)],
 ];
 
 test('isEmail keeps the 254 limit and does not lower-case or trim', () => {
@@ -304,10 +313,10 @@ test('isDisplayName counts 1 to 40 code points, not UTF-16 units', () => {
   assert.equal(isDisplayName(''), false);
   assert.equal(isDisplayName('a'.repeat(40)), true);
   assert.equal(isDisplayName('a'.repeat(41)), false);
-  const astral = cp(0x1f600).repeat(40);
-  assert.equal(astral.length, 80);
+  const astral = `a${cp(0x1f600).repeat(39)}`; // still 40 code points, 79 units
+  assert.equal(astral.length, 79);
   assert.equal(isDisplayName(astral), true);
-  assert.equal(isDisplayName(cp(0x1f600).repeat(41)), false);
+  assert.equal(isDisplayName(`a${cp(0x1f600).repeat(40)}`), false);
 });
 
 test('isDisplayName refuses whitespace-only names and space at either end', () => {
@@ -339,6 +348,19 @@ test('isDisplayName refuses control, invisible and text-direction characters', (
     false,
   );
   assert.equal(isDisplayName(42 as unknown as string), false);
+});
+
+test('isDisplayName needs a letter or a digit, not only marks, punctuation or symbols', () => {
+  assert.equal(isDisplayName(cp(0x301)), false); // a lone combining mark
+  assert.equal(isDisplayName(`${cp(0x301)}${cp(0x302)}`), false);
+  assert.equal(isDisplayName('...'), false);
+  assert.equal(isDisplayName('-_-'), false);
+  assert.equal(isDisplayName(cp(0x1f98a)), false); // an emoji alone
+  assert.equal(isDisplayName('1'), true);
+  assert.equal(isDisplayName(cp(0x663)), true); // an Arabic-Indic digit (category N)
+  assert.equal(isDisplayName(`${cp(0x301)}a`), true);
+  assert.equal(isDisplayName('Nguyễn'.normalize('NFD')), true);
+  assert.equal(isDisplayName('_Lan_'), true);
 });
 
 test('normalizePassword is NFC and nothing else', () => {

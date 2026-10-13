@@ -125,11 +125,18 @@ export function allowedArchetypes(
 // What a reader cannot see: C0 and C1 controls, soft hyphen, zero-width and text-direction
 // formatting, line and paragraph separators, BOM. The class of users_display_name_check and
 // app._email in server/sql/10-auth.sql, plus NUL (PostgreSQL text cannot hold it) and U+00AD,
-// U+2028, U+2029, which the database does not refuse but a reader cannot tell from nothing.
-// Kept as escapes: this file must stay ASCII.
+// U+2028, U+2029, which the database does not refuse but a reader cannot tell from nothing,
+// plus what renders as blank: the Hangul fillers (U+115F, U+1160, U+3164, U+FFA0), braille
+// blank U+2800, Mongolian vowel separator U+180E and the tag characters U+E0000-E007F.
+// Kept as escapes: this file must stay ASCII. The u flag is for the astral tag range.
 const UNSEEN =
   // eslint-disable-next-line no-control-regex
-  /[\u0000-\u001f\u007f-\u009f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/;
+  /[\u0000-\u001f\u007f-\u009f\u00ad\u115f\u1160\u180e\u200b-\u200f\u2028-\u202e\u2060-\u2069\u2800\u3164\ufeff\uffa0\u{e0000}-\u{e007f}]/u;
+const UNSEEN_ALL = new RegExp(UNSEEN.source, 'gu');
+
+/** The text without its unseen characters (used by the banned-term check). */
+export const stripUnseen = (text: string): string =>
+  text.replace(UNSEEN_ALL, '');
 
 const isNfkc = (text: string) => text === text.normalize('NFKC');
 
@@ -170,7 +177,8 @@ export function isEmail(value: string): boolean {
 
 /**
  * 1 to 40 code points (the database counts with char_length), no whitespace at either end (so
- * never whitespace-only, NBSP and U+3000 included) and no unseen character. Stricter than
+ * never whitespace-only, NBSP and U+3000 included), no unseen character and at least one letter
+ * or digit (so never only marks, punctuation or symbols). Stricter than
  * users_display_name_check, which only trims plain spaces. Known limit: an emoji sequence joined
  * with U+200D (zero-width joiner) is refused; a single emoji is accepted.
  */
@@ -178,7 +186,8 @@ export function isDisplayName(value: string): boolean {
   if (
     typeof value !== 'string' ||
     value !== value.trim() ||
-    UNSEEN.test(value)
+    UNSEEN.test(value) ||
+    !/[\p{L}\p{N}]/u.test(value)
   ) {
     return false;
   }
