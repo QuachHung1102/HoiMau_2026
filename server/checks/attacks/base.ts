@@ -9,9 +9,16 @@
 //     that does not exist always "passes";
 //   * a refusal is pinned with ctx.expectPgError (SQLSTATE and the start of the message), a
 //     silent one with the value or the row count; "it threw" proves nothing;
-//   * it leaves the decoy rows as it found them.
+//   * a policy is probed with a statement that needs that policy only: an UPDATE or DELETE
+//     without WHERE, rolled back, whose row count must be the rows the attacker owns. "0 rows
+//     WHERE id = the decoy" is also what the SELECT policy alone answers;
+//   * it leaves the decoy rows as it found them: wrap it in decoyUntouched.
+//
+// Exported for the other attack files: userDataTables, decoyRows, decoyUntouched.
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
+import pg from 'pg';
 import type { Pool } from 'pg';
 import { calculatePrescription } from '../../../domain/energy.ts';
 import type { ActivityLevel, Archetype, Sex } from '../../../domain/types.ts';
@@ -39,40 +46,122 @@ export const DECOY_1 = '00000000-0000-4000-8000-0000000000d1';
 export const DECOY_2 = '00000000-0000-4000-8000-0000000000d2';
 const DECOY_EMAIL = 'decoy-1@decoy.invalid';
 const REVOKED_TOKEN_HASH = Buffer.alloc(32, 0xd1);
+const USED_CODE_HASH = Buffer.alloc(32, 0xd2);
 const STORED_KEY = '00000000-0000-4000-8000-0000000d1003';
 const STORED_REQUEST_HASH = Buffer.alloc(32, 0xd3);
 
 /** What the functions raise on purpose: MESSAGE is the error code of the API contract. */
 const HM = 'HM000';
 
-/** Every row of the decoy in the tables of 10, 11 and 21, as the superuser sees them. */
-async function decoyRows(admin: Pool): Promise<unknown> {
-  const { rows } = await admin.query(
-    `SELECT (SELECT jsonb_agg(to_jsonb(u)) FROM users u WHERE u.id = $1 OR lower(u.email) = $2) AS users,
-            (SELECT jsonb_agg(to_jsonb(c)) FROM credentials c WHERE c.user_id = $1) AS credentials,
-            (SELECT jsonb_agg(to_jsonb(s) ORDER BY s.id) FROM sessions s WHERE s.user_id = $1) AS sessions,
-            (SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM reset_codes r WHERE r.user_id = $1) AS reset_codes,
-            (SELECT jsonb_agg(to_jsonb(k) ORDER BY k.key) FROM idempotency_keys k WHERE k.user_id = $1) AS keys,
-            (SELECT jsonb_agg(to_jsonb(b) ORDER BY b.id) FROM biometric_snapshots b WHERE b.user_id = $1) AS snapshots,
-            (SELECT jsonb_agg(to_jsonb(p)) FROM prescriptions p WHERE p.user_id = $1) AS prescriptions,
-            (SELECT jsonb_agg(to_jsonb(t)) FROM user_settings t WHERE t.user_id = $1) AS settings`,
-    [DECOY_1, DECOY_EMAIL],
+// Names below come from the catalog, read as the superuser: never from a request.
+const q = pg.escapeIdentifier;
+
+export type UserDataTable = {
+  name: string;
+  /** The WHERE clause that selects the rows of the table that lead to the user $1. */
+  ofUser: string;
+};
+
+/**
+ * The tables that hold user data, by their structure and not by what a file declared: users,
+ * and every table of public with a foreign key to it, directly or through another such table.
+ * A table reached by several keys (sender and receiver) counts a row for the user of any of them.
+ */
+export async function userDataTables(admin: Pool): Promise<UserDataTable[]> {
+  const { rows: keys } = await admin.query<{
+    child: string;
+    parent: string;
+    columns: string[];
+    parentColumns: string[];
+  }>(
+    `SELECT child.relname::text AS child, parent.relname::text AS parent,
+            ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k (num, ord)
+                    JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.num
+                   ORDER BY k.ord) AS columns,
+            ARRAY(SELECT a.attname::text FROM unnest(c.confkey) WITH ORDINALITY k (num, ord)
+                    JOIN pg_attribute a ON a.attrelid = c.confrelid AND a.attnum = k.num
+                   ORDER BY k.ord) AS "parentColumns"
+       FROM pg_constraint c
+       JOIN pg_class child ON child.oid = c.conrelid
+       JOIN pg_class parent ON parent.oid = c.confrelid
+      WHERE c.contype = 'f'
+        AND child.relnamespace = 'public'::regnamespace AND parent.relnamespace = 'public'::regnamespace
+      ORDER BY child.relname, c.conname`,
   );
-  for (const [table, found] of Object.entries(rows[0])) {
-    assert.ok(found, `no decoy row in ${table}: nothing to attack`);
-  }
-  return rows[0];
+  // `seen` stops a chain that comes back to a table it already passed (a self-reference)
+  const ofUser = (table: string, seen: string[]): string | null => {
+    if (table === 'users') {
+      return 'id = $1';
+    }
+    const paths = keys
+      .filter(key => key.child === table && !seen.includes(key.parent))
+      .flatMap(key => {
+        const parent = ofUser(key.parent, [...seen, table]);
+        return parent === null
+          ? []
+          : [
+              `(${key.columns.map(q).join(', ')}) IN (SELECT ${key.parentColumns
+                .map(q)
+                .join(', ')} FROM public.${q(key.parent)} WHERE ${parent})`,
+            ];
+      });
+    return paths.length > 0 ? paths.join(' OR ') : null;
+  };
+  return [...new Set(['users', ...keys.map(key => key.child)])]
+    .sort()
+    .flatMap(name => {
+      const where = ofUser(name, []);
+      return where === null ? [] : [{ name, ofUser: where }];
+    });
 }
 
-/** Runs the attack and requires the decoy rows to be, value for value, what they were. */
-async function decoyUntouched(
+/**
+ * Every row of DECOY_1 in every table that holds user data (userDataTables), by table name, as
+ * the superuser sees them. Fails when one of those tables holds no row of the decoy.
+ */
+export async function decoyRows(
+  admin: Pool,
+): Promise<Record<string, unknown[]>> {
+  const tables = await userDataTables(admin);
+  const { rows } = await admin.query<Record<string, unknown[] | null>>(
+    `SELECT ${tables
+      .map(
+        ({ name, ofUser }) =>
+          `(SELECT jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text) FROM public.${q(
+            name,
+          )} t WHERE ${ofUser}) AS ${q(name)}`,
+      )
+      .join(', ')}`,
+    [DECOY_1],
+  );
+  for (const { name } of tables) {
+    assert.ok(rows[0][name], `no decoy row in ${name}: nothing to attack`);
+  }
+  return rows[0] as Record<string, unknown[]>;
+}
+
+/**
+ * Runs the attack and requires every decoy row of the database to be, value for value, what it
+ * was. Not for an attack whose intact outcome writes a row of the decoy (a nudge it receives).
+ */
+export async function decoyUntouched(
   ctx: AttackCtx,
   attack: () => Promise<void>,
 ): Promise<void> {
   const before = await decoyRows(ctx.admin);
   await attack();
-  assert.deepEqual(await decoyRows(ctx.admin), before);
+  const after = await decoyRows(ctx.admin);
+  const changed = Object.keys(before).filter(
+    table => !isDeepStrictEqual(after[table], before[table]),
+  );
+  assert.deepEqual(
+    changed,
+    [],
+    `the attack changed rows of the decoy in: ${changed.join(', ')}`,
+  );
 }
+
+const ROLLED_BACK = new Error('rolled back on purpose');
 
 const register = (ctx: AttackCtx, email: string) =>
   ctx.asAnon(ctx.app, c =>
@@ -195,16 +284,28 @@ export const attacks: Attack[] = [
       }),
   },
   {
-    name: 'profile_add_biometrics and profile_set_archetype of A write rows of A and none of the decoy',
+    name: 'profile_add_biometrics and a change of archetype by A write rows of A and none of the decoy',
     run: ctx =>
       decoyUntouched(ctx, async () => {
         const own = () =>
-          ctx.admin.query<{ snapshots: number; target: string }>(
+          ctx.admin.query<{
+            snapshots: number;
+            target: string;
+            archetype: Archetype;
+          }>(
             `SELECT (SELECT count(*)::int FROM biometric_snapshots WHERE user_id = $1) AS snapshots,
-                    (SELECT calorie_target::text FROM prescriptions WHERE user_id = $1) AS target`,
+                    (SELECT calorie_target::text FROM prescriptions WHERE user_id = $1) AS target,
+                    (SELECT archetype FROM users WHERE id = $1) AS archetype`,
             [ctx.userA],
           );
         const before = (await own()).rows[0];
+        // past the 14-day cooldown: the change of archetype really writes users
+        await ctx.admin.query(
+          "UPDATE users SET archetype_set_at = app.now() - interval '15 days' WHERE id = $1",
+          [ctx.userA],
+        );
+        const next: Archetype =
+          before.archetype === 'TANKER' ? 'SUPPORTER' : 'TANKER';
         // as the routes do: lock, read, compute in Node, write
         const target = await ctx.asUser(ctx.app, ctx.userA, async c => {
           await lockProfile(c);
@@ -226,12 +327,15 @@ export const attacks: Attack[] = [
           );
           const me = rows[0];
           const weightKg = Number(me.weight_kg) + 1;
-          const prescription = calculatePrescription({
+          const numbers = {
             heightCm: Number(me.height_cm),
             weightKg,
             ageYears: ageFrom(me.birth_year, me.now.getTime(), me.timezone),
             sex: me.sex,
             activityLevel: me.activity_level,
+          };
+          const prescription = calculatePrescription({
+            ...numbers,
             archetype: me.archetype,
           });
           await c.query(
@@ -245,59 +349,82 @@ export const attacks: Attack[] = [
               JSON.stringify(prescription),
             ],
           );
-          // the archetype in effect: accepted inside the cooldown, replaces the prescription
-          const again = {
-            ...prescription,
-            calorieTarget: prescription.calorieTarget + 1,
-          };
+          const changed = calculatePrescription({
+            ...numbers,
+            archetype: next,
+          });
           await c.query('SELECT profile_set_archetype($1, $2)', [
-            me.archetype,
-            JSON.stringify(again),
+            next,
+            JSON.stringify(changed),
           ]);
-          return again.calorieTarget;
+          return changed.calorieTarget;
         });
         // the calls did write: otherwise "the decoy is untouched" says nothing
         assert.deepEqual((await own()).rows[0], {
           snapshots: before.snapshots + 1,
           target: String(target),
+          archetype: next,
         });
       }),
   },
   {
-    name: 'UPDATE of users and of user_settings aimed at the decoy changes 0 rows',
+    name: 'an UPDATE of users or of user_settings by A, without WHERE, changes the row of A only',
     run: ctx =>
       decoyUntouched(ctx, async () => {
-        const counts = await ctx.asUser(ctx.app, ctx.userA, async c => [
-          (
-            await c.query('UPDATE users SET display_name = $2 WHERE id = $1', [
-              ctx.decoy,
-              'Đã bị chiếm',
-            ])
-          ).rowCount,
-          (
-            await c.query(
-              'UPDATE user_settings SET hide_streak = NOT hide_streak, nudges_enabled = false WHERE user_id = $1',
-              [ctx.decoy],
-            )
-          ).rowCount,
-          // and the same statements do reach the own row
-          (
-            await c.query(
-              'UPDATE users SET display_name = display_name WHERE id = $1',
-              [ctx.userA],
-            )
-          ).rowCount,
-          (
-            await c.query(
-              'UPDATE user_settings SET hide_streak = hide_streak WHERE user_id = $1',
-              [ctx.userA],
-            )
-          ).rowCount,
-        ]);
+        const own = await ctx.admin.query<{ name: string }>(
+          'SELECT display_name AS name FROM users WHERE id = $1',
+          [ctx.userA],
+        );
+        // Neither statement reads a column: the UPDATE policy alone decides which rows it reaches.
+        let counts: (number | null)[] = [];
+        await ctx
+          .asUser(ctx.app, ctx.userA, async c => {
+            counts = [
+              (
+                await c.query('UPDATE users SET display_name = $1', [
+                  own.rows[0].name,
+                ])
+              ).rowCount,
+              (
+                await c.query(
+                  'UPDATE user_settings SET hide_streak = false, nudges_enabled = false',
+                )
+              ).rowCount,
+            ];
+            throw ROLLED_BACK;
+          })
+          .catch(e => {
+            if (e !== ROLLED_BACK) {
+              throw e;
+            }
+          });
         assert.deepEqual(
           counts,
-          [0, 0, 1, 1],
-          `rows changed (users of the decoy, user_settings of the decoy, own users, own user_settings): ${counts}`,
+          [1, 1],
+          `rows changed by an UPDATE without WHERE (users, user_settings): ${counts}; user A owns one of each`,
+        );
+      }),
+  },
+  {
+    name: 'auth_reset_confirm with the used, expired code of the decoy answers false',
+    run: ctx =>
+      decoyUntouched(ctx, async () => {
+        const stored = await ctx.admin.query(
+          `SELECT 1 FROM reset_codes
+            WHERE user_id = $1 AND code_hash = $2 AND used_at IS NOT NULL AND expires_at < app.now()`,
+          [DECOY_1, USED_CODE_HASH],
+        );
+        assert.equal(stored.rowCount, 1, 'no used, expired decoy reset code');
+        const { rows } = await ctx.asAnon(ctx.app, c =>
+          c.query<{ ok: boolean }>(
+            'SELECT auth_reset_confirm($1, $2, $3, $4) AS ok',
+            [DECOY_EMAIL, USED_CODE_HASH, randomBytes(16), randomBytes(32)],
+          ),
+        );
+        assert.deepEqual(
+          rows,
+          [{ ok: false }],
+          'auth_reset_confirm accepted the used, expired code of the decoy',
         );
       }),
   },

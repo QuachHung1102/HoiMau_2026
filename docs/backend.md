@@ -210,7 +210,7 @@ Giới hạn cần biết: phép so ACL coi mọi quyền ngoài mô tả là vi
 
 Nó gồm ba phần, trong cùng một file:
 
-1. **Mười phép kiểm chung**, sinh từ sổ đăng ký `meta.expected_*` và catalog. Bảng hay hàm do một file SQL sau này thêm vào được phủ ngay, không ai phải sửa file cổng.
+1. **Mười hai phép kiểm chung**, sinh từ sổ đăng ký `meta.expected_*` và catalog. Bảng hay hàm do một file SQL sau này thêm vào được phủ ngay, không ai phải sửa file cổng.
 2. **Các ca tấn công** trong `server/checks/attacks/*.ts`: những việc riêng của từng mảng mà phép kiểm chung không biết (hàm nghiệp vụ, luồng xác thực).
 3. **Các ca đối chứng**, trên một cơ sở dữ liệu riêng: phá lần lượt từng hàng rào và đòi phép kiểm tương ứng phải đỏ, nêu đúng thứ bị phá; sửa lại rồi nó phải xanh trở lại.
 
@@ -225,10 +225,13 @@ Nó gồm ba phần, trong cùng một file:
 
 `DECOY_1` có ít nhất một dòng trong mọi bảng chứa dữ liệu người dùng đang có: `users`, `credentials`, `sessions` (một phiên đã thu hồi nhưng chưa hết hạn), `reset_codes` (đã dùng, đã hết hạn), `idempotency_keys` (một câu trả lời `200` đã lưu), `progression_state`, `xp_ledger`, `coin_ledger`, `inventory` và `perk_unlocks` (trỏ tới vật phẩm đã seed `THEME_FOREST` theo `code`), `biometric_snapshots`, `prescriptions`, `user_settings`. `DECOY_2` chỉ có dòng `users`; các mảng cần hai người (bang hội, nudge) dùng nó.
 
-- **Không bao giờ xóa hay "dọn" dòng mồi nhử**, bằng tay hay bằng job. Job xóa dữ liệu cũ (phiên hết hạn, mã đã dùng, khóa idempotency quá 7 ngày, tài khoản quá hạn xóa) phải bỏ qua người dùng có email kết thúc bằng `@decoy.invalid`. Mất một dòng mồi nhử trong bảng `own_*` là cổng 2 đỏ với `no decoy row in <bảng>`; mất trong bảng `internal` là ca tấn công tương ứng đỏ ở bước kiểm tra tiền đề.
+- **Không bao giờ xóa hay "dọn" dòng mồi nhử**, bằng tay hay bằng job. Job xóa dữ liệu cũ (phiên hết hạn, mã đã dùng, khóa idempotency quá 7 ngày, tài khoản quá hạn xóa) phải bỏ qua người dùng có email kết thúc bằng `@decoy.invalid`. Mất một dòng mồi nhử là cổng 2 đỏ với `no decoy row in <bảng>` (phép kiểm 12, cho mọi bảng có khóa ngoại dẫn về `users`). Lưu ý: cổng chạy trên bản sao mới của cơ sở dữ liệu mẫu, nơi chưa job nào chạy, nên nó **không** bắt được một job xóa nhầm; job nào xóa dữ liệu thì tự mang ca tấn công của mình (chạy job với đồng hồ đẩy xa về sau, rồi đòi dòng mồi nhử còn nguyên).
 - File chạy lặp lại được: id cố định và `ON CONFLICT DO NOTHING`. Chạy lại migrate đưa về những dòng đã mất, không sửa dòng đang có.
-- Dòng do chủ sở hữu lược đồ ghi nên **đi vòng qua mọi hàm**; chúng vẫn phải thỏa mọi `CHECK` và khóa ngoại, và phải **trơ**: không ai đăng nhập được (khóa mật khẩu là ngẫu nhiên và bị bỏ đi, phiên đã thu hồi, mã đặt lại đã dùng và đã hết hạn, các bản băm cố định không phải là bản băm của bất cứ thứ gì), và `onboarded_at` để `NULL` để không job nào xử lý chúng.
-- `.invalid` là tên miền dành riêng (RFC 2606): không thư nào tới được.
+- Dòng do chủ sở hữu lược đồ ghi nên **đi vòng qua mọi hàm**; chúng vẫn phải thỏa mọi `CHECK` và khóa ngoại.
+- **Với ứng dụng, mồi nhử là một tài khoản thật, không phải dòng chết.** Mọi hàm và mọi route coi nó như bất kỳ tài khoản nào: email của nó đã bị chiếm, `auth_salt` trả salt thật của nó, và `POST /auth/password/forgot` với email của nó lưu một mã đặt lại còn hiệu lực (tối đa 3 mã mỗi giờ, như mọi tài khoản). Thứ giữ nó đóng là: **không ai đăng nhập được** (khóa mật khẩu ngẫu nhiên, sinh trong SQL và không ai biết; phiên có sẵn đã thu hồi; mã đặt lại có sẵn đã dùng và đã hết hạn; các bản băm cố định không phải là bản băm của bất cứ thứ gì) và **không thư nào được gửi cho nó** (xem dòng dưới). `onboarded_at` để `NULL` để không job nào xử lý nó.
+- **Không gửi thư tới địa chỉ `.invalid`.** `.invalid` là tên miền cấp cao dành riêng (RFC 2606), không hộp thư nào tồn tại ở đó. Route `POST /auth/password/forgot` bỏ qua đúng một bước cho địa chỉ kết thúc bằng `.invalid`: giao thư cho mailer. Câu trả lời (`202 {}`), dòng mã được lưu và thời gian trả lời giữ nguyên như với mọi tài khoản, nên route vẫn đồng nhất (có test). Route nào sau này gửi thư cho người dùng cũng phải giữ luật đó.
+- **Không bao giờ làm với mồi nhử:** đặt cho nó một mật khẩu biết trước, mở lại phiên của nó, cho nó `onboarded_at`, dùng nó làm tài khoản thử trong môi trường thật, hay tạo dữ liệu "cho đẹp" khiến một job hoặc một bảng xếp hạng nhìn thấy nó. Trạng thái của nó cố ý là trạng thái không hàm nào tạo ra (chưa onboarding mà đã có đơn kê, cài đặt, sổ cái): job hay read model nào lọc theo `progression_state` hoặc sổ cái thay vì `users.onboarded_at` sẽ xử lý nhầm nó.
+- Dòng mồi nhử được tìm **theo khóa ngoại, không theo lớp đã đăng ký**: mọi bảng trong `public` có khóa ngoại tới `users`, trực tiếp hay qua một bảng như vậy, đều phải có ít nhất một dòng dẫn về `DECOY_1` (bảng con của một bảng con: dòng của nó phải trỏ tới dòng của mồi nhử ở bảng cha). Xem phép kiểm 12.
 - Dòng mồi nhử cần nội dung thì tham chiếu nội dung đã seed theo `code`, không bao giờ tạo một dòng nội dung mồi nhử mà người dùng thật có thể được phục vụ.
 - Các giá trị cố định (id, email, bản băm) được lặp lại trong `server/checks/attacks/base.ts`: sửa một bên thì sửa cả hai.
 
@@ -243,27 +246,29 @@ Mọi phép kiểm chung đòi **đúng** SQLSTATE `42501` **và đúng nguyên 
 | `app_anon`, `app_job` | mọi bảng trong `public`, mọi lệnh | `permission denied for table <bảng>` |
 | `app_auth` | bảng `internal`: mọi lệnh; bảng `own_read`, `content`: mọi lệnh ghi; bảng `own_rw`: lệnh và cột ngoài phần đã đăng ký; `TRUNCATE` trên mọi bảng | `permission denied for table <bảng>` |
 | `app_auth` | `INSERT` đã được cấp, dòng mang id của người khác | `new row violates row-level security policy for table "<bảng>"` |
-| `app_auth` | `UPDATE` / `DELETE` đã được cấp, nhắm vào dòng của người khác | không lỗi, **0 dòng** |
+| `app_auth` | `UPDATE` / `DELETE` đã được cấp, **không có `WHERE`** | không lỗi, số dòng **bằng đúng số dòng của chính A** (đọc bằng superuser) |
 | `app_anon`, `app_auth`, `app_job` | hàm trong `public` hoặc `app` mà vai trò đó không được đăng ký | `permission denied for function <tên hàm>` |
 
 Hàng rào của `app_conn` trần đứng **sớm hơn một lớp** so với các vai trò kia: nó không có `USAGE` trên schema nào, nên bị chặn trước khi PostgreSQL nhìn tới bảng hay hàm. Vì vậy phép kiểm 1 đòi `permission denied for schema public`, không phải `permission denied for table`.
 
 Mọi kết quả khác là **hỏng phép kiểm**, không bao giờ là đạt: một lỗi khác (`P0001`, `23502`, `42883`, `42P01`: câu lệnh đã lọt qua hàng rào rồi hỏng ở chỗ khác), một từ chối khác (hàng rào khác trả lời thay), hay một kết quả trả về. Không phép kiểm nào chấp nhận "42501 bất kỳ", và không phép kiểm nào chấp nhận hai thông báo.
 
-### Mười phép kiểm chung
+### Mười hai phép kiểm chung
 
 | # | Phép kiểm | Đếm |
 |---|---|---|
 | 1 | `app_conn` trần `SELECT` từng bảng: bị chặn ở schema. | bảng |
-| 2 | `app_anon` và `app_job` `SELECT` từng bảng: bị chặn ở GRANT. | vai trò × bảng |
-| 3 | Bảng `own_read`, `own_rw`: mồi nhử có dòng (đọc bằng superuser; không có thì `no decoy row in <bảng>`); người dùng A lọc theo id của mồi nhử (qua `owner_column` đã đăng ký) thấy 0 dòng; `SELECT` không lọc chỉ trả dòng của A; và A thấy ít nhất một dòng của chính mình ở đâu đó. | bảng |
+| 2 | `app_anon` và `app_job`: `SELECT`, `INSERT`, `DELETE`, `TRUNCATE` và `UPDATE` **từng cột** trên từng bảng bị chặn ở GRANT. (`TRUNCATE` không chịu RLS và bảng `content` không có RLS: chỉ dò `SELECT` là để lọt một quyền ghi cấp nhầm.) | vai trò × bảng, số câu lệnh |
+| 3 | Bảng `own_read`, `own_rw`: mồi nhử có dòng (đọc bằng superuser; không có thì `no decoy row in <bảng>`); người dùng A lọc theo id của mồi nhử, rồi theo id của **B, một người dùng thường thứ hai**, (qua `owner_column` đã đăng ký) đều thấy 0 dòng; `SELECT` không lọc chỉ trả dòng của A; A thấy ít nhất một dòng của chính mình và B có dòng ở ít nhất một bảng. B cần có vì mồi nhử chỉ là một *kiểu* dòng (ẩn chuỗi ngày, chưa onboarding): một policy phụ thuộc dữ liệu có thể che mồi nhử mà để lộ người thường. | bảng |
 | 4 | Bảng `own_read`: `INSERT`, `DELETE`, `TRUNCATE` và `UPDATE` **từng cột** bằng A bị chặn ở GRANT (không phải ở policy). | bảng, số câu lệnh |
-| 5 | Bảng `own_rw`: lệnh đã cấp thì dừng ở policy (`INSERT` mang id mồi nhử: thông báo của policy; `UPDATE` từng cột được cấp và `DELETE` nhắm vào dòng mồi nhử: 0 dòng); lệnh và cột chưa cấp thì dừng ở GRANT. | bảng, số cột mỗi loại |
+| 5 | Bảng `own_rw`: `INSERT` đã cấp mang id mồi nhử nhận thông báo của policy; `UPDATE` **từng cột được cấp** và `DELETE` đã cấp chạy bằng A **không có `WHERE`**, trong transaction được hoàn lại, và số dòng phải **bằng đúng số dòng của A**; lệnh và cột chưa cấp thì dừng ở GRANT. | bảng, số cột mỗi loại |
 | 6 | Bảng `internal`: `SELECT` và mọi lệnh ghi bằng A bị chặn ở GRANT. Bảng `content`: mọi lệnh ghi. | bảng, số câu lệnh |
-| 7 | Mọi hàm đã đăng ký: từng vai trò trong `app_conn`, `app_anon`, `app_auth`, `app_job` **không** nằm trong tập đã đăng ký gọi hàm với `NULL` ép đúng kiểu từng tham số. | vai trò × hàm |
+| 7 | Mọi hàm đã đăng ký: từng vai trò trong `app_conn`, `app_anon`, `app_auth`, `app_job` **không** nằm trong tập đã đăng ký gọi hàm với `NULL` ép đúng kiểu từng tham số; hàm `STRICT` được gọi với **giá trị** của từng kiểu (xem dưới). | vai trò × hàm |
 | 8 | Mọi hàm nội bộ (tên bắt đầu bằng `_`, lấy từ catalog, đã đăng ký hay chưa): A không gọi được. | hàm |
 | 9 | `INSERT INTO meta.test_clock` bằng cả bốn vai trò: bị chặn ở schema. | vai trò |
 | 10 | `app_auth` không mang user id thấy 0 dòng trong mọi bảng `own_*`, ở cả hai dạng: thiết lập đã bị xóa về `''` (kết nối trong pool sau request đầu tiên) và thiết lập chưa từng được đặt (kết nối mới). | bảng |
+| 11 | Mọi quan hệ (bảng, view) ngoài schema `meta` và mọi hàm trong các schema của dự án đều **đã đăng ký**; thứ chưa đăng ký là thứ không phép kiểm nào ở trên nhìn tới, nên cổng đỏ và nêu tên nó (`not registered: relation …, function …`). Sổ đăng ký chỉ gọi tên được bảng trong `public`: một bảng ở schema `app` luôn bị báo. | đối tượng (quan hệ, hàm), số chưa đăng ký |
+| 12 | **Lớp đã đăng ký chỉ là lời khai; thứ gì chứa dữ liệu người dùng được đọc từ khóa ngoại.** Mọi bảng trong `public` có chuỗi khóa ngoại dẫn về `users`: không được đăng ký là `content` (đỏ: `<bảng> is registered as content, but it has a foreign key chain to users`), và phải có dòng dẫn về `DECOY_1`, bất kể lớp (đỏ: `no decoy row in <bảng>`). | bảng có chuỗi khóa về `users` |
 
 Đầu ra của cổng liệt kê từng phép kiểm cùng số đối tượng nó đã phủ. **Phép kiểm phủ 0 đối tượng là đỏ**, không phải đạt.
 
@@ -272,9 +277,13 @@ Bốn cách một phép kiểm tự lừa mình, và chỗ cổng này tránh t�
 - **Liệt kê trạng thái còn nguyên, không liệt kê trạng thái đã hỏng.** Đạt khi và chỉ khi đúng `42501` và đúng thông báo. Hàm bị cấp nhầm `EXECUTE` rồi hỏng ở `auth_login: key and token hash must be 32 bytes each` là một lỗi có thật nhưng không nói gì về quyền: ca đối chứng của phép kiểm 7 chính là trường hợp đó, và nó đỏ.
 - **Cùng mã `42501` nói hai chuyện.** Thông báo được so nguyên văn, nên "thiếu GRANT" và "policy chặn" không bao giờ thay được cho nhau. Cấp nhầm `INSERT` trên một bảng `own_read` thì câu lệnh vẫn bị từ chối bằng `42501`, nhưng bởi policy: phép kiểm 4 đỏ.
 - **Không áp một khuôn cho mọi hàng rào.** Thông báo mong đợi được tính từ lớp của bảng và từ quyền đã đăng ký: bảng không ai được ghi đòi thông báo của GRANT, lệnh đã được cấp đòi thông báo của policy hoặc 0 dòng.
-- **Phép kiểm không có gì để tìm thì luôn đạt.** Dòng mồi nhử là thứ để tìm; phép kiểm 3, 5 và 10 xác nhận bằng superuser rằng dòng đó có mặt trước khi tin vào "0 dòng", và mỗi ca tấn công kiểm tra tiền đề của nó.
+- **Phép kiểm không có gì để tìm thì luôn đạt.** Dòng mồi nhử là thứ để tìm; phép kiểm 3, 5, 10 và 12 xác nhận bằng superuser rằng dòng đó có mặt trước khi tin vào "0 dòng", phép kiểm 3 còn cần một người dùng thường thứ hai, và mỗi ca tấn công kiểm tra tiền đề của nó.
 
-Mỗi câu lệnh dò quyền chỉ cần **đúng một** quyền: `INSERT … DEFAULT VALUES`, `UPDATE … SET cột = DEFAULT WHERE false`, `DELETE … WHERE false`, `TRUNCATE`. Một câu lệnh đọc thêm cột (`SET c = c`, `WHERE user_id = …`) sẽ bị từ chối vì thiếu `SELECT` và che mất một quyền ghi bị cấp nhầm trên bảng `internal`. `UPDATE` được dò **từng cột** vì quyền có thể được cấp trên một cột.
+Mỗi câu lệnh dò chỉ cần **đúng một thứ**, là thứ đang được dò:
+
+- **Dò GRANT**: `INSERT … DEFAULT VALUES`, `UPDATE … SET cột = DEFAULT WHERE false`, `DELETE … WHERE false`, `TRUNCATE`. Một câu lệnh đọc thêm cột (`SET c = c`, `WHERE user_id = …`) sẽ bị từ chối vì thiếu `SELECT` và che mất một quyền ghi bị cấp nhầm trên bảng `internal`. `UPDATE` được dò **từng cột** vì quyền có thể được cấp trên một cột.
+- **Dò policy `UPDATE` / `DELETE`**: câu lệnh **không có `WHERE`** và không đọc cột nào (`UPDATE … SET cột = <giá trị truyền vào>`, `DELETE FROM …`), chạy bằng A rồi hoàn lại. PostgreSQL áp policy `SELECT` lên mọi `UPDATE` / `DELETE` có đọc cột, nên `UPDATE … WHERE user_id = <mồi nhử>` trả 0 dòng **chỉ nhờ policy `SELECT`**: policy `UPDATE` có mở toang (`USING (true)`, hay một policy thứ hai đứng cạnh policy đúng) thì "0 dòng" vẫn là 0 dòng, trong khi `UPDATE` không `WHERE` của A ghi đè dòng của mọi người. "0 dòng khi nhắm vào người khác" là một câu trả lời mang hai nghĩa; "đúng số dòng của mình khi không nhắm vào ai" thì không. Giá trị được ghi là giá trị A đang có ở cột đó (của mồi nhử nếu A chưa có dòng), truyền vào dưới dạng chuỗi.
+- **Hàm `STRICT`**: PostgreSQL trả `NULL` cho một hàm `STRICT` được gọi với `NULL` **mà không chạy hàm và không kiểm `EXECUTE`**: lời gọi "thành công" với mọi vai trò. Phép kiểm 7 và 8 vì thế gọi hàm `STRICT` với một giá trị cho từng kiểu tham số (số `0`, chuỗi rỗng, `false`, mảng rỗng, uuid toàn số 0, `2000-01-01`, khoảng `0`, `null` của JSON). Kiểu chưa có giá trị trong bảng `LITERAL` của file cổng thì phép kiểm đỏ và nêu tên hàm cùng kiểu đó; thêm kiểu vào `LITERAL`. Hiện chưa hàm nào là `STRICT`.
 
 ### Ca tấn công (`server/checks/attacks/<mảng>.ts`)
 
@@ -295,28 +304,35 @@ export const attacks: Attack[] = [
 
 - `app` là pool `app_conn`; `admin` là superuser, chỉ để dựng và đọc lại; `userA` là một người dùng đã onboarding (kẻ tấn công); `decoy` là `DECOY_1`.
 - Ca tấn công đi đúng đường của ứng dụng: `asUser(app, userA, …)` / `asAnon(app, …)`, mỗi lần gọi một transaction. Ca gọi `profile_*` làm như route: `lockProfile` trước, đọc, tính ở Node, rồi ghi.
-- Trước khi tấn công, **xác nhận bằng `admin` rằng dòng bị nhắm tới có mặt**. Sau đó so trạng thái của mồi nhử trước và sau (đọc bằng `admin`).
+- Trước khi tấn công, **xác nhận bằng `admin` rằng dòng bị nhắm tới có mặt**.
+- `base.ts` export ba thứ dùng chung: `decoyUntouched(ctx, attack)` chạy ca tấn công rồi đòi **mọi dòng của mồi nhử trong mọi bảng có chuỗi khóa về `users`** còn nguyên từng giá trị (thông báo nêu bảng bị đổi: `the attack changed rows of the decoy in: users`); `decoyRows(admin)` trả các dòng đó theo tên bảng; `userDataTables(admin)` trả danh sách bảng cùng mệnh đề `WHERE` chọn dòng của một người dùng. Bảng mới có khóa ngoại về `users` được cả ba tự nhận. Đừng bọc bằng `decoyUntouched` một ca mà kết quả đúng của nó là ghi một dòng cho mồi nhử (mồi nhử nhận một nudge).
+- **Policy được dò bằng câu lệnh chỉ cần policy đó**: `UPDATE` / `DELETE` không `WHERE`, hoàn lại, số dòng bằng số dòng của A. Không viết "`UPDATE … WHERE id = <mồi nhử>` trả 0 dòng".
 - Từ chối có lỗi thì ghim bằng `expectPgError` (SQLSTATE và phần đầu thông báo); từ chối im lặng thì ghim bằng giá trị trả về hoặc số dòng.
 
-`base.ts` hiện có chín ca cho xác thực, idempotency và hồ sơ: đăng ký bằng email của mồi nhử ở mọi cách viết (`REGISTRATION_UNAVAILABLE`); email trông giống nhưng không ở dạng chuẩn (`VALIDATION_FAILED`); `auth_login` với khóa sai (`NULL`, không phiên nào được mở); `auth_salt` cho email lạ (16 byte, lặp lại được); `auth_session` với bản băm token đã thu hồi của mồi nhử (`NULL`); `idempotency_begin` với khóa và bản băm request của mồi nhử (một khóa mới của A, không phải câu trả lời đã lưu); `profile_add_biometrics` và `profile_set_archetype` của A (ghi dòng của A, không đổi dòng nào của mồi nhử); `UPDATE users` và `UPDATE user_settings` nhắm vào mồi nhử (0 dòng); múi giờ ngoài bảng `timezones` (`23503`).
+`base.ts` hiện có mười ca cho xác thực, idempotency và hồ sơ: đăng ký bằng email của mồi nhử ở mọi cách viết (`REGISTRATION_UNAVAILABLE`); email trông giống nhưng không ở dạng chuẩn (`VALIDATION_FAILED`); `auth_login` với khóa sai (`NULL`, không phiên nào được mở); `auth_salt` cho email lạ (16 byte, lặp lại được); `auth_session` với bản băm token đã thu hồi của mồi nhử (`NULL`); `auth_reset_confirm` với mã đã dùng và đã hết hạn của mồi nhử (`false`, khóa mật khẩu của mồi nhử không đổi); `idempotency_begin` với khóa và bản băm request của mồi nhử (một khóa mới của A, không phải câu trả lời đã lưu); `profile_add_biometrics` và một lần **đổi hệ phái thật** của A (thời gian chờ được đẩy lùi 15 ngày bằng `admin`, để nhánh `UPDATE users` thật sự chạy: ghi dòng của A, không đổi dòng nào của mồi nhử); `UPDATE users` và `UPDATE user_settings` của A không `WHERE` (mỗi lệnh đúng 1 dòng); múi giờ ngoài bảng `timezones` (`23503`).
 
 ### Thêm bảng mới: cổng 2 đòi gì
 
-- Bảng `own_read` / `own_rw` đã đăng ký mà `DECOY_1` chưa có dòng: phép kiểm 3 (và 5, 10) đỏ với `no decoy row in <bảng>`. Thêm `server/sql/8N-decoy-<mảng>.sql` (số từ 81 tới 89, chạy sau seeder và trước `90-verify.sql`), viết theo các luật ở trên.
-- Bảng `internal` không có `owner_column` nên phép kiểm chung không đòi dòng mồi nhử; ca tấn công của mảng đó tự kiểm tra tiền đề của mình.
-- Hàm mới được phép kiểm 7 và 8 phủ ngay khi đăng ký. Tham số kiểu đa hình (`anyelement`…) không gọi được bằng `NULL` ép kiểu: phép kiểm 7 sẽ đỏ với lỗi khác `42501`, và khi đó phải dạy nó cách gọi hàm ấy.
+- **Mọi bảng có khóa ngoại dẫn về `users`** (trực tiếp hay qua bảng khác), dù đăng ký lớp nào, mà `DECOY_1` chưa có dòng: phép kiểm 12 đỏ với `no decoy row in <bảng>` (bảng `own_*` còn làm đỏ phép kiểm 3, 5, 10). Thêm `server/sql/8N-decoy-<mảng>.sql` (số từ 81 tới 89, chạy sau seeder và trước `90-verify.sql`), viết theo các luật ở trên. Dòng của bảng con phải trỏ tới dòng của **mồi nhử** ở bảng cha.
+- Bảng có khóa ngoại dẫn về `users` mà đăng ký là `content`: phép kiểm 12 đỏ. Bảng `content` không có policy và mọi người đã đăng nhập đều đọc được; chép nhầm khối đăng ký của một bảng nội dung cho một bảng dữ liệu người dùng là lỗi mà cổng 1 không thấy (catalog khớp với lời khai).
+- Hàm mới được phép kiểm 7 và 8 phủ ngay khi đăng ký. Hai trường hợp phải sửa file cổng: tham số kiểu đa hình (`anyelement`…) không gọi được bằng `NULL` ép kiểu, phép kiểm 7 đỏ với lỗi khác `42501`; hàm `STRICT` có tham số thuộc kiểu chưa có trong `LITERAL`, phép kiểm 7 đỏ và nêu tên hàm cùng kiểu.
+- Bảng, view hay hàm chưa đăng ký: phép kiểm 11 đỏ và nêu tên. Bảng không được đặt ngoài `public`.
 - Schema mới: thêm vào `SCHEMA_USERS` trong file cổng ai được `USAGE` trên nó.
 - Thêm một phép kiểm chung thì thêm ca đối chứng của nó trong cùng thay đổi.
 
 ### Ca đối chứng
 
-Chạy trên một cơ sở dữ liệu thứ hai, mỗi ca: phép kiểm đang xanh → phá một hàng rào → phép kiểm phải đỏ với thông báo nêu đúng hàng rào và đối tượng → sửa → xanh lại. Cuối cùng cả cổng chạy lại trên cơ sở dữ liệu đó và phải xanh. Hiện có 17 ca: 16 cho mười phép kiểm (mỗi phép kiểm ít nhất một, trong đó một ca làm sổ đăng ký rỗng để phép kiểm phủ 0 đối tượng) và 1 cho một ca tấn công; cùng một bảng mẫu `fx_notes` được cấp đủ `INSERT`, `UPDATE`, `DELETE`: nó đi qua các nhánh của phép kiểm 5 mà chưa bảng thật nào đi qua, và cho thấy điều một nhiệm vụ sau này gặp khi đăng ký bảng mà quên dòng mồi nhử.
+Chạy trên một cơ sở dữ liệu thứ hai, mỗi ca: phép kiểm đang xanh → phá một hàng rào → phép kiểm phải đỏ với thông báo nêu đúng hàng rào và đối tượng → sửa → xanh lại. Cuối cùng cả cổng chạy lại trên cơ sở dữ liệu đó và phải xanh. Hiện có 25 ca trong danh sách: 22 cho mười hai phép kiểm (mỗi phép kiểm ít nhất một; trong đó một ca làm sổ đăng ký rỗng để phép kiểm phủ 0 đối tượng, và các ca chỉ mở **riêng** policy `UPDATE` trong khi policy `SELECT` còn nguyên) và 3 cho ca tấn công (mở riêng policy `UPDATE` của `users`; sửa thân `profile_set_archetype` cho mất `WHERE`; sửa thân `auth_reset_confirm` cho nhận mã đã dùng). Thêm ba ca dùng đối tượng mẫu: bảng `fx_notes` được cấp đủ `INSERT`, `UPDATE`, `DELETE` với mỗi lệnh một policy (các nhánh của phép kiểm 5 mà chưa bảng thật nào đi qua, kể cả mở riêng policy `DELETE`; và điều một nhiệm vụ gặp khi đăng ký bảng mà quên dòng mồi nhử); các bảng `fx_diary`, `fx_vault`, `fx_vault_items` cho phép kiểm 12 (bảng dữ liệu người dùng đăng ký nhầm là `content`; bảng `internal` thiếu dòng mồi nhử; dòng của người khác không được tính, kể cả ở bảng chỉ nối với `users` qua một bảng khác); hai hàm `STRICT` mẫu cho phép kiểm 7 và 8.
 
 ### Phần cổng 2 không nhìn thấy
 
 - Sau hàng rào đầu tiên là gì: `app_conn` bị chặn ở schema nên cổng này không biết nó có quyền gì trên bảng; cổng 1 đọc ACL và biết.
 - Thân hàm: hàm được gọi với `NULL` chỉ để hỏi quyền. Luật bên trong hàm do test của từng mảng và các ca tấn công giữ.
-- `WITH CHECK` của policy `UPDATE` cho phép A trao dòng của mình cho người khác: không được thử ở đây (A không có dòng trong phần lớn các bảng); cổng 1 so `WITH CHECK` nguyên văn.
+- `WITH CHECK` của policy `UPDATE` cho phép A trao dòng của mình cho người khác: không được thử ở đây (cột chủ sở hữu hiếm khi được cấp `UPDATE`); cổng 1 so `WITH CHECK` nguyên văn.
+- Phép kiểm 5 ghi **một** giá trị cho mọi dòng của A: bảng `own_rw` mà A có nhiều dòng và cột được cấp lại là cột duy nhất sẽ cần một câu lệnh cho mỗi dòng. `DELETE` không `WHERE` của A cũng sẽ vấp một khóa ngoại `RESTRICT` trỏ vào dòng của A. Chưa bảng nào như vậy; khi có thì sửa phép kiểm, đừng nới nó.
+- View đăng ký là `content` mà hiện dữ liệu người dùng: view không có khóa ngoại nên phép kiểm 12 không thấy.
+- Job: cổng chạy trên bản sao mới, chưa job nào chạy. Job xóa nhầm dòng mồi nhử không làm cổng đỏ nếu job đó không có ca tấn công riêng.
+- `ALTER DEFAULT PRIVILEGES … TO app_auth` chỉ có hiệu lực với bảng tạo sau đó: cả hai cổng đều không thấy cho tới khi một bảng mới xuất hiện.
 - HTTP: route quên kiểm tra phiên, thân response lộ dữ liệu. Đó là test của từng route.
 
 ## Cách đăng ký bảng, policy, hàm

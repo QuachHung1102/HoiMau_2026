@@ -545,6 +545,34 @@ test('forgot: always 202 {}, the mail goes to the normalised address of an accou
   assert.deepEqual(again, { status: 400, text: RESET_CODE_INVALID, type: again.type }, 'a code is good once');
 });
 
+test('forgot for a decoy account (an address under .invalid): the same 202 {}, the code is stored, no mail reaches the mailer', async () => {
+  const decoy = 'decoy-1@decoy.invalid';
+  const liveCodes = async () =>
+    (
+      await db.admin.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM reset_codes r JOIN users u ON u.id = r.user_id
+          WHERE u.email = $1 AND r.used_at IS NULL AND r.expires_at > app.now()`,
+        [decoy],
+      )
+    ).rows[0].n;
+  assert.equal(await liveCodes(), 0);
+  const start = app.mail.length;
+
+  const answer = await raw('/auth/password/forgot', { email: decoy });
+  const stranger = await raw('/auth/password/forgot', { email: fresh() });
+  assert.deepEqual(answer, { status: 202, text: '{}', type: answer.type });
+  assert.deepEqual(answer, stranger);
+  assert.equal(await liveCodes(), 1, 'the account is treated as any other up to the mail');
+
+  // the mailer is reached after the answer: wait for everything queued so far
+  await mailsSettled();
+  assert.deepEqual(
+    app.mail.slice(start).filter(m => m.to.endsWith('.invalid')),
+    [],
+    'no mail to a reserved address',
+  );
+});
+
 test('forgot past the hourly cap: still the same 202 {}, no mail beyond the cap', async () => {
   const { email } = await register();
   const answers = [];
