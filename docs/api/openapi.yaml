@@ -413,7 +413,7 @@ paths:
           description: '`PAYLOAD_TOO_LARGE`'
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
         '422':
-          description: '`VALIDATION_FAILED`, `ARCHETYPE_NOT_ALLOWED` (`details.allowed`)'
+          description: '`VALIDATION_FAILED`, `AGE_NOT_ALLOWED`, `ARCHETYPE_NOT_ALLOWED` (`details.allowed`)'
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
         '429':
           description: '`RATE_LIMITED`'

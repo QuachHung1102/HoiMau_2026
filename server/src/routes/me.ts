@@ -5,6 +5,11 @@
 // refusal here is THROWN (AppError, or HM000 raised by the function): nothing a refused request
 // wrote may stay, so the request transaction rolls back. Order of refusals: wrong fields, then
 // the age, then the archetype (the onboarding screens send each to its own step).
+//
+// A handler that reads the profile, computes from it and then writes takes the caller's row lock
+// BEFORE its first read (lockProfile): two requests of one user would otherwise both compute
+// from the state before either wrote, and the later write would store targets that belong to
+// numbers no longer in effect.
 import type { PoolClient } from 'pg';
 import type { Biometrics } from '../../../domain/contract/core.ts';
 import {
@@ -28,14 +33,26 @@ import type {
 import type { Ctx, Route } from '../app.ts';
 import { AppError } from '../errors.ts';
 import { buildMe, buildPrescription } from '../readModels/me.ts';
+import { members } from './auth.ts';
 
 const ARCHETYPES = Object.keys(ARCHETYPE_FACTOR);
 
-/** The members of a JSON object; a body that is none has no member at all. */
-const members = (body: unknown): Record<string, unknown> =>
-  body !== null && typeof body === 'object' && !Array.isArray(body)
-    ? (body as Record<string, unknown>)
-    : {};
+/**
+ * Locks the caller's own users row until the request transaction ends: the lock the profile_*
+ * functions take, taken early. Call it before the first read of anything a prescription is
+ * computed from; every later read of this request then sees what the previous request of the
+ * same user committed, and no other request of that user gets between the read and the write.
+ *
+ * FOR NO KEY UPDATE, never FOR UPDATE: every idempotent request holds a key-share lock on this
+ * row (the foreign key of its idempotency_keys row), which FOR UPDATE conflicts with: two
+ * requests of one user would then wait for each other until PostgreSQL ends one as a deadlock.
+ * As app_auth the statement reaches the own row only (the policy), so it locks nobody else.
+ */
+export async function lockProfile(db: PoolClient): Promise<void> {
+  await db.query(
+    'SELECT 1 FROM users WHERE id = app.current_user_id() FOR NO KEY UPDATE',
+  );
+}
 
 function refuse(problems: FieldError[]): void {
   if (problems.length > 0) {
@@ -129,9 +146,7 @@ function notAllowed(allowed: Archetype[]): AppError {
 }
 
 /** The caller's own row: row level security shows no other. */
-async function account(
-  db: PoolClient,
-): Promise<{
+async function account(db: PoolClient): Promise<{
   timezone: string;
   archetype: Archetype | null;
   onboarded: boolean;
@@ -149,6 +164,7 @@ async function account(
 
 async function onboard(ctx: Ctx) {
   const { db, body, now } = ctx;
+  await lockProfile(db);
   // An onboarded user gets the current Me whatever was sent: nothing is judged, nothing changes.
   if (!(await account(db)).onboarded) {
     const input = members(body);
@@ -164,7 +180,6 @@ async function onboard(ctx: Ctx) {
     if (!allowed.includes(archetype)) {
       throw notAllowed(allowed);
     }
-    // False when a second request onboarded the user meanwhile: then that one decided.
     await db.query('SELECT profile_onboard($1, $2, $3, $4, $5, $6, $7, $8)', [
       timezone,
       archetype,
@@ -181,6 +196,7 @@ async function onboard(ctx: Ctx) {
 
 async function addBiometrics(ctx: Ctx) {
   const { db, body, now } = ctx;
+  await lockProfile(db);
   const { timezone, archetype: current } = await account(db);
   const input = members(body);
   const problems: FieldError[] = [];
@@ -219,6 +235,7 @@ async function changeArchetype(ctx: Ctx) {
   if (archetype === null) {
     throw new Error('unreachable: a missing member was reported above');
   }
+  await lockProfile(db);
   const { timezone } = await account(db);
   const { biometrics } = await buildPrescription(ctx);
   const allowed = allowedArchetypes(biometrics.heightCm, biometrics.weightKg);

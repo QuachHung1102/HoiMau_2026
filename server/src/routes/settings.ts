@@ -6,6 +6,7 @@ import { INGREDIENT_TAGS } from '../../../domain/types.ts';
 import type { FieldError } from '../../../domain/validation.ts';
 import type { Route } from '../app.ts';
 import { AppError } from '../errors.ts';
+import { members } from './auth.ts';
 
 const REMINDER_WINDOWS: readonly unknown[] = ['MORNING', 'NOON', 'EVENING'];
 const MOTIONS: readonly unknown[] = ['SYSTEM', 'REDUCED', 'FULL'];
@@ -33,10 +34,7 @@ async function one(
  * know, which is ignored.
  */
 function checkPatch(body: unknown): unknown[] {
-  const input: Record<string, unknown> =
-    body !== null && typeof body === 'object' && !Array.isArray(body)
-      ? (body as Record<string, unknown>)
-      : {};
+  const input = members(body);
   const problems: FieldError[] = [];
   const given = (
     field: string,

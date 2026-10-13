@@ -246,15 +246,114 @@ test('POST /onboarding again: 200 with the current Me, nothing changes, still on
   assert.equal(earlier.snapshots, 1);
 });
 
-test('two POST /onboarding at the same moment with different keys: both 200, one onboarding', async () => {
-  const user = await newUser(db);
-  const [a, b] = await Promise.all([
-    post('/onboarding', user.token, ONBOARDING_INPUT),
-    post('/onboarding', user.token, { ...ONBOARDING_INPUT, archetype: 'TANKER', weightKg: 80 }),
-  ]);
-  assert.deepEqual([a.status, b.status], [200, 200]);
-  assert.deepEqual(a.body, b.body);
-  assert.equal((await stored(user.userId)).snapshots, 1);
+// ---------------------------------------------------------------- one user, several requests at once
+//
+// A race needs requests that really overlap: with one pooled connection open, the second request
+// only waits for a connection and the two run one after the other. Every test below opens all
+// ten connections of the pool first (an idle one is closed again after ten seconds).
+
+const warmPool = () =>
+  Promise.all(Array.from({ length: 10 }, () => db.app.query('SELECT 1')));
+const serverErrors = (from: number) =>
+  app.logs.slice(from).filter(line => Number(line.status) >= 500);
+
+async function rowCounts(userId: string) {
+  const { rows } = await db.admin.query(
+    `SELECT (SELECT count(*)::int FROM biometric_snapshots WHERE user_id = $1) AS snapshots,
+            (SELECT count(*)::int FROM prescriptions WHERE user_id = $1) AS prescriptions,
+            (SELECT count(*)::int FROM user_settings WHERE user_id = $1) AS settings,
+            (SELECT count(*)::int FROM progression_state WHERE user_id = $1) AS progression`,
+    [userId],
+  );
+  return rows[0];
+}
+
+/** The targets an answer carries are the ones the domain computes for the numbers it carries. */
+function assertOwnTargets(body: PrescriptionResponse, timezone: string, label: string) {
+  assert.deepEqual(
+    body,
+    prescriptionResponse({ ...body.biometrics, archetype: body.archetype, timezone }),
+    label,
+  );
+}
+
+test('ten POST /onboarding at the same moment with ten keys: all 200 with one Me, one onboarding', async () => {
+  for (let round = 0; round < 3; round++) {
+    const user = await newUser(db);
+    await warmPool();
+    const from = app.logs.length;
+    const results = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        post('/onboarding', user.token, { ...ONBOARDING_INPUT, weightKg: 60 + i }),
+      ),
+    );
+    assert.deepEqual(results.map(r => r.status), Array(10).fill(200), `round ${round}`);
+    assert.deepEqual(serverErrors(from), []);
+    for (const result of results) {
+      assert.deepEqual(result.body, freshMe(user, ONBOARDING_INPUT));
+    }
+    assert.deepEqual(await rowCounts(user.userId), {
+      snapshots: 1,
+      prescriptions: 1,
+      settings: 1,
+      progression: 1,
+    });
+    // whichever request won: the targets belong to the numbers that were stored
+    assertOwnTargets((await get('/me/prescription', user.token)).body, 'Asia/Ho_Chi_Minh', `round ${round}`);
+  }
+});
+
+test('ten POST /me/biometrics at the same moment: all 200, ten more snapshots, every answer consistent', async () => {
+  for (let round = 0; round < 3; round++) {
+    const user = await newOnboardedUser(db);
+    await warmPool();
+    const from = app.logs.length;
+    const results = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        post('/me/biometrics', user.token, {
+          heightCm: 170,
+          weightKg: 66 + i * 4,
+          birthYear: 1996,
+          sex: 'FEMALE',
+          activityLevel: i % 2 ? 'VERY_ACTIVE' : 'SEDENTARY',
+        }),
+      ),
+    );
+    assert.deepEqual(results.map(r => r.status), Array(10).fill(200), `round ${round}`);
+    assert.deepEqual(serverErrors(from), []);
+    results.forEach((result, i) => assertOwnTargets(result.body, user.input.timezone, `answer ${i}`));
+    assert.deepEqual(
+      results.map(r => r.body.biometrics.weightKg).sort((x, y) => x - y),
+      Array.from({ length: 10 }, (_, i) => 66 + i * 4),
+    );
+    assert.equal((await rowCounts(user.userId)).snapshots, 11);
+    assertOwnTargets((await get('/me/prescription', user.token)).body, user.input.timezone, 'what is stored');
+  }
+});
+
+test('POST /me/biometrics against PATCH /me/archetype, forty rounds: never a 5xx, and the targets always belong to the stored numbers', async () => {
+  const user = await newOnboardedUser(db, { archetype: 'SUPPORTER' });
+  await warmPool();
+  const from = app.logs.length;
+  for (let round = 0; round < 40; round++) {
+    const pair = await Promise.all([
+      post('/me/biometrics', user.token, {
+        heightCm: 170,
+        weightKg: round % 2 ? 110 : 60,
+        birthYear: 1996,
+        sex: 'FEMALE',
+        activityLevel: round % 2 ? 'VERY_ACTIVE' : 'SEDENTARY',
+      }),
+      // the archetype in effect: no cooldown applies, the prescription is computed again
+      patch('/me/archetype', user.token, { archetype: 'SUPPORTER' }),
+    ]);
+    assert.deepEqual(pair.map(r => r.status), [200, 200], `round ${round}`);
+    // a route that computed from what it read before the other request wrote would leave the
+    // targets of the previous weight beside the new one
+    assertOwnTargets((await get('/me/prescription', user.token)).body, user.input.timezone, `round ${round}`);
+  }
+  assert.deepEqual(serverErrors(from), []);
+  assert.equal((await rowCounts(user.userId)).snapshots, 41);
 });
 
 test('POST /onboarding refusals: fields first, then the age, then the archetype; nothing is written', async () => {
@@ -677,6 +776,9 @@ test('PATCH /me refusals: the rules of a display name, banned wording, an unknow
     [{ displayName: 7 }, 'VALIDATION_FAILED', name('required')],
     [{ displayName: 'x'.repeat(41) }, 'VALIDATION_FAILED', name('max')],
     [{ displayName: `Lan${SOFT_HYPHEN}Anh` }, 'VALIDATION_FAILED', name('format')],
+    // at least one letter or digit: a name of emoji only is refused
+    [{ displayName: '🦊'.repeat(40) }, 'VALIDATION_FAILED', name('format')],
+    [{ displayName: '🦊' }, 'VALIDATION_FAILED', name('format')],
     [{ displayName: 'Kẻ lười' }, 'NAME_NOT_ALLOWED'],
     [{ displayName: 'ke   LUOI' }, 'NAME_NOT_ALLOWED'],
     [{ timezone: 'Mars/Olympus_Mons' }, 'VALIDATION_FAILED', fields(['timezone', 'format'])],
@@ -697,10 +799,17 @@ test('PATCH /me refusals: the rules of a display name, banned wording, an unknow
     refusal(await patch('/me', user.token, body), 422, code, details);
   }
   assert.deepEqual(await stored(user.userId), earlier);
-  // 40 characters counted as the database counts them: 40 emoji are 80 UTF-16 units
-  const long = await patch('/me', user.token, { displayName: '🦊'.repeat(40) });
+  // 40 characters counted as the database counts them: a letter and 39 emoji are 79 UTF-16 units
+  const longest = `A${'🦊'.repeat(39)}`;
+  const long = await patch('/me', user.token, { displayName: longest });
   assert.equal(long.status, 200, JSON.stringify(long.body));
-  assert.equal(long.body.user.displayName, '🦊'.repeat(40));
+  assert.equal(long.body.user.displayName, longest);
+  refusal(
+    await patch('/me', user.token, { displayName: `${longest}🦊` }),
+    422,
+    'VALIDATION_FAILED',
+    name('max'),
+  );
 });
 
 test('PATCH /me: a name the database constraint refuses is 422 VALIDATION_FAILED, not a 500', async () => {

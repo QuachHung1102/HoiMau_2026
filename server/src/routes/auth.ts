@@ -23,7 +23,8 @@ const RESET_CODE = new RegExp(`^[0-9]{${LIMITS.resetCode.length}}$`);
 /** 10 a minute per client address on each of the four anonymous routes; per account on logout. */
 const AUTH_RATE = { perMinute: 10 } as const;
 
-const members = (body: unknown): Record<string, unknown> =>
+/** The members of a JSON object; a body that is none (an array, a scalar, nothing) has no member. */
+export const members = (body: unknown): Record<string, unknown> =>
   body !== null && typeof body === 'object' && !Array.isArray(body)
     ? (body as Record<string, unknown>)
     : {};

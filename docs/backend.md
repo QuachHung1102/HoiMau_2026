@@ -682,8 +682,8 @@ Không bảng nào có cột `xp`, `coin`, `level`, điểm perk hay bốn chỉ
 | `inventory` | `own_read` | Duy nhất theo `(user_id, shop_item_id)`. Cột `kind` là bản sao loại của vật phẩm, được khóa ngoại kép `(shop_item_id, kind)` giữ đúng; nhờ nó "mỗi người mỗi loại chỉ một vật phẩm đang dùng" là một chỉ mục duy nhất. Vật phẩm mặc định **không bao giờ** là một dòng ở đây: ai cũng có sẵn. |
 | `perk_unlocks` | `own_read` | `perk_code`, `shop_item_id` (chủ đề được mở bằng `THEME_UNLOCK`, `NULL` với perk dùng một lần), `cost > 0`. Duy nhất theo `(user_id, perk_code, shop_item_id)`, coi `NULL` là một giá trị. |
 | `biometric_snapshots` | `own_read` | Mỗi lần cập nhật số đo là một dòng mới; dòng cũ không bao giờ bị sửa. Chiều cao 120–230, cân nặng 30–250, `sex` và `activity_level` có `CHECK`. **Duy nhất theo `(user_id, recorded_at)`**: "snapshot mới nhất" luôn là đúng một dòng. |
-| `prescriptions` | `own_read` | Một dòng mỗi người dùng: đơn kê đang có hiệu lực. `calorie_target` là số nguyên và ≥ 1200; macro ≥ 0; `water_ml` 1500–4000. |
-| `user_settings` | `own_rw`: đọc dòng của mình, sửa sáu cột | Các cột sửa được: `nudges_enabled`, `reminder_enabled`, `reminder_window`, `hide_streak`, `motion`, `excluded_meal_tags`. `sound_enabled` **không** nằm trong sáu cột đó và có `CHECK (NOT sound_enabled)`: bản này không có âm thanh. Vì chủ dòng tự ghi, luật của từng cột là `CHECK`: hai enum, và `excluded_meal_tags` chỉ gồm các thẻ của `INGREDIENT_TAGS`. |
+| `prescriptions` | `own_read` | Một dòng mỗi người dùng: đơn kê đang có hiệu lực. Mỗi con số có khoảng của nó (`CHECK`): `bmr` trên 0 tới 5000, `tdee` trên 0 tới 10000, `calorie_target` là số nguyên từ 1200 tới 10000, `protein_g` 0–1000, `carbs_g` 0–2000, `fat_g` 0–500, `water_ml` 1500–4000. Xem "Trần của đơn kê". |
+| `user_settings` | `own_rw`: đọc dòng của mình, sửa sáu cột | Các cột sửa được: `nudges_enabled`, `reminder_enabled`, `reminder_window`, `hide_streak`, `motion`, `excluded_meal_tags`. `sound_enabled` **không** nằm trong sáu cột đó và có `CHECK (NOT sound_enabled)`: bản này không có âm thanh. Vì chủ dòng tự ghi, luật của từng cột là `CHECK`: hai enum, và `excluded_meal_tags` là một **tập hợp** các thẻ của `INGREDIENT_TAGS`: chỉ các thẻ đó, mảng một chiều, không thẻ nào lặp lại, nên không bao giờ quá tám phần tử. (`CHECK` không chứa được truy vấn con, nên "không lặp" được viết là: số phần tử bằng số thẻ của danh sách có mặt trong mảng; danh sách thẻ vì thế xuất hiện hai lần trong ràng buộc và phải được sửa cùng nhau.) |
 
 Mọi dòng của các bảng `own_read` đều do hàm ghi. Một client thử `INSERT`, `UPDATE` hay `DELETE` trực tiếp nhận `42501 permission denied for table …` (có test cho từng bảng, kể cả bảng nội dung).
 
@@ -723,7 +723,7 @@ app._grant(p_user uuid, p_xp int, p_coin int, p_reason text, p_ref text) RETURNS
 
 ### Ba hàm `profile_*`
 
-Cả ba là `SECURITY DEFINER`, chỉ `app_auth` gọi được, lấy người dùng từ `app.current_user_id()` và khóa dòng `users` của người đó trước khi làm gì khác. Đơn kê được tính ở Node (`calculatePrescription`) rồi truyền vào dưới dạng JSON: đó là giá trị, không phải tiền. SQL kiểm tra lại, như hàng rào cuối, những gì làm nó an toàn.
+Cả ba là `SECURITY DEFINER`, chỉ `app_auth` gọi được, lấy người dùng từ `app.current_user_id()` và khóa dòng `users` của người đó **`FOR NO KEY UPDATE`** trước khi làm gì khác (xem "Khóa dòng: không bao giờ `FOR UPDATE` trên dòng được tham chiếu"). Đơn kê được tính ở Node (`calculatePrescription`) rồi truyền vào dưới dạng JSON: đó là giá trị, không phải tiền. SQL kiểm tra lại, như hàng rào cuối, những gì làm nó an toàn.
 
 | Hàm | Việc |
 |---|---|
@@ -736,11 +736,40 @@ Lỗi được ném với `SQLSTATE HM000` (`MESSAGE` là mã lỗi của API, `
 1. `VALIDATION_FAILED` kèm `details.fields`: mọi trường sai một lượt, tên trường như trong thân request (`timezone`, `archetype`, `heightCm`, `weightKg`, `birthYear`, `sex`, `activityLevel`). Tuổi trên 90 là `birthYear` / `min`.
 2. `AGE_NOT_ALLOWED`: dưới 16 tuổi. Tuổi là năm dương lịch của `app.now()` **theo múi giờ của người dùng** trừ năm sinh.
 3. `ARCHETYPE_NOT_ALLOWED` kèm `details.allowed`: `ASSASSIN` khi BMI dưới 18,5. `app._archetypes_allowed` tính bằng `float8` với đúng các phép tính và thứ tự của `allowedArchetypes` ở `domain/`, nên hai bên trả lời giống nhau cả ở đúng mốc 18,5 (có test so trên một lưới giá trị quanh mốc).
-4. `VALIDATION_FAILED` cho đơn kê: `calorieTarget` không phải số nguyên (`calorieTarget` / `format`), dưới 1200 với nữ hoặc 1500 với nam (`calorieTarget` / `min`), hoặc JSON không phải một đơn kê (`prescription` / `format`).
+4. `VALIDATION_FAILED` cho đơn kê: `calorieTarget` không phải số nguyên (`calorieTarget` / `format`), dưới 1200 với nữ hoặc 1500 với nam (`calorieTarget` / `min`), trên 10000 (`calorieTarget` / `max`), hoặc JSON không phải một đơn kê, kể cả khi một con số nằm ngoài khoảng của cột chứa nó (`prescription` / `format`).
 
 Ngoài ra: `SESSION_INVALID` (`profile_onboard`) hoặc `ONBOARDING_REQUIRED` (hai hàm kia) khi `app.user_id` không chỉ tới một người dùng còn hoạt động và, với hai hàm kia, đã onboarding.
 
-Luật riêng của từng hàm:
+### Khóa dòng: không bao giờ `FOR UPDATE` trên dòng được tham chiếu
+
+**Một hàm được gọi từ route không bao giờ lấy `FOR UPDATE` trên một dòng mà bảng khác tham chiếu bằng khóa ngoại, trước hết là dòng `users`. Dùng `FOR NO KEY UPDATE`.**
+
+- Mọi request có `Idempotency-Key` đã chèn một dòng vào `idempotency_keys` trước khi handler chạy. Khóa ngoại của dòng đó giữ khóa `FOR KEY SHARE` trên dòng `users` của người gọi cho tới hết transaction.
+- `FOR UPDATE` xung đột với `FOR KEY SHARE`. Hai request cùng lúc của một người dùng vì thế chờ lẫn nhau: mỗi bên giữ khóa chia sẻ và đòi khóa độc quyền. Sau một giây PostgreSQL kết thúc một bên bằng `40P01 deadlock detected`, và request đó nhận `500 INTERNAL`. Đã đo trước khi sửa: mười `POST /onboarding` cùng lúc cho một `200` và chín `500`.
+- `FOR NO KEY UPDATE` vẫn xếp hàng các lượt ghi của cùng một người (hai khóa `FOR NO KEY UPDATE` xung đột với nhau) mà không đụng tới `FOR KEY SHARE`. Đó cũng là khóa mà một lệnh `UPDATE` không đổi cột khóa tự lấy.
+- `app._grant` lấy `FOR UPDATE` trên dòng `progression_state`: không bảng nào tham chiếu bảng đó, nên luật này không áp dụng ở đó. Thêm một khóa ngoại trỏ tới `progression_state` thì phải đổi khóa đó.
+- Có test: mười `POST /onboarding`, mười `POST /me/biometrics`, và bốn mươi cặp `POST /me/biometrics` + `PATCH /me/archetype` gửi cùng lúc trên pool đã mở sẵn mười kết nối; tất cả `200`. Đổi một trong các khóa về `FOR UPDATE` là các test đó đỏ.
+
+Một test về tranh chấp phải **mở sẵn các kết nối của pool** trước khi gửi (ví dụ mười lệnh `db.app.query('SELECT 1')` song song, ngay trước lượt gửi vì kết nối rảnh bị đóng sau mười giây). Pool chỉ có một kết nối đang mở thì request thứ hai chỉ chờ kết nối, hai request chạy lần lượt và test không chứng minh gì.
+
+### Trần của đơn kê
+
+Hàng rào cuối không lưu con số vô lý: `app._prescription_put` và `CHECK` của bảng `prescriptions` cùng giữ một khoảng cho mỗi con số. Mỗi trần là một số tròn nằm trên giá trị lớn nhất mà `calculatePrescription` cho ra trong toàn bộ khoảng đầu vào hợp lệ (`LIMITS`, hai giới tính, mọi mức vận động, mọi hệ phái):
+
+| Con số | Lớn nhất từ `domain/` | Trần |
+|---|---|---|
+| `bmr` | 3862,5 | 5000 |
+| `tdee` | 7338,8 | 10000 |
+| `calorieTarget` | 8073 | 10000 |
+| `proteinG` | 500 | 1000 |
+| `carbsG` | 1014 | 2000 |
+| `fatG` | 224 | 500 |
+| `waterMl` | 4000 | 4000 |
+
+Có test tính lại các giá trị lớn nhất trên 240 góc của khoảng đầu vào, gửi cả 240 đơn kê đó qua hàng rào (đều được nhận), rồi với từng con số: đúng bằng trần thì được lưu, trần cộng một, `1e9` và `1e400` thì bị từ chối, qua hàm lẫn qua `UPDATE` trực tiếp. **Đổi công thức ở `domain/energy.ts` hay nới `LIMITS` thì chạy lại test đó**: nó đỏ khi một giá trị hợp lệ vượt trần, và khi đó sửa trần ở cả hai chỗ trong `21-profile.sql`.
+
+### Luật riêng của từng hàm
+
 
 - **`recorded_at` của snapshot tăng nghiêm ngặt theo từng người dùng**: giá trị là `app.now()`, hoặc snapshot mới nhất cộng một micro giây nếu đồng hồ chưa vượt qua nó. Hai request đọc cùng một thời điểm (hoặc đồng hồ test đang đứng yên) vẫn cho hai dòng có thứ tự.
 - **Hệ phái gửi kèm số đo mới chỉ được dùng khi số đo mới loại bỏ hệ phái hiện tại.** Khi đó thay đổi là bắt buộc vì an toàn, nên nó bỏ qua thời gian chờ và bắt đầu một thời gian chờ mới. Hệ phái hiện tại vẫn được phép thì hệ phái gửi kèm **không được áp dụng**: nếu áp dụng, `POST /me/biometrics` sẽ là đường vòng qua luật 14 ngày. Số đo mới loại bỏ hệ phái hiện tại mà không gửi hệ phái thay thế: `ARCHETYPE_NOT_ALLOWED`. Hệ phái gửi kèm luôn phải hợp lệ với số đo mới.
@@ -759,14 +788,15 @@ Mọi từ chối ở đây đều được **ném** (`AppError`, hoặc `HM000`
 | `GET /me` | `session` | `200 Me` | – |
 | `PATCH /me` | `user`, có khóa | `200 Me` | `422 VALIDATION_FAILED` (`displayName`, `timezone`), `422 NAME_NOT_ALLOWED` |
 | `POST /me/biometrics` | `user`, có khóa | `200 PrescriptionResponse` | như `POST /onboarding` |
-| `PATCH /me/archetype` | `user`, có khóa | `200 Me` | `422 VALIDATION_FAILED` (`archetype`), `422 ARCHETYPE_NOT_ALLOWED`, `409 ARCHETYPE_COOLDOWN` |
+| `PATCH /me/archetype` | `user`, có khóa | `200 Me` | `422 VALIDATION_FAILED` (`archetype`; `birthYear` khi đã quá 90 tuổi), `422 AGE_NOT_ALLOWED`, `422 ARCHETYPE_NOT_ALLOWED`, `409 ARCHETYPE_COOLDOWN` |
 | `GET /me/prescription` | `user` | `200 PrescriptionResponse` | – |
 | `GET /settings` | `user` | `200 Settings` | – |
 | `PATCH /settings` | `user`, có khóa | `200 Settings` | `422 VALIDATION_FAILED` |
 | `GET /progression` | `user` | `200 Progression` | – |
 | `GET /pet` | `user` | `200 Pet` | – |
 
-- **`POST /onboarding` với người đã onboarding** trả `200` kèm `Me` hiện tại, không xét thân request và không đổi gì. Hai request cùng lúc với hai khóa khác nhau: request sau chờ khóa dòng, thấy người dùng đã onboarding, và trả cùng một `Me`.
+- **`POST /onboarding` với người đã onboarding** trả `200` kèm `Me` hiện tại, không xét thân request và không đổi gì. Nhiều request cùng lúc với các khóa khác nhau: request đầu giữ khóa dòng `users` (`FOR NO KEY UPDATE`, lấy ngay đầu handler); các request sau chờ khóa đó, rồi thấy người dùng đã onboarding và trả cùng một `Me`. Có test với mười request: mười `200`, đúng một snapshot, một đơn kê, một dòng cài đặt, một dòng `progression_state`.
+- **Handler khóa trước khi đọc.** Ba handler đọc hồ sơ, tính đơn kê từ thứ vừa đọc rồi mới gọi hàm ghi (`POST /onboarding`, `POST /me/biometrics`, `PATCH /me/archetype`) gọi `lockProfile(db)` (export của `routes/me.ts`: `SELECT 1 FROM users WHERE id = app.current_user_id() FOR NO KEY UPDATE`) **trước lần đọc đầu tiên**. Thiếu nó, hai request của cùng một người cùng tính từ trạng thái trước khi bên nào ghi, và bên ghi sau lưu một đơn kê thuộc về số đo đã không còn hiệu lực (đã đo: 39 trên 40 lượt, đơn kê 1616 kcal được lưu cho người có mục tiêu 3508 kcal). Khóa trong hàm SQL là quá muộn cho việc này: lúc đó route đã đọc xong. Bằng `app_auth`, câu lệnh chỉ chạm được dòng của chính người gọi (policy), nên nó không khóa ai khác. **Route nào sau này đọc trạng thái rồi tính ở Node rồi ghi cũng phải làm vậy.**
 - **Thứ tự kiểm tra của route** giống của SQL: trường sai, rồi tuổi, rồi hệ phái. Route kiểm tra bằng `validateBiometrics` và `allowedArchetypes` của `domain/`, tính đơn kê, rồi gọi hàm; hàm kiểm tra lại tất cả. Tuổi dùng `ctx.now`, tức đúng thời điểm `app.now()` mà hàm SQL sẽ đọc.
 - **Múi giờ** hợp lệ khi `Intl` nhận nó, nó có dấu `/` hoặc bằng `UTC`, **và** nó là một dòng của bảng `timezones`. Tên thiếu trong bảng là `422 VALIDATION_FAILED` (`timezone` / `format`), không bao giờ là `500` từ khóa ngoại. Thiếu hoặc không phải chuỗi: `required`.
 - **`PATCH /me`** là một lệnh `UPDATE` thường trên hai cột mà chủ dòng được ghi; policy chọn dòng. Tên hiển thị được cắt khoảng trắng hai đầu, 1–40 ký tự đếm theo code point, qua `isDisplayName`; từ cấm (`422 NAME_NOT_ALLOWED`) chỉ được xét khi mọi trường khác hợp lệ. Nếu `CHECK` của cột từ chối một tên đã qua được route, lỗi `23514` được đổi thành `422 VALIDATION_FAILED` (`displayName` / `format`) bằng cách **ném** `AppError`, nên transaction vẫn được hoàn lại. Thành viên vắng mặt thì giữ nguyên; thân rỗng là `200` không đổi gì.
@@ -792,8 +822,8 @@ Mọi từ chối ở đây đều được **ném** (`AppError`, hoặc `HM000`
 
 Cổng 1 đối chiếu vai trò, GRANT, RLS, policy và `search_path`. Những thay đổi sau **không** làm nó đỏ; chỉ test mới bắt được (đã chạy thử từng ca, kết quả ở báo cáo Task 14):
 
-- thân hàm: bỏ `FOR UPDATE` trong `app._grant`; để `app._level` đọc `xp_high_water` thay vì tổng sổ cái; bỏ thời gian chờ trong `profile_set_archetype`; để `profile_add_biometrics` áp dụng mọi hệ phái được gửi kèm; bỏ luật BMI hoặc sàn calo trong SQL;
-- ràng buộc: đổi khóa duy nhất `(user_id, reason, ref_id)` của sổ cái; gỡ `CHECK` của `excluded_meal_tags`, của `sound_enabled`, của khoảng chiều cao và cân nặng; gỡ chỉ mục "một vật phẩm đang dùng mỗi loại", khóa ngoại kép của `inventory`, chỉ mục duy nhất `(user_id, recorded_at)`;
+- thân hàm: bỏ `FOR UPDATE` trong `app._grant`; đổi `FOR NO KEY UPDATE` của ba hàm `profile_*` về `FOR UPDATE` (deadlock giữa hai request của một người); bỏ các trần trong `app._prescription_put`; để `app._level` đọc `xp_high_water` thay vì tổng sổ cái; bỏ thời gian chờ trong `profile_set_archetype`; để `profile_add_biometrics` áp dụng mọi hệ phái được gửi kèm; bỏ luật BMI hoặc sàn calo trong SQL;
+- ràng buộc: đổi khóa duy nhất `(user_id, reason, ref_id)` của sổ cái; gỡ một trần của bảng `prescriptions`; gỡ điều kiện "một chiều" hay "không lặp" của `excluded_meal_tags`; gỡ `CHECK` của `excluded_meal_tags`, của `sound_enabled`, của khoảng chiều cao và cân nặng; gỡ chỉ mục "một vật phẩm đang dùng mỗi loại", khóa ngoại kép của `inventory`, chỉ mục duy nhất `(user_id, recorded_at)`;
 - dữ liệu: một dòng `level_thresholds` hay `pet_stages` bị sửa tay (lần migrate sau seeder sẽ sửa lại, nhưng giữa hai lần thì không gì báo), hai vật phẩm mặc định cùng loại bị chặn bởi chỉ mục chứ không bởi cổng 1.
 
 Sửa `20-progression.sql` hay `21-profile.sql` thì chạy `npm run server:test`, không chỉ `npm run db:verify`.
