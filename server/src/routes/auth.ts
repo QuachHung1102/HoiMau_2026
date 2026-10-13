@@ -315,7 +315,11 @@ const routes: Route[] = [
         'SELECT auth_reset_request($1, $2) AS sent',
         [email, resetCodeHash(email, code)],
       );
-      if (rows[0].sent) {
+      // No mail to an address under the reserved top-level domain .invalid (RFC 2606): nobody
+      // reads it, and the decoy accounts of 80-decoy-base.sql live there. Only the hand-over to
+      // the mailer is skipped: the answer, the stored code and the time to answer are those of
+      // any account.
+      if (rows[0].sent && !email.endsWith('.invalid')) {
         // after the answer: an unknown address and a known one take the same time to answer
         afterCommit(() =>
           mailer({

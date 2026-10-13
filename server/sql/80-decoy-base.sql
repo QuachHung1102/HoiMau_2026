@@ -5,12 +5,17 @@
 -- Rules for whoever edits this file, or adds an 8N-decoy-<area>.sql next to it:
 --   * never delete or "clean up" a decoy row, here or in a job: a job that deletes old rows skips
 --     the users whose email ends in @decoy.invalid;
---   * decoy 1 (...d1) owns at least one row in every table that holds user data; the api-check
---     fails with "no decoy row in <table>" for a registered own_read / own_rw table without one;
+--   * decoy 1 (...d1) owns at least one row in every table that holds user data: every table
+--     with a foreign key to users, directly or through another such table, whatever class it
+--     is registered with. The api-check fails with "no decoy row in <table>" otherwise; the
+--     row of a child table must point at the decoy's row of its parent;
 --   * the rows are written by the schema owner, past every function: they must satisfy the
---     constraints, and they must be inert. Nobody can sign in (the key is random and thrown
---     away, the session is revoked, the reset code is used and expired, the hashes below are
---     not the hash of anything), and onboarded_at stays null so that no job picks them up;
+--     constraints. To the application a decoy is a real account (its email is taken, a reset
+--     code can be requested for it). What keeps it shut: nobody can sign in (the key is random
+--     and thrown away, the session is revoked, the reset code is used and expired, the hashes
+--     below are not the hash of anything), no mail is sent to an address under .invalid (the
+--     forgot route skips it), and onboarded_at stays null so that no job picks it up. Never
+--     give a decoy a known password, a live session or onboarded_at;
 --   * a row that needs content references seeded content by code, never a decoy content row
 --     that a user could be served;
 --   * the fixed values are repeated in server/checks/attacks/base.ts: keep both in step.
