@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient } from '@tanstack/react-query';
 import { act, fireEvent, screen } from '@testing-library/react-native';
 import { AppState, type AppStateStatus } from 'react-native';
+import * as Keychain from 'react-native-keychain';
 import { api } from '../../shared/api/client';
 import { wipeQueries } from '../../shared/api/session';
 import { retry, synced, waitingOnDevice } from '../../shared/i18n/vi/sync';
@@ -212,6 +213,31 @@ test('the session expires while a record is on its way: the queue is kept for th
   expect(sentIds()).toEqual(['a1', 'a2']);
   expect(fetchMock.mock.calls.at(-1)?.[1].headers.Authorization).not.toBe(`Bearer ${TOKEN}`);
   expect(await idsOnDisk()).toEqual([]);
+  view.unmount();
+});
+
+test('a flush that ends while its user is on the way out (token already unbound, screens not yet told) refreshes nothing', async () => {
+  await seedQueue([stored('a1')]);
+  let finish!: (response: unknown) => void;
+  server.write = () => new Promise(resolve => (finish = resolve));
+  const view = await mountApp();
+  expect(sentIds()).toEqual(['a1']);
+
+  // a slow keychain holds the sign-out that the 401 starts right after the client has dropped the token
+  let forget!: () => void;
+  (Keychain.resetGenericPassword as jest.Mock).mockImplementationOnce(() => new Promise(resolve => (forget = () => resolve(true))));
+  server.me = () => refuse(401, 'SESSION_INVALID');
+  await act(() => api.get('/me').catch(() => undefined));
+  expect(app.session.status).toBe('signedIn');
+
+  const invalidated = watchInvalidations();
+  await act(async () => finish(respond(200, { ok: true })));
+  await settle();
+  expect(invalidated()).toEqual([]);
+
+  await act(async () => forget());
+  await screen.findByRole('header', { name: 'Chào bạn trở lại' });
+  await settle();
   view.unmount();
 });
 
