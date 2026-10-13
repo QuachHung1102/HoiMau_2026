@@ -17,6 +17,7 @@ import { AppText } from '../../shared/ui/AppText';
 import { CoinChip, RewardChip, StreakChip } from '../../shared/ui/Badges';
 import { Button } from '../../shared/ui/Button';
 import { ListRow } from '../../shared/ui/Card';
+import { DisabledReason } from '../../shared/ui/Notices';
 import { Icon, type IconName } from '../../shared/ui/Icon';
 import { LevelStrip } from '../../shared/ui/LevelStrip';
 import { Screen } from '../../shared/ui/Screen';
@@ -73,11 +74,13 @@ export function TodayScreen({ navigation }: ScreenProps<'Today'>) {
   const { userId } = useSession();
   const me = useMe().data;
   const dayQuery = useDay();
-  const hideStreak = useSettings().data?.hideStreak ?? false;
+  const hideStreakSetting = useSettings().data?.hideStreak ?? false;
   const pending = usePendingActions(userId);
   // The one recorder of the water quest on this screen: the tracker and the card's button share it.
   const water = useTick(WATER);
   const day = dayQuery.data;
+  // On a provisional day the streak is not known (yesterday's close may have changed it): not shown as known.
+  const hideStreak = hideStreakSetting || dayQuery.provisional;
   // What this device still has to send is laid over the server's day, so the screen is true offline as well.
   const view = useMemo(() => (day ? applyPending(day, pending) : undefined), [day, pending]);
 
@@ -100,6 +103,11 @@ export function TodayScreen({ navigation }: ScreenProps<'Today'>) {
         </Touchable>
       </View>
       {me ? <AppText variant="secondary">{vi.greeting(me.user.displayName)}</AppText> : null}
+      {dayQuery.provisional ? (
+        <View accessibilityLiveRegion="polite">
+          <DisabledReason reason={vi.newDayNotSynced} icon="CloudOff" />
+        </View>
+      ) : null}
     </>
   );
 

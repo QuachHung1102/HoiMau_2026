@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
-import { AppState, Text } from 'react-native';
+import { AccessibilityInfo, AppState, Text } from 'react-native';
 import type { ActionResult, GameEvent } from '../../../domain/contract/common.ts';
 import { api } from '../../shared/api/client';
 import {
@@ -29,6 +29,7 @@ installTodayTestEnv();
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const UNDO_GONE = 'Không hoàn tác được nữa, ghi nhận vẫn được giữ';
+const UNDO_NOT_SENT = 'Chưa hoàn tác được, ghi nhận vẫn được giữ';
 const record = () => fireEvent.press(screen.getByRole('button', { name: /^Ghi nhận nước/ }));
 const tracker = () => screen.getByRole('button', { name: /^Nước hôm nay/ });
 const hp = () => within(screen.getByRole('progressbar', { name: 'Sức sống' }));
@@ -165,7 +166,7 @@ describe('a tick made without a network', () => {
     record();
     expect(await screen.findByText('Đang chờ gửi')).toBeTruthy();
     expect(screen.getByText('4 / 8 phần')).toBeTruthy();
-    expect(tracker().props.accessibilityLabel).toBe('Nước hôm nay. 4 / 8 phần. 1 phần đang chờ gửi. Chạm để ghi thêm một phần.');
+    expect(tracker().props.accessibilityLabel).toBe('Nước hôm nay. 4 / 8 phần. Có phần đang chờ gửi. Chạm để ghi thêm một phần.');
     expect(screen.getByText('Mầm đang vui')).toBeTruthy();
     expectNoReward();
     const waiting = await idsOnDisk();
@@ -182,6 +183,22 @@ describe('a tick made without a network', () => {
     expect(screen.queryByText(/Đã ghi nhận/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Hoàn tác' })).toBeNull();
     expect(screen.queryByText('Mầm vui vì bạn vừa ghi nhận')).toBeNull();
+    view.unmount();
+  });
+
+  test('a part recorded without a network right after a confirmed one: the count no longer says "đã lưu", and no number of waiting parts is given', async () => {
+    const view = await openToday();
+    record();
+    expect(await screen.findByText('4 / 8 phần · đã lưu')).toBeTruthy();
+    await settle();
+    world.down = true;
+    record();
+    expect(await screen.findByText('Đang chờ gửi')).toBeTruthy();
+    await settle();
+    // 4 are the server's, 1 is only on this device: the five as a whole are not saved
+    expect(screen.getByText('5 / 8 phần')).toBeTruthy();
+    expect(screen.queryByText(/đã lưu$/)).toBeNull();
+    expect(tracker().props.accessibilityLabel).toBe('Nước hôm nay. 5 / 8 phần. Có phần đang chờ gửi. Chạm để ghi thêm một phần.');
     view.unmount();
   });
 
@@ -221,7 +238,7 @@ describe('a tick made without a network', () => {
     expect(await idsOnDisk()).toHaveLength(2);
 
     expect(screen.getByRole('button', { name: 'Ghi nhận nước. Đã ghi đủ 8 phần hôm nay.' }).props.accessibilityState.disabled).toBe(true);
-    expect(tracker().props.accessibilityLabel).toBe('Nước hôm nay. 8 / 8 phần. 2 phần đang chờ gửi. Đã ghi đủ 8 phần hôm nay.');
+    expect(tracker().props.accessibilityLabel).toBe('Nước hôm nay. 8 / 8 phần. Có phần đang chờ gửi. Đã ghi đủ 8 phần hôm nay.');
     expect(tracker().props.accessibilityState.disabled).toBe(true);
     expect(screen.getByText('Đã ghi đủ 8 phần hôm nay.')).toBeTruthy();
     record();
@@ -344,12 +361,14 @@ describe('undo', () => {
     view.unmount();
   });
 
-  test('no network: the same message with "Thử lại" while the 5 s last; the retry repeats the same undo with its key', async () => {
+  test('no network: "not undone yet" with "Thử lại" while the 5 s last; the retry repeats the same undo with its key', async () => {
     const { view, tickId } = await recorded();
     await act(() => jest.advanceTimersByTimeAsync(1_000));
     world.down = true;
     fireEvent.press(screen.getByRole('button', { name: 'Hoàn tác' }));
-    expect(await screen.findByText(UNDO_GONE)).toBeTruthy();
+    expect(await screen.findByText(UNDO_NOT_SENT)).toBeTruthy();
+    // "cannot be undone any more" would contradict the retry beside it
+    expect(screen.queryByText(UNDO_GONE)).toBeNull();
     expect(screen.getByText('4 / 8 phần')).toBeTruthy();
 
     world.down = false;
@@ -368,10 +387,22 @@ describe('undo', () => {
     await act(() => jest.advanceTimersByTimeAsync(3_000));
     world.down = true;
     fireEvent.press(screen.getByRole('button', { name: 'Hoàn tác' }));
-    expect(await screen.findByText(UNDO_GONE)).toBeTruthy();
+    expect(await screen.findByText(UNDO_NOT_SENT)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Thử lại' })).toBeTruthy();
     await act(() => jest.advanceTimersByTimeAsync(2_000));
-    expect(screen.queryByText(UNDO_GONE)).toBeNull();
+    expect(screen.queryByText(UNDO_NOT_SENT)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Thử lại' })).toBeNull();
+    view.unmount();
+  });
+
+  test('no network after the 5 s (a screen reader keeps the action for 9 s): the time is over, so no retry, and the sentence that says so', async () => {
+    jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(true);
+    const { view } = await recorded();
+    await act(() => jest.advanceTimersByTimeAsync(6_000));
+    world.down = true;
+    fireEvent.press(screen.getByRole('button', { name: 'Hoàn tác' }));
+    expect(await screen.findByText(UNDO_GONE)).toBeTruthy();
+    expect(screen.queryByText(UNDO_NOT_SENT)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Thử lại' })).toBeNull();
     view.unmount();
   });

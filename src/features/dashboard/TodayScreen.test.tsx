@@ -1,8 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { act, fireEvent, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
+import { AppState } from 'react-native';
+import type { DayState } from '../../../domain/contract/core.ts';
 import { calorieWindow } from '../../../domain/energy.ts';
 import { xpRequiredForLevel } from '../../../domain/progression.ts';
 import { api } from '../../shared/api/client';
+import { wipeQueries } from '../../shared/api/session';
 import { app, dayOf, hold, installTodayTestEnv, meOf, openToday, queryClient, refuse, requested, respond, seedQueue, settle, settingsOf, stored, USER, world } from './todayTestKit';
 
 // The real registry; the home tab's `navigate` is recorded on its way to the navigator, so a link to a route that no
@@ -32,6 +35,21 @@ const dotted = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 const dayCache = `cache:v1:${USER}:day`;
 const meCache = `cache:v1:${USER}:me`;
 const bar = (name: string) => screen.getByRole('progressbar', { name });
+const NEW_DAY = 'Ngày mới chưa được đồng bộ. Các con số sẽ cập nhật khi có mạng trở lại.';
+const HOUR = 3_600_000;
+const record = () => screen.getByRole('button', { name: /^Ghi nhận nước/ });
+// Timers only: a microtask queued by an unmount is not something that keeps Jest alive.
+const fakeTimers = () => jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+/** A day at its end: both tasks done, 8 of 8 parts, bedtime marked. `closesIn` is negative for a day that is already over. */
+function finishedDay(closesIn: number): DayState {
+  const day = dayOf(
+    { closesAt: new Date(Date.now() + closesIn).toISOString(), caloriesIn: 2380, bedtimeMarkedAt: new Date(Date.now() - HOUR).toISOString(), story: { done: 2, total: 2 } },
+    { progress: 8, completed: true },
+  );
+  day.quests[0] = { ...day.quests[0], progress: 1, completed: true };
+  day.quests[1] = { ...day.quests[1], progress: 1, completed: true };
+  return day;
+}
 
 describe('S09: the day as the server gave it', () => {
   test('every block, top to bottom, with the numbers of the day and the profile', async () => {
@@ -236,13 +254,56 @@ describe('loading, failing and starting without a network', () => {
     view.unmount();
   });
 
-  test('a kept day that is already over is not shown as today (no network after the day changed)', async () => {
+  test('a kept day that is over, and no network: a provisional new day (same tasks, nothing done, no streak number) on which the first record waits', async () => {
     world.down = true;
     await AsyncStorage.setItem(meCache, JSON.stringify(world.me));
-    await AsyncStorage.setItem(dayCache, JSON.stringify(dayOf({ closesAt: new Date(Date.now() - 60_000).toISOString() }, { progress: 5 })));
+    await AsyncStorage.setItem(dayCache, JSON.stringify(finishedDay(-60_000)));
     const view = await openToday();
-    expect(await screen.findByText('Chưa tải được dữ liệu')).toBeTruthy();
-    expect(screen.queryByText('5 / 8 phần')).toBeNull();
+    expect(await screen.findByText(NEW_DAY)).toBeTruthy();
+    expect(screen.queryByText('Chưa tải được dữ liệu')).toBeNull();
+    // nothing of yesterday is shown as done today
+    expect(screen.getByText('0 / 8 phần')).toBeTruthy();
+    expect(screen.queryByText('Đã xong')).toBeNull();
+    expect(screen.getAllByText('+50 XP')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: new RegExp('^Ăn đủ cho mục tiêu. 0 / 2.394 kcal') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Khép lại hôm nay. Ghi lại ý định nghỉ ngơi' })).toBeTruthy();
+    // the streak is not known this morning; level and coins are the kept profile's
+    expect(screen.queryByText(/4 ngày/)).toBeNull();
+    expect(screen.getByRole('link', { name: 'xem hành trình' })).toBeTruthy();
+    expect(screen.getByLabelText('250 xu')).toBeTruthy();
+
+    // the first record of the morning can be made, and stays as waiting
+    expect(record().props.accessibilityState.disabled).toBeFalsy();
+    fireEvent.press(record());
+    expect(await screen.findByText('Đang chờ gửi')).toBeTruthy();
+    await settle();
+    expect(screen.getByText('1 / 8 phần')).toBeTruthy();
+    expect(screen.queryByText(/Đã ghi nhận/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Hoàn tác' })).toBeNull();
+    // the guess is kept nowhere: the disk and the query cache still hold the day the server gave
+    expect(JSON.parse((await AsyncStorage.getItem(dayCache)) ?? '{}').quests[2].progress).toBe(8);
+    expect(queryClient().getQueryData<DayState>(['day'])?.quests[2].progress).toBe(8);
+
+    // the network is back: the queue delivers the record and the server's day replaces the guess
+    world.down = false;
+    fireEvent.press(screen.getByRole('button', { name: 'Thử lại' }));
+    await waitFor(() => expect(screen.queryByText(NEW_DAY)).toBeNull());
+    expect(screen.getByText('4 / 8 phần')).toBeTruthy();
+    expect(screen.getByLabelText('4 ngày')).toBeTruthy();
+    expect(JSON.parse((await AsyncStorage.getItem(dayCache)) ?? '{}').quests[2].progress).toBe(4);
+    view.unmount();
+  });
+
+  test('a kept day that is over while the request is still out: the first-load state, not yesterday as today', async () => {
+    await AsyncStorage.setItem(dayCache, JSON.stringify(finishedDay(-60_000)));
+    const day = hold('GET /day');
+    const view = await openToday();
+    await settle();
+    expect(screen.getByRole('progressbar', { name: 'Đang tải' })).toBeTruthy();
+    expect(screen.queryByText('8 / 8 phần')).toBeNull();
+    expect(screen.queryByText(NEW_DAY)).toBeNull();
+    await act(async () => day.release());
+    expect(await screen.findByText('3 / 8 phần')).toBeTruthy();
     view.unmount();
   });
 
@@ -294,6 +355,97 @@ test('the kept day comes off the disk only after the session has ended: it is no
   view.unmount();
 });
 
+describe('the day changes', () => {
+  test('coming back to the app reads the day again, once', async () => {
+    const listeners: ((state: string) => void)[] = [];
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((_event: string, listener: (state: string) => void) => {
+      listeners.push(listener);
+      return { remove: () => undefined };
+    }) as never);
+    world.day = finishedDay(6 * HOUR);
+    const view = await openToday();
+    expect(screen.getByText('8 / 8 phần')).toBeTruthy();
+    expect(record().props.accessibilityState.disabled).toBe(true);
+    expect(requested('/day')).toBe(1);
+
+    // the night passes in the background; the server has a new day
+    world.day = dayOf({ logicalDate: '2026-10-15', streak: { current: 5, best: 9 } }, { progress: 0, lastTick: null });
+    await act(async () => listeners.forEach(listener => listener('background')));
+    await settle();
+    expect(requested('/day')).toBe(1);
+    await act(async () => listeners.forEach(listener => listener('active')));
+    expect(await screen.findByText('0 / 8 phần')).toBeTruthy();
+    expect(record().props.accessibilityState.disabled).toBeFalsy();
+    expect(screen.getByLabelText('5 ngày')).toBeTruthy();
+    // one request, although every user of the day listens
+    expect(listeners.length).toBeGreaterThan(1);
+    expect(requested('/day')).toBe(2);
+    view.unmount();
+  });
+
+  test('at the moment the day closes it is read again: not before, and not again until the next close', async () => {
+    fakeTimers();
+    world.day = finishedDay(60_000);
+    const view = await openToday();
+    expect(screen.getByText('8 / 8 phần')).toBeTruthy();
+    world.day = dayOf({ logicalDate: '2026-10-15' }, { progress: 0, lastTick: null });
+    await act(() => jest.advanceTimersByTimeAsync(50_000));
+    expect(requested('/day')).toBe(1);
+    expect(screen.getByText('8 / 8 phần')).toBeTruthy();
+
+    await act(() => jest.advanceTimersByTimeAsync(10_000));
+    expect(await screen.findByText('0 / 8 phần')).toBeTruthy();
+    expect(record().props.accessibilityState.disabled).toBeFalsy();
+    expect(requested('/day')).toBe(2);
+    // the new day closes in six hours: nothing is asked in the meantime
+    await act(() => jest.advanceTimersByTimeAsync(5 * HOUR));
+    expect(requested('/day')).toBe(2);
+    view.unmount();
+  });
+
+  test('the day closes while the app is open and there is no network: a provisional day, not yesterday; a part recorded then stays, waiting', async () => {
+    fakeTimers();
+    world.day = finishedDay(60_000);
+    const view = await openToday();
+    expect(record().props.accessibilityState.disabled).toBe(true);
+    world.down = true;
+    await act(() => jest.advanceTimersByTimeAsync(60_000));
+    expect(await screen.findByText(NEW_DAY)).toBeTruthy();
+    expect(screen.getByText('0 / 8 phần')).toBeTruthy();
+    expect(screen.queryByText('Đã ghi đủ 8 phần hôm nay.')).toBeNull();
+    expect(screen.queryByText(/4 ngày/)).toBeNull();
+
+    fireEvent.press(record());
+    expect(await screen.findByText('Đang chờ gửi')).toBeTruthy();
+    await act(() => jest.advanceTimersByTimeAsync(2_000));
+    expect(screen.getByText('1 / 8 phần')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Nước hôm nay. 1 / 8 phần. Có phần đang chờ gửi. Chạm để ghi thêm một phần.' })).toBeTruthy();
+    view.unmount();
+  });
+
+  test('the server still gives the same day after its close by this clock: it is shown as the server says, and not asked for in a loop', async () => {
+    fakeTimers();
+    world.day = dayOf({ closesAt: new Date(Date.now() + 60_000).toISOString() });
+    const view = await openToday();
+    await act(() => jest.advanceTimersByTimeAsync(61_000));
+    expect(requested('/day')).toBe(2);
+    expect(screen.getByText('3 / 8 phần')).toBeTruthy();
+    expect(screen.queryByText(NEW_DAY)).toBeNull();
+    await act(() => jest.advanceTimersByTimeAsync(30 * 60_000));
+    expect(requested('/day')).toBe(2);
+    view.unmount();
+  });
+
+  test('leaving leaves no timer for the close behind', async () => {
+    fakeTimers();
+    const view = await openToday();
+    expect(jest.getTimerCount()).toBeGreaterThan(0);
+    view.unmount();
+    wipeQueries(queryClient());
+    expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
 describe('what this device has not sent yet is laid over the day', () => {
   test('waiting records from an earlier run: parts, a bedtime mark and manual kcal show as waiting, without any reward', async () => {
     world.down = true;
@@ -307,7 +459,7 @@ describe('what this device has not sent yet is laid over the day', () => {
     ]);
     const view = await openToday();
     expect(await screen.findByText('5 / 8 phần')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Nước hôm nay. 5 / 8 phần. 2 phần đang chờ gửi. Chạm để ghi thêm một phần.' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Nước hôm nay. 5 / 8 phần. Có phần đang chờ gửi. Chạm để ghi thêm một phần.' })).toBeTruthy();
     // per record marks only: the count of waiting records is the row above the app, once
     expect(screen.getAllByText('4 ghi nhận đang chờ gửi — đã lưu trên máy')).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'Khép lại hôm nay. Đã ghi ý định nghỉ ngơi. Đang chờ gửi' })).toBeTruthy();

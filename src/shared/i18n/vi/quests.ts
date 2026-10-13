@@ -19,14 +19,18 @@ export const waterFull = (target: number) => `Đã ghi đủ ${target} phần h�
 export const saving = 'đang lưu';
 export const saved = 'đã lưu';
 export const withStatus = (text: string, status: string) => `${text} · ${status}`;
-export const waterWaiting = (count: number) => `${count} phần đang chờ gửi`;
+/** For the tracker's label. No number: how many records wait is said once, by the row above the app. */
+export const waterWaiting = 'Có phần đang chờ gửi';
 export const tapToRecord = 'Chạm để ghi thêm một phần.';
 
 // After the server's answer (S57). Never a number of seconds here: the snackbar shows the time left itself.
 export const recorded = (xp: number) => (xp > 0 ? `Đã ghi nhận · +${xp} XP` : 'Đã ghi nhận');
 export const undo = 'Hoàn tác';
 export const undone = 'Đã hoàn tác';
+/** The undo was refused, or its time is over. */
 export const undoUnavailable = 'Không hoàn tác được nữa, ghi nhận vẫn được giữ';
+/** The undo did not reach the server and can still be tried again. */
+export const undoOffline = 'Chưa hoàn tác được, ghi nhận vẫn được giữ';
 
 /** S58, next to the tracker; `reason` is `failureText(code)` of vi/sync.ts. */
 export const waterNotSaved = (reason: string) => `Chưa lưu được phần nước vừa ghi. ${reason}`;

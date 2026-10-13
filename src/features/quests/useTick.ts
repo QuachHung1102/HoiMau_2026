@@ -109,7 +109,7 @@ export function useTick(questCode: string) {
           if (!offline) queryClient.invalidateQueries({ queryKey: dayKey });
           snackbar.show(
             offline && left > 0
-              ? { message: vi.undoUnavailable, action: { label: common.retry, onPress: attempt }, durationMs: left, countdown: true }
+              ? { message: vi.undoOffline, action: { label: common.retry, onPress: attempt }, durationMs: left, countdown: true }
               : { message: vi.undoUnavailable },
           );
         }

@@ -1,10 +1,12 @@
 import { skipToken, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
+import { AppState } from 'react-native';
 import type { ActionResult } from '../../../domain/contract/common.ts';
 import type { DayState, Settings, UndoRequest } from '../../../domain/contract/core.ts';
 import { api, boundUserId } from '../../shared/api/client';
 import { useSession } from '../../shared/api/session';
 import { readCache, writeCache } from '../../shared/storage/cache';
+import { provisionalDay } from '../dashboard/provisionalDay';
 
 /** The pending queue refreshes exactly this key after a flush (`usePendingSync`). */
 export const dayKey = ['day'] as const;
@@ -32,9 +34,14 @@ async function fetchDay(userId: string, signal: AbortSignal): Promise<DayState> 
 }
 
 /**
- * The current logical day (`GET /day`), query key `['day']`; idle while signed out. Stale-while-revalidate: what
- * is in the query cache shows while a refetch runs, and stays when it fails. On a cold start the last day kept on
- * this device is put in until the server answers. Lay the unsent records over it with `applyPending`.
+ * The current logical day (`GET /day`), query key `['day']`; idle while signed out. Lay the unsent records over
+ * `data` with `applyPending`.
+ * - Stale-while-revalidate: what is in the query cache shows while a refetch runs, and stays when it fails. On a cold
+ *   start the last day kept on this device is put in until the server answers.
+ * - It is read again whenever the app comes back to the foreground and at the moment the day closes (`closesAt`).
+ * - A day that is over is never shown as today. Until the server answers, `data` is undefined (first-load state);
+ *   once the read has failed, `data` is a provisional day built from it (`provisionalDay`: same quests, nothing
+ *   done) and `provisional` is true. A provisional day lives in this hook only: never in the query cache or on disk.
  */
 export function useDay() {
   const { status, userId } = useSession();
@@ -46,18 +53,56 @@ export function useDay() {
     if (!user || !empty) return;
     let current = true;
     readCache<DayState>(user, 'day').then(cached => {
-      // Not for someone who has left meanwhile, not over an answer that came first, and not a day that is over
-      // (its counts would pass for today's).
-      // ponytail: after 03:00 without a network there is no day to show; build an empty one from the cached
-      // targets if recording offline first thing in the morning matters.
+      // Not for someone who has left meanwhile, and not over an answer that came first. `updatedAt: 0`: it is not
+      // an answer, so it is replaced by one, and it counts as over once its close has passed (below).
       if (!current || !cached || boundUserId() !== user || queryClient.getQueryData(dayKey) !== undefined) return;
-      if (Date.now() < Date.parse(cached.closesAt)) queryClient.setQueryData(dayKey, cached, { updatedAt: 0 });
+      queryClient.setQueryData(dayKey, cached, { updatedAt: 0 });
     });
     return () => {
       current = false;
     };
   }, [user, empty, queryClient]);
-  return query;
+
+  const kept = query.data;
+  const closes = kept ? Date.parse(kept.closesAt) : undefined;
+  // Over: it was read before its close, and the close has passed. A day the server gives after that moment is
+  // shown as the server's word, whatever this device's clock says.
+  const over = closes !== undefined && query.dataUpdatedAt < closes && Date.now() >= closes;
+  // The server could not be asked since that day ended.
+  const lastFailure = query.errorUpdatedAt;
+  const provisional = over && lastFailure >= closes;
+  // Built again after every failed read, so that its own close moves on if the app stays open for days.
+  const guess = useMemo(() => (kept && provisional ? provisionalDay(kept, Math.max(Date.now(), lastFailure)) : undefined), [kept, provisional, lastFailure]);
+  const data = over ? guess : kept;
+
+  // One request however many screens use this hook: a read already on its way is joined, not restarted.
+  const revalidate = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: dayKey }, { cancelRefetch: false });
+  }, [queryClient]);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', next => {
+      if (next === 'active') revalidate();
+    });
+    return () => subscription.remove();
+  }, [revalidate]);
+  // A timer to the close of the day on screen (or, while a day that is over waits for its answer, at once); no polling.
+  // ponytail: when the server still gives the same day after its close by this device's clock (a clock that runs
+  // ahead), nothing is armed: the new day comes with the next return to the app or the next delivered record.
+  const nextClose = data ? Date.parse(data.closesAt) : closes;
+  const closedForServer = closes !== undefined && !over && Date.now() >= closes;
+  useEffect(() => {
+    if (nextClose === undefined || closedForServer) return;
+    const timer = setTimeout(() => {
+      // Another screen's timer for the same close may have asked already (answered or failed since then).
+      const state = queryClient.getQueryState(dayKey);
+      if (!state || Math.max(state.dataUpdatedAt, state.errorUpdatedAt) < nextClose) revalidate();
+    }, Math.max(0, nextClose - Date.now()));
+    return () => clearTimeout(timer);
+  }, [nextClose, closedForServer, revalidate, queryClient]);
+
+  // `isFetching` is read here on purpose as well: "over" depends on the clock, and the start and the end of a read
+  // are what make this hook look at the clock again (a read that brings back the same day changes nothing else).
+  return { data, provisional, isFetching: query.isFetching, isError: query.isError, error: query.error, refetch: query.refetch };
 }
 
 /**

@@ -11,7 +11,7 @@ import { cumulativeXpForLevel, titleKeyForLevel, xpRequiredForLevel } from '../.
 import { tabLabel } from '../../shared/i18n/vi/nav';
 import { clearCelebrations } from '../progression/celebrations';
 import { tickPath, WATER } from '../quests/api';
-import { fetchMock, installSyncTestEnv, mountApp, refuse, respond, settle, USER, writes } from '../sync/syncTestKit';
+import { fetchMock, installSyncTestEnv, mountApp, refuse, respond, settle, tabsSettled, USER, writes } from '../sync/syncTestKit';
 
 export { app, fetchMock, idsOnDisk, queryClient, refuse, requested, respond, seedQueue, settle, stored, USER, writes } from '../sync/syncTestKit';
 
@@ -173,10 +173,10 @@ export function hold(request: string) {
 
 /** The app on its first tab, with the day loaded (or its first-load state when the day cannot be had). */
 export async function openToday(options: Parameters<typeof mountApp>[0] = {}) {
-  const view = await mountApp({ tab: 'Today', landed: false, ...options });
+  const view = await mountApp({ landed: false, ...options });
   await screen.findByRole('header', { name: tabLabel.Today });
   await settle();
-  await settle(); // the tab shell's mount animations have ended (16 ms each in Jest's Animated)
+  await tabsSettled();
   return view;
 }
 

@@ -22,7 +22,9 @@ const ACTION = { hp: 'Today', en: 'ManualKcal', str: 'WorkoutCatalog', spd: 'Wor
  */
 export function StatsExplainerScreen({ navigation }: ScreenProps<'StatsExplainer'>) {
   const stats = useMe().data?.stats;
-  const day = useDay().data;
+  // A provisional day has no inputs worth stating: they are not the server's.
+  const { data, provisional } = useDay();
+  const day = provisional ? undefined : data;
   const inputs = (kind: StatKind) => {
     if (kind === 'str' || kind === 'spd') return stats ? vi.minutesInputs(stats[kind]) : undefined;
     if (!day) return undefined;

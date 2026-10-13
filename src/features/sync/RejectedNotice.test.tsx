@@ -3,6 +3,9 @@ import { act, fireEvent, screen } from '@testing-library/react-native';
 import { failureText, recordLabel, rejectionText } from '../../shared/i18n/vi/sync';
 import { app, idsOnDisk, installSyncTestEnv, mountApp, pendingKey, refuse, rejectedKey, seedQueue, server, settle, stored, writes } from './syncTestKit';
 
+// The main group without its screens: every tab shows the notice with "Đăng xuất", whatever tabs the app has by now.
+jest.mock('../../app/screens', () => ({ ...jest.requireActual('../../app/screens'), tabRoots: [] }));
+
 installSyncTestEnv();
 
 const DAY_CLOSED = 'Ngày đó đã khép lại nên ghi nhận này không được tính. Bạn không làm gì sai cả.';

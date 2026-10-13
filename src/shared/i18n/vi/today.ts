@@ -3,6 +3,8 @@ import type { TitleKey } from '../../../../domain/contract/common.ts';
 import { formatNumber, statValue } from './pet';
 
 export const greeting = (name: string) => `Chào ${name}, mình bắt đầu từ việc nhỏ nhé.`;
+/** Above a provisional day (the previous one is over and the server cannot be asked yet). Calm, nobody's fault. */
+export const newDayNotSynced = 'Ngày mới chưa được đồng bộ. Các con số sẽ cập nhật khi có mạng trở lại.';
 export const inbox = 'Hộp thư';
 export const inboxUnread = 'Hộp thư, có thư mới';
 

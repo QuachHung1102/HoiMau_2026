@@ -7,6 +7,9 @@ import { MotionPreferenceProvider } from '../../shared/motion/useReducedMotion';
 import { PendingBannerView } from './PendingBanner';
 import { USER, app, fetchMock, installSyncTestEnv, mountApp, onboarded, refuse, requested, respond, seedQueue, server, settle, stored, writes } from './syncTestKit';
 
+// The main group without its screens: every tab shows the notice with "Đăng xuất", whatever tabs the app has by now.
+jest.mock('../../app/screens', () => ({ ...jest.requireActual('../../app/screens'), tabRoots: [] }));
+
 installSyncTestEnv();
 
 const OFFLINE = 'Bạn đang ngoại tuyến';
