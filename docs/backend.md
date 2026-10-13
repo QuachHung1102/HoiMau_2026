@@ -401,6 +401,9 @@ Server là `node:http` trần: không framework, không middleware. Mọi route 
 | `config.ts`, `main.ts` | Đọc môi trường (`DATABASE_URL`, `JOURNAL_KEY`, `HOST`, `PORT`); tiến trình server. |
 | `routes/meta.ts` | `GET /healthz`, `GET /meta/timezones`. |
 | `routes/auth.ts` | Năm route xác thực: đăng ký, đăng nhập, đăng xuất, quên và đặt lại mật khẩu. |
+| `routes/me.ts`, `routes/settings.ts`, `routes/progression.ts` | Onboarding, hồ sơ, số đo, hệ phái, đơn kê, cài đặt, tiến trình, thú (xem "Hồ sơ và tiến trình"). |
+| `readModels/me.ts` | `buildMe`, `buildProgression`, `buildPet`, `buildPrescription`: những gì người dùng đọc lại về chính mình. |
+| `seed/*.ts` | Seeder nội dung, chạy trong `migrate`. |
 | `password.ts` | `deriveKey` (scrypt), `newSalt`, cổng giới hạn scrypt. |
 | `mailer.ts` | `outboxMailer`: thư ghi vào file, chỉ để phát triển. |
 
@@ -592,6 +595,7 @@ test('GET /me cần một phiên', async () => {
 - `db.app` không có giới hạn thời gian nào. Test về giới hạn thời gian hay về kích thước pool dùng `serverPool(db, { lockMs: 300, … })`: một pool tạo bằng chính `createPool` của server, rồi `startTestApp({ ...db, app: pool })`; test tự `pool.end()`.
 - `app.call(method, path, { token?, body?, key?, headers?, rawBody?, signal? })` trả `{ status, body, headers }`. `app.logs` / `app.logText()` là log đã ghi, `app.mail` là thư đã "gửi".
 - `newUser(db)` trả `{ userId, token, email }`: một tài khoản có phiên, **chưa onboarding**, tạo thẳng qua `auth_register` bằng `app_anon`.
+- `newOnboardedUser(db, overrides?)` trả thêm `input`: `newUser` rồi `profile_onboard` (xem "Hồ sơ và tiến trình").
 - Thư của `ctx.afterCommit` tới `app.mail` **sau** phản hồi: test chờ tới khi thư xuất hiện (và chờ một nhịp ngắn trước khi khẳng định rằng *không* có thư).
 
 ## Route xác thực và thư (`routes/auth.ts`, `password.ts`, `mailer.ts`)
@@ -645,3 +649,151 @@ Việc được xếp hàng chạy **sau khi transaction đã commit và phản 
 - **Chỉ chạy khi `NODE_ENV` đúng bằng `development` hoặc `test`** (đóng theo mặc định): `production`, `Production`, `prod`, `staging`, `"production "`, giá trị rỗng hay không đặt đều dừng khởi động với cùng thông báo như giá trị `MAIL_MODE` không hỗ trợ; mã đặt lại không bao giờ được ghi xuống đĩa ngoài môi trường phát triển (có test cho bảng các cách viết đó). `server/.env.example` đặt `NODE_ENV=development`; `server:dev` tự đặt. `server/.outbox/` đã nằm trong `.gitignore`.
 - Lấy mã khi chạy `npm run server:dev`: dòng cuối của file đó.
 - **Cắm SMTP: chưa kiểm chứng, chưa có dòng code nào được chạy.** Việc cần làm: viết một hàm `Mailer` (ví dụ `smtpMailer(options)` dùng một thư viện như `nodemailer`, thêm vào `server/package.json`); thêm nhánh `MAIL_MODE=smtp` vào `mailerFromEnv` của `main.ts`, đọc máy chủ, cổng, tài khoản và người gửi từ môi trường (mật khẩu SMTP không vào log hay repo); `server:dev` có thể giữ `outbox`. Hàm phải reject khi gửi hỏng (`ctx.afterCommit` ghi log không có thông báo lỗi; thông báo của máy chủ thư thường chứa địa chỉ người nhận). Chưa kiểm chứng: nhịp gửi, thử lại, hàng đợi khi tiến trình dừng.
+
+## Hồ sơ và tiến trình (`20-progression.sql`, `21-profile.sql`, `routes/me.ts`, `routes/settings.ts`, `routes/progression.ts`)
+
+Lược đồ đầu tiên chứa dữ liệu của người dùng sau phần xác thực: hai sổ cái XP và xu cùng hàm ghi duy nhất của chúng, trạng thái chuỗi ngày, số đo cơ thể, đơn kê (prescription), cài đặt, và mười route mà màn hình onboarding, hồ sơ và cài đặt gọi. Hợp đồng (hình dạng request, response, mã lỗi) nằm ở `docs/api/openapi.yaml`; mục này ghi cách server giữ nó.
+
+### Không lưu thứ gì suy ra được
+
+Không bảng nào có cột `xp`, `coin`, `level`, điểm perk hay bốn chỉ số nhân vật (có test đọc `information_schema` và đỏ khi một cột như vậy xuất hiện).
+
+| Giá trị | Suy ra từ |
+|---|---|
+| XP, xu | tổng `amount` của `xp_ledger`, `coin_ledger` |
+| Cấp độ, danh hiệu | tổng XP hiện tại (`levelForXp` ở Node, `app._level` ở SQL) |
+| Điểm perk còn lại | `perkPointsEarned(xp_high_water)` trừ tổng `perk_unlocks.cost` |
+| Giai đoạn và độ lớn của thú | `petProgress(xp_high_water)` |
+| Tâm trạng của thú | `petMood` trên `streak_current`, `last_outcome`, `missed_run` |
+| Chủ đề, skin, huy hiệu | dòng `inventory` đang `equipped`, không có thì vật phẩm `is_default` |
+| HP, EN, STR, SPD | `mapStats` lúc đọc (không route nào ghi chúng) |
+
+`xp_high_water` là tổng XP cao nhất người dùng từng có. Hoàn tác một lượt tick làm tổng XP giảm nhưng không làm mốc này giảm: điểm perk đã nhận và giai đoạn của thú không bao giờ lùi. Cấp độ thì đi theo **tổng hiện tại**, nên có thể lùi một cấp sau khi hoàn tác.
+
+### Bảng
+
+| Bảng | Lớp | Ghi chú |
+|---|---|---|
+| `progression_state` | `own_read` | Một dòng mỗi người dùng, tạo lúc onboarding. `xp_high_water ≥ 0`, `streak_best ≥ streak_current`, `last_outcome` thuộc `COMPLETED` / `FROZEN` / `MISSED`, `onboard_date` là ngày logic của lúc onboarding theo múi giờ đã chọn. |
+| `xp_ledger`, `coin_ledger` | `own_read` | Chỉ thêm, không sửa, không xóa: điều chỉnh là một dòng mới trái dấu. `amount ≠ 0`. **Duy nhất theo `(user_id, reason, ref_id)`**. |
+| `level_thresholds` | `content` | `level` → `cumulative_xp` (tổng XP tại đó cấp bắt đầu; cấp 1 là 0). Seed từ `cumulativeXpForLevel`, cấp 1 tới `MAX_SEEDED_LEVEL` (200). |
+| `pet_stages` | `content` | `stage`, `ord`, `size_xp` (`NULL` ở giai đoạn cuối). Seed từ `PET_STAGES`. |
+| `shop_items` | `content` | Seed từ `server/content/shopItems.ts` theo `code`. Mỗi loại (`kind`) nhiều nhất một vật phẩm `is_default` (chỉ mục duy nhất). |
+| `inventory` | `own_read` | Duy nhất theo `(user_id, shop_item_id)`. Cột `kind` là bản sao loại của vật phẩm, được khóa ngoại kép `(shop_item_id, kind)` giữ đúng; nhờ nó "mỗi người mỗi loại chỉ một vật phẩm đang dùng" là một chỉ mục duy nhất. Vật phẩm mặc định **không bao giờ** là một dòng ở đây: ai cũng có sẵn. |
+| `perk_unlocks` | `own_read` | `perk_code`, `shop_item_id` (chủ đề được mở bằng `THEME_UNLOCK`, `NULL` với perk dùng một lần), `cost > 0`. Duy nhất theo `(user_id, perk_code, shop_item_id)`, coi `NULL` là một giá trị. |
+| `biometric_snapshots` | `own_read` | Mỗi lần cập nhật số đo là một dòng mới; dòng cũ không bao giờ bị sửa. Chiều cao 120–230, cân nặng 30–250, `sex` và `activity_level` có `CHECK`. **Duy nhất theo `(user_id, recorded_at)`**: "snapshot mới nhất" luôn là đúng một dòng. |
+| `prescriptions` | `own_read` | Một dòng mỗi người dùng: đơn kê đang có hiệu lực. `calorie_target` là số nguyên và ≥ 1200; macro ≥ 0; `water_ml` 1500–4000. |
+| `user_settings` | `own_rw`: đọc dòng của mình, sửa sáu cột | Các cột sửa được: `nudges_enabled`, `reminder_enabled`, `reminder_window`, `hide_streak`, `motion`, `excluded_meal_tags`. `sound_enabled` **không** nằm trong sáu cột đó và có `CHECK (NOT sound_enabled)`: bản này không có âm thanh. Vì chủ dòng tự ghi, luật của từng cột là `CHECK`: hai enum, và `excluded_meal_tags` chỉ gồm các thẻ của `INGREDIENT_TAGS`. |
+
+Mọi dòng của các bảng `own_read` đều do hàm ghi. Một client thử `INSERT`, `UPDATE` hay `DELETE` trực tiếp nhận `42501 permission denied for table …` (có test cho từng bảng, kể cả bảng nội dung).
+
+### Sổ cái và `app._grant`
+
+```sql
+app._grant(p_user uuid, p_xp int, p_coin int, p_reason text, p_ref text) RETURNS jsonb
+-- {"xpBefore", "xpAfter", "coinBefore", "coinAfter", "highWaterBefore", "highWaterAfter", "applied"}
+```
+
+`app._grant` là **nơi duy nhất ghi sổ cái**, và không vai trò nào được gọi nó: chỉ một hàm `SECURITY DEFINER` đã tự quyết định số lượng mới gọi. Nó không phải `SECURITY DEFINER` (chạy bằng quyền của hàm gọi nó), nên một `GRANT EXECUTE` cấp nhầm vẫn bị chặn ở tầng bảng.
+
+- Trước hết nó khóa dòng `progression_state` của người dùng (`SELECT … FOR UPDATE`). Các lượt cộng của cùng một người vì thế chạy lần lượt, và mỗi lượt đọc được tổng mà lượt trước để lại. Người dùng chưa có dòng đó (chưa onboarding) thì hàm ném lỗi.
+- Mỗi số lượng khác 0 thành một dòng sổ cái, `ON CONFLICT (user_id, reason, ref_id) DO NOTHING`. Đã có dòng với khóa đó thì không thêm gì và tổng trả về giữ nguyên.
+- `applied` là `true` khi lượt gọi này thêm ít nhất một dòng. Các dòng nó thêm là `xpAfter − xpBefore` XP và `coinAfter − coinBefore` xu với đúng `p_reason` / `p_ref`: route gọi `ctx.log.ledger(...)` cho từng dòng đó.
+- `xp_high_water` chỉ tăng: nó được nâng lên tổng XP mới khi tổng đó vượt mốc cũ.
+
+**Người gọi chọn `p_ref`**, và lựa chọn đó quyết định "một lần" nghĩa là gì:
+
+| `reason` | `ref_id` | Ý nghĩa |
+|---|---|---|
+| `QUEST_TICK`, `QUEST_TICK_UNDO` | id của lượt tick | mỗi hành động một lần |
+| `WORKOUT_PARTIAL` | id buổi tập | mỗi hành động một lần |
+| `QUEST_COMPLETE` | `<MÃ_QUEST>:<ngày logic>` | mỗi quest mỗi ngày một lần |
+| `JOURNAL` | ngày logic | mỗi ngày một lần |
+| `STREAK_MILESTONE` | `7`, `30`, `100` | cả đời một lần |
+| `GUILD_WEEKLY` | ngày đầu tuần | mỗi tuần một lần |
+| `PURCHASE` | mã vật phẩm | mỗi vật phẩm một lần |
+
+Đã có test: cùng khóa gọi hai lần là một dòng; mười lượt cộng cùng lúc với khóa khác nhau cho tổng đúng và mười kết quả nối thành một chuỗi không đứt; mười lượt giống hệt nhau cùng lúc chỉ được tính một.
+
+`app._level(p_user uuid) RETURNS int`: cấp cao nhất có `cumulative_xp` không vượt tổng XP hiện tại; 1 khi chưa có dòng nào. Bảng ngưỡng chỉ seed tới cấp 200 (khoảng 22,5 triệu XP), nên trên mức đó SQL trả 200 trong khi `levelForXp` của `domain/` vẫn đếm tiếp.
+
+### Seeder
+
+`server/src/seed/levels.ts` (ngưỡng cấp và giai đoạn của thú) và `server/src/seed/shopItems.ts` (vật phẩm, theo `code`). Cả hai là upsert: chạy lại không ghi lại dòng nào đang đúng (test so cả `xmin`), và sửa lại dòng bị lệch. Vật phẩm giữ nguyên `id` qua mọi lần seed, nên dòng `inventory` không mất chỗ trỏ. Seeder không xóa dòng đã bị gỡ khỏi nội dung.
+
+### Ba hàm `profile_*`
+
+Cả ba là `SECURITY DEFINER`, chỉ `app_auth` gọi được, lấy người dùng từ `app.current_user_id()` và khóa dòng `users` của người đó trước khi làm gì khác. Đơn kê được tính ở Node (`calculatePrescription`) rồi truyền vào dưới dạng JSON: đó là giá trị, không phải tiền. SQL kiểm tra lại, như hàng rào cuối, những gì làm nó an toàn.
+
+| Hàm | Việc |
+|---|---|
+| `profile_onboard(timezone, archetype, height_cm, weight_kg, birth_year, sex, activity_level, prescription) → boolean` | Hoàn tất onboarding, đúng một lần: ghi `users` (múi giờ, hệ phái, `archetype_set_at`, `onboarded_at`), snapshot đầu tiên, đơn kê, cài đặt mặc định và dòng `progression_state`. `true` khi đã làm; `false`, không xét gì và không đổi gì, khi người gọi đã onboarding rồi. |
+| `profile_add_biometrics(height_cm, weight_kg, birth_year, sex, activity_level, prescription, archetype DEFAULT NULL) → void` | Thêm một snapshot và thay đơn kê. |
+| `profile_set_archetype(archetype, prescription) → void` | Đổi hệ phái theo ý người dùng, chịu thời gian chờ 14 ngày; thay đơn kê. Không chạm sổ cái, không chạm trường nào của chuỗi ngày. |
+
+Lỗi được ném với `SQLSTATE HM000` (`MESSAGE` là mã lỗi của API, `DETAIL` là JSON của `details`), **theo đúng thứ tự này**, vì app đưa mỗi loại về một màn hình riêng:
+
+1. `VALIDATION_FAILED` kèm `details.fields`: mọi trường sai một lượt, tên trường như trong thân request (`timezone`, `archetype`, `heightCm`, `weightKg`, `birthYear`, `sex`, `activityLevel`). Tuổi trên 90 là `birthYear` / `min`.
+2. `AGE_NOT_ALLOWED`: dưới 16 tuổi. Tuổi là năm dương lịch của `app.now()` **theo múi giờ của người dùng** trừ năm sinh.
+3. `ARCHETYPE_NOT_ALLOWED` kèm `details.allowed`: `ASSASSIN` khi BMI dưới 18,5. `app._archetypes_allowed` tính bằng `float8` với đúng các phép tính và thứ tự của `allowedArchetypes` ở `domain/`, nên hai bên trả lời giống nhau cả ở đúng mốc 18,5 (có test so trên một lưới giá trị quanh mốc).
+4. `VALIDATION_FAILED` cho đơn kê: `calorieTarget` không phải số nguyên (`calorieTarget` / `format`), dưới 1200 với nữ hoặc 1500 với nam (`calorieTarget` / `min`), hoặc JSON không phải một đơn kê (`prescription` / `format`).
+
+Ngoài ra: `SESSION_INVALID` (`profile_onboard`) hoặc `ONBOARDING_REQUIRED` (hai hàm kia) khi `app.user_id` không chỉ tới một người dùng còn hoạt động và, với hai hàm kia, đã onboarding.
+
+Luật riêng của từng hàm:
+
+- **`recorded_at` của snapshot tăng nghiêm ngặt theo từng người dùng**: giá trị là `app.now()`, hoặc snapshot mới nhất cộng một micro giây nếu đồng hồ chưa vượt qua nó. Hai request đọc cùng một thời điểm (hoặc đồng hồ test đang đứng yên) vẫn cho hai dòng có thứ tự.
+- **Hệ phái gửi kèm số đo mới chỉ được dùng khi số đo mới loại bỏ hệ phái hiện tại.** Khi đó thay đổi là bắt buộc vì an toàn, nên nó bỏ qua thời gian chờ và bắt đầu một thời gian chờ mới. Hệ phái hiện tại vẫn được phép thì hệ phái gửi kèm **không được áp dụng**: nếu áp dụng, `POST /me/biometrics` sẽ là đường vòng qua luật 14 ngày. Số đo mới loại bỏ hệ phái hiện tại mà không gửi hệ phái thay thế: `ARCHETYPE_NOT_ALLOWED`. Hệ phái gửi kèm luôn phải hợp lệ với số đo mới.
+- **Thời gian chờ là 336 giờ** tính từ `archetype_set_at`, viết bằng giờ để không phụ thuộc múi giờ của phiên. Trong thời gian đó: `ARCHETYPE_COOLDOWN` kèm `details.availableAt` (ISO, UTC, tới mili giây; bằng đúng `Me.user.archetypeChangeAvailableAt`).
+- **"Không được phép" được nói trước "hãy chờ"**: chờ xong thì nó vẫn đúng.
+- **Gửi lại hệ phái đang có hiệu lực không phải là đổi**: được nhận bất cứ lúc nào và không bắt đầu thời gian chờ mới. Nhờ vậy lần gửi lại (với khóa mới) của một thay đổi đã thành công nhận `200` chứ không phải `409`.
+- `profile_set_archetype` kiểm tra lại số đo của snapshot mới nhất. Người dùng đã quá 90 tuổi theo năm hiện tại nhận `VALIDATION_FAILED` (`birthYear` / `min`) dù thân request không có trường đó.
+
+### Mười route
+
+Mọi từ chối ở đây đều được **ném** (`AppError`, hoặc `HM000` từ hàm SQL), không trả về: không có gì một request bị từ chối đã ghi cần được giữ lại, nên transaction được hoàn lại. Thuộc tính lạ trong thân request bị bỏ qua.
+
+| Route | Auth | Thành công | Lỗi riêng |
+|---|---|---|---|
+| `POST /onboarding` | `session`, có khóa | `200 Me` | `422 VALIDATION_FAILED`, `422 AGE_NOT_ALLOWED`, `422 ARCHETYPE_NOT_ALLOWED` |
+| `GET /me` | `session` | `200 Me` | – |
+| `PATCH /me` | `user`, có khóa | `200 Me` | `422 VALIDATION_FAILED` (`displayName`, `timezone`), `422 NAME_NOT_ALLOWED` |
+| `POST /me/biometrics` | `user`, có khóa | `200 PrescriptionResponse` | như `POST /onboarding` |
+| `PATCH /me/archetype` | `user`, có khóa | `200 Me` | `422 VALIDATION_FAILED` (`archetype`), `422 ARCHETYPE_NOT_ALLOWED`, `409 ARCHETYPE_COOLDOWN` |
+| `GET /me/prescription` | `user` | `200 PrescriptionResponse` | – |
+| `GET /settings` | `user` | `200 Settings` | – |
+| `PATCH /settings` | `user`, có khóa | `200 Settings` | `422 VALIDATION_FAILED` |
+| `GET /progression` | `user` | `200 Progression` | – |
+| `GET /pet` | `user` | `200 Pet` | – |
+
+- **`POST /onboarding` với người đã onboarding** trả `200` kèm `Me` hiện tại, không xét thân request và không đổi gì. Hai request cùng lúc với hai khóa khác nhau: request sau chờ khóa dòng, thấy người dùng đã onboarding, và trả cùng một `Me`.
+- **Thứ tự kiểm tra của route** giống của SQL: trường sai, rồi tuổi, rồi hệ phái. Route kiểm tra bằng `validateBiometrics` và `allowedArchetypes` của `domain/`, tính đơn kê, rồi gọi hàm; hàm kiểm tra lại tất cả. Tuổi dùng `ctx.now`, tức đúng thời điểm `app.now()` mà hàm SQL sẽ đọc.
+- **Múi giờ** hợp lệ khi `Intl` nhận nó, nó có dấu `/` hoặc bằng `UTC`, **và** nó là một dòng của bảng `timezones`. Tên thiếu trong bảng là `422 VALIDATION_FAILED` (`timezone` / `format`), không bao giờ là `500` từ khóa ngoại. Thiếu hoặc không phải chuỗi: `required`.
+- **`PATCH /me`** là một lệnh `UPDATE` thường trên hai cột mà chủ dòng được ghi; policy chọn dòng. Tên hiển thị được cắt khoảng trắng hai đầu, 1–40 ký tự đếm theo code point, qua `isDisplayName`; từ cấm (`422 NAME_NOT_ALLOWED`) chỉ được xét khi mọi trường khác hợp lệ. Nếu `CHECK` của cột từ chối một tên đã qua được route, lỗi `23514` được đổi thành `422 VALIDATION_FAILED` (`displayName` / `format`) bằng cách **ném** `AppError`, nên transaction vẫn được hoàn lại. Thành viên vắng mặt thì giữ nguyên; thân rỗng là `200` không đổi gì.
+- **`PATCH /settings`**: thành viên có mặt phải hợp lệ, và mọi thành viên sai được liệt kê một lượt. Sai kiểu boolean là `format`; giá trị ngoài enum là `enum`; `excludedMealTags` không phải mảng là `format`, có thẻ ngoài `INGREDIENT_TAGS` là `enum`. Thẻ được lưu mỗi thẻ một lần, theo thứ tự của `INGREDIENT_TAGS`. **`soundEnabled` là thành viên đã biết nhưng chỉ đọc: gửi nó, với bất kỳ giá trị nào, là `422`** (`soundEnabled` / `format`), khác với thuộc tính lạ bị bỏ qua.
+- **`PrescriptionResponse.biometrics`** là snapshot mới nhất. Đây là câu trả lời duy nhất mang số đo cơ thể: không đưa nó vào log và không đưa nó vào response nào khác.
+
+### Read model (`server/src/readModels/me.ts`)
+
+`buildMe(ctx)`, `buildProgression(ctx)`, `buildPet(ctx)`, `buildPrescription(ctx)` nhận bất cứ thứ gì có `db` là kết nối của request (`ctx` của một handler). Ba hàm đầu đọc bằng **một** câu lệnh, nên mọi thứ `Me` hiển thị thuộc cùng một thời điểm của cơ sở dữ liệu. Chúng chạy bằng `app_auth` trong transaction của request: điều kiện `user_id = app.current_user_id()` viết tường minh, và RLS là lớp lọc thứ hai bên dưới.
+
+- `buildMe` trả bốn phần `progression`, `stats`, `pet`, `appearance` là `null` trước onboarding. Ba hàm còn lại dành cho route `auth: 'user'` và ném lỗi nếu người gọi chưa onboarding.
+- `milestones` lấy từ các huy hiệu `BADGE_STREAK_*` đang sở hữu; `breakNotice` có khi `streak_before_break` khác `NULL`.
+- `stats` hiện tính với dữ liệu trong ngày bằng 0 (nước, giờ ngủ, calo, phút tập): chỉ chuỗi ngày đóng góp vào HP. Nhiệm vụ về ngày (Task 20) đưa dữ liệu thật vào.
+
+### Test
+
+- `server/test/progression.sql.test.ts`, `server/test/profile.sql.test.ts`: tầng SQL, gọi hàm bằng `app_auth` qua `app_conn`; `app._grant` và `app._level` được gọi qua kết nối của chủ sở hữu vì không vai trò request nào gọi được chúng.
+- `server/src/routes/me.test.ts`, `settings.test.ts`, `progression.test.ts`: qua HTTP. Mọi con số mong đợi được tính trong test bằng chính hàm của `domain/`.
+- `newOnboardedUser(db, overrides?)` trong `server/test/http.ts`: `newUser` rồi `profile_onboard` bằng `app_auth` trên pool của app, với đơn kê tính như route tính (tuổi theo `app.now()`, nên đồng hồ test có hiệu lực). Trả `{ userId, token, email, input }`; mặc định là `ONBOARDING_INPUT` (170 cm, 65 kg, sinh 1996, nữ, `LIGHT`, `SUPPORTER`, `Asia/Ho_Chi_Minh`). Như `newUser`, tài khoản không có mật khẩu dùng được.
+- Mồi nhử và ca tấn công cho các bảng này đến ở Task 15.
+
+### Phần cổng 1 không nhìn thấy
+
+Cổng 1 đối chiếu vai trò, GRANT, RLS, policy và `search_path`. Những thay đổi sau **không** làm nó đỏ; chỉ test mới bắt được (đã chạy thử từng ca, kết quả ở báo cáo Task 14):
+
+- thân hàm: bỏ `FOR UPDATE` trong `app._grant`; để `app._level` đọc `xp_high_water` thay vì tổng sổ cái; bỏ thời gian chờ trong `profile_set_archetype`; để `profile_add_biometrics` áp dụng mọi hệ phái được gửi kèm; bỏ luật BMI hoặc sàn calo trong SQL;
+- ràng buộc: đổi khóa duy nhất `(user_id, reason, ref_id)` của sổ cái; gỡ `CHECK` của `excluded_meal_tags`, của `sound_enabled`, của khoảng chiều cao và cân nặng; gỡ chỉ mục "một vật phẩm đang dùng mỗi loại", khóa ngoại kép của `inventory`, chỉ mục duy nhất `(user_id, recorded_at)`;
+- dữ liệu: một dòng `level_thresholds` hay `pet_stages` bị sửa tay (lần migrate sau seeder sẽ sửa lại, nhưng giữa hai lần thì không gì báo), hai vật phẩm mặc định cùng loại bị chặn bởi chỉ mục chứ không bởi cổng 1.
+
+Sửa `20-progression.sql` hay `21-profile.sql` thì chạy `npm run server:test`, không chỉ `npm run db:verify`.
