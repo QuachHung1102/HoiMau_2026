@@ -267,9 +267,9 @@ REVOKE ALL ON FUNCTION
   app._profile_check(text, numeric, numeric, int, text, text, text, boolean),
   app._prescription_put(uuid, text, jsonb)
   FROM PUBLIC, app_anon, app_auth, app_job;
-SELECT meta.expect_function('app._archetypes_allowed(numeric, numeric)', '{}');
-SELECT meta.expect_function('app._profile_check(text, numeric, numeric, int, text, text, text, boolean)', '{}');
-SELECT meta.expect_function('app._prescription_put(uuid, text, jsonb)', '{}');
+SELECT meta.expect_function('app._archetypes_allowed(numeric, numeric)', 'invoker', '{}');
+SELECT meta.expect_function('app._profile_check(text, numeric, numeric, int, text, text, text, boolean)', 'invoker', '{}');
+SELECT meta.expect_function('app._prescription_put(uuid, text, jsonb)', 'invoker', '{}');
 
 -- ---------------------------------------------------------------------------------------------
 -- The three functions the server calls. The caller is app.current_user_id(); none takes a user id.
@@ -406,6 +406,6 @@ GRANT EXECUTE ON FUNCTION
   profile_add_biometrics(numeric, numeric, int, text, text, jsonb, text),
   profile_set_archetype(text, jsonb)
   TO app_auth;
-SELECT meta.expect_function('profile_onboard(text, text, numeric, numeric, int, text, text, jsonb)', '{app_auth}');
-SELECT meta.expect_function('profile_add_biometrics(numeric, numeric, int, text, text, jsonb, text)', '{app_auth}');
-SELECT meta.expect_function('profile_set_archetype(text, jsonb)', '{app_auth}');
+SELECT meta.expect_function('profile_onboard(text, text, numeric, numeric, int, text, text, jsonb)', 'definer', '{app_auth}');
+SELECT meta.expect_function('profile_add_biometrics(numeric, numeric, int, text, text, jsonb, text)', 'definer', '{app_auth}');
+SELECT meta.expect_function('profile_set_archetype(text, jsonb)', 'definer', '{app_auth}');

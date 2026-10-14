@@ -233,5 +233,5 @@ $$;
 
 REVOKE ALL ON FUNCTION app._grant(uuid, int, int, text, text), app._level(uuid)
   FROM PUBLIC, app_anon, app_auth, app_job;
-SELECT meta.expect_function('app._grant(uuid, int, int, text, text)', '{}');
-SELECT meta.expect_function('app._level(uuid)', '{}');
+SELECT meta.expect_function('app._grant(uuid, int, int, text, text)', 'invoker', '{}');
+SELECT meta.expect_function('app._level(uuid)', 'invoker', '{}');

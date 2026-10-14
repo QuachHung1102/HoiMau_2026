@@ -436,14 +436,14 @@ GRANT EXECUTE ON FUNCTION
 -- the logout route runs with a session
 GRANT EXECUTE ON FUNCTION auth_logout(bytea) TO app_anon, app_auth;
 
-SELECT meta.expect_function('app._email(text)', '{}');
-SELECT meta.expect_function('app._same_bytes(bytea, bytea)', '{}');
-SELECT meta.expect_function('app._throttle_hit(text, interval)', '{}');
-SELECT meta.expect_function('app._session_open(uuid, bytea)', '{}');
-SELECT meta.expect_function('auth_salt(text)', '{app_anon}');
-SELECT meta.expect_function('auth_register(text, text, bytea, bytea, bytea)', '{app_anon}');
-SELECT meta.expect_function('auth_login(text, bytea, bytea)', '{app_anon}');
-SELECT meta.expect_function('auth_session(bytea)', '{app_anon}');
-SELECT meta.expect_function('auth_logout(bytea)', '{app_anon,app_auth}');
-SELECT meta.expect_function('auth_reset_request(text, bytea)', '{app_anon}');
-SELECT meta.expect_function('auth_reset_confirm(text, bytea, bytea, bytea)', '{app_anon}');
+SELECT meta.expect_function('app._email(text)', 'invoker', '{}');
+SELECT meta.expect_function('app._same_bytes(bytea, bytea)', 'invoker', '{}');
+SELECT meta.expect_function('app._throttle_hit(text, interval)', 'invoker', '{}');
+SELECT meta.expect_function('app._session_open(uuid, bytea)', 'invoker', '{}');
+SELECT meta.expect_function('auth_salt(text)', 'definer', '{app_anon}');
+SELECT meta.expect_function('auth_register(text, text, bytea, bytea, bytea)', 'definer', '{app_anon}');
+SELECT meta.expect_function('auth_login(text, bytea, bytea)', 'definer', '{app_anon}');
+SELECT meta.expect_function('auth_session(bytea)', 'definer', '{app_anon}');
+SELECT meta.expect_function('auth_logout(bytea)', 'definer', '{app_anon,app_auth}');
+SELECT meta.expect_function('auth_reset_request(text, bytea)', 'definer', '{app_anon}');
+SELECT meta.expect_function('auth_reset_confirm(text, bytea, bytea, bytea)', 'definer', '{app_anon}');

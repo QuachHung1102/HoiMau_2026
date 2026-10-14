@@ -1298,7 +1298,7 @@ test('control: checks 7 and 8 call a STRICT function with values', async () => {
   const create = (signature: string) =>
     `CREATE FUNCTION ${signature} RETURNS integer LANGUAGE sql STRICT AS 'SELECT 1';
      REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;
-     SELECT meta.expect_function('${signature}', '{}')`;
+     SELECT meta.expect_function('${signature}', 'invoker', '{}')`;
   await admin.query(create(strict));
   try {
     for (const id of [7, 8]) {

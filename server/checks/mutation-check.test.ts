@@ -283,19 +283,33 @@ const CLASSES: { name: string; sql: string; perGrantee?: true }[] = [
                  ARRAY[f.label || ' {"search_path=pg_temp, public"}'] AS names
             FROM ${FUNCTIONS} ORDER BY f.label`,
   },
+  // The security mode, alone and together with the setting that makes the function look
+  // well-formed in its new mode: only the registered mode tells the second kind from a design.
   {
     name: 'SECURITY DEFINER function made SECURITY INVOKER',
     sql: `SELECT format('ALTER ROUTINE %s SECURITY INVOKER', f.label) AS sql,
-                 ARRAY[f.label || ' is SECURITY INVOKER'] AS names
+                 ARRAY[f.label || ' is SECURITY INVOKER, registered definer'] AS names
             FROM ${FUNCTIONS} WHERE f.definer ORDER BY f.label`,
   },
   {
-    // One that carries an allowed search_path passes the search_path assertion: the assertion
-    // on the security of a function answers. One that carries none is refused for that.
+    name: 'SECURITY DEFINER function made SECURITY INVOKER, its search_path reset with it',
+    sql: `SELECT format('ALTER ROUTINE %s SECURITY INVOKER RESET search_path', f.label) AS sql,
+                 ARRAY[f.label || ' is SECURITY INVOKER, registered definer'] AS names
+            FROM ${FUNCTIONS} WHERE f.definer ORDER BY f.label`,
+  },
+  {
+    // One that carries no setting is refused for that first: a definer must carry its path.
     name: 'SECURITY INVOKER function made SECURITY DEFINER',
     sql: `SELECT format('ALTER ROUTINE %s SECURITY DEFINER', f.label) AS sql,
-                 ARRAY[CASE WHEN f.settings IN ${ALLOWED_PATHS} THEN f.label || ' is SECURITY DEFINER'
+                 ARRAY[CASE WHEN f.settings IN ${ALLOWED_PATHS}
+                            THEN f.label || ' is SECURITY DEFINER, registered invoker'
                             ELSE format('%s %s', f.label, coalesce(f.settings, '{}')) END] AS names
+            FROM ${FUNCTIONS} WHERE NOT f.definer ORDER BY f.label`,
+  },
+  {
+    name: 'SECURITY INVOKER function made SECURITY DEFINER, with the allowed search_path',
+    sql: `SELECT format('ALTER ROUTINE %s SECURITY DEFINER SET search_path = public, pg_temp', f.label) AS sql,
+                 ARRAY[f.label || ' is SECURITY DEFINER, registered invoker'] AS names
             FROM ${FUNCTIONS} WHERE NOT f.definer ORDER BY f.label`,
   },
   {

@@ -44,9 +44,13 @@ CREATE TABLE IF NOT EXISTS meta.expected_policies (
 -- roles: exactly the roles granted EXECUTE, among app_anon, app_auth, app_job. Every function in
 -- public, app and meta must be registered; internal ones (a name starting with "_", and
 -- everything in meta) with '{}'.
+-- security: 'definer' or 'invoker', whose rights the function runs with (SECURITY DEFINER, or
+-- the default). It is stated here and compared by equality: nothing about a function (its
+-- name, its settings) says which of the two its author meant.
 CREATE TABLE IF NOT EXISTS meta.expected_functions (
   signature text PRIMARY KEY,
-  roles text[] NOT NULL
+  roles text[] NOT NULL,
+  security text NOT NULL
 );
 
 -- The registry is exactly what the files of this run declare: nothing survives from a
@@ -54,9 +58,12 @@ CREATE TABLE IF NOT EXISTS meta.expected_functions (
 DELETE FROM meta.expected_policies;
 DELETE FROM meta.expected_tables;
 DELETE FROM meta.expected_functions;
+-- A database migrated before the security mode was registered: the table is empty here.
+ALTER TABLE meta.expected_functions ADD COLUMN IF NOT EXISTS security text NOT NULL;
 
 -- The three functions only record a declaration. 90-verify.sql judges every row of the registry
--- (class, what the class allows, which roles can be registered), however it was written.
+-- (class, what the class allows, which roles and which security mode can be registered),
+-- however it was written.
 CREATE OR REPLACE FUNCTION meta.expect_table(
   p_name text, p_class text, p_auth_privileges text[], p_auth_update_columns text[], p_owner_column text
 ) RETURNS void
@@ -87,22 +94,25 @@ $$;
 -- p_signature as in GRANT EXECUTE ON FUNCTION: 'auth_login(text, bytea, bytea)', with the
 -- schema for a function outside public. The function must exist; it is stored in the canonical
 -- form 90-verify.sql prints, for which both sides pin the same search_path.
-CREATE OR REPLACE FUNCTION meta.expect_function(p_signature text, p_roles text[]) RETURNS void
+-- p_security: 'definer' or 'invoker'. Required, with no default: the shorter form of this
+-- function is dropped, so a registration that does not state the mode fails where it is written.
+DROP FUNCTION IF EXISTS meta.expect_function(text, text[]);
+CREATE OR REPLACE FUNCTION meta.expect_function(p_signature text, p_security text, p_roles text[]) RETURNS void
 LANGUAGE sql SET search_path = public, pg_temp
 AS $$
-  INSERT INTO meta.expected_functions (signature, roles)
-  VALUES (p_signature::regprocedure::text, p_roles)
-  ON CONFLICT (signature) DO UPDATE SET roles = EXCLUDED.roles
+  INSERT INTO meta.expected_functions (signature, security, roles)
+  VALUES (p_signature::regprocedure::text, p_security, p_roles)
+  ON CONFLICT (signature) DO UPDATE SET security = EXCLUDED.security, roles = EXCLUDED.roles
 $$;
 
 REVOKE ALL ON ALL TABLES IN SCHEMA meta FROM PUBLIC, app_conn, app_anon, app_auth, app_job;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA meta FROM PUBLIC, app_conn, app_anon, app_auth, app_job;
 
 -- What 01-app-context.sql and this file created.
-SELECT meta.expect_function('app.current_user_id()', '{app_anon,app_auth,app_job}');
-SELECT meta.expect_function('app.now()', '{app_anon,app_auth,app_job}');
-SELECT meta.expect_function('app.logical_date(timestamptz, text)', '{app_anon,app_auth,app_job}');
-SELECT meta.expect_function('app.week_start(date)', '{app_anon,app_auth,app_job}');
-SELECT meta.expect_function('meta.expect_table(text, text, text[], text[], text)', '{}');
-SELECT meta.expect_function('meta.expect_policy(text, text, text, text, text)', '{}');
-SELECT meta.expect_function('meta.expect_function(text, text[])', '{}');
+SELECT meta.expect_function('app.current_user_id()', 'invoker', '{app_anon,app_auth,app_job}');
+SELECT meta.expect_function('app.now()', 'definer', '{app_anon,app_auth,app_job}');
+SELECT meta.expect_function('app.logical_date(timestamptz, text)', 'invoker', '{app_anon,app_auth,app_job}');
+SELECT meta.expect_function('app.week_start(date)', 'invoker', '{app_anon,app_auth,app_job}');
+SELECT meta.expect_function('meta.expect_table(text, text, text[], text[], text)', 'invoker', '{}');
+SELECT meta.expect_function('meta.expect_policy(text, text, text, text, text)', 'invoker', '{}');
+SELECT meta.expect_function('meta.expect_function(text, text, text[])', 'invoker', '{}');
