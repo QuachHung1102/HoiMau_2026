@@ -1,10 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen } from '@testing-library/react-native';
+import { useState } from 'react';
 import { AppState } from 'react-native';
 import { wipeQueries } from '../../shared/api/session';
 import { app, dayOf, installTodayTestEnv, meOf, openToday, queryClient, requested, settle, STAND_UP, USER, world, writes } from '../dashboard/todayTestKit';
 import { mountApp } from '../sync/syncTestKit';
 import { STAND_UP_INTERVAL_MS } from './standUpTimer';
+import { useStandUpHold } from './useStandUp';
 
 installTodayTestEnv();
 
@@ -35,6 +37,18 @@ const pass = (ms: number) => act(() => jest.advanceTimersByTimeAsync(ms));
 const prompt = () => screen.queryByText(PROMPT);
 const stored = async () => JSON.parse((await AsyncStorage.getItem(KEY)) ?? 'null');
 const standUps = () => writes().filter(request => request.path === `/day/quests/${STAND_UP}/progress`);
+
+// A stand-in for the focus flow: a screen that holds the reminder while it is mounted (the real ones are Task 27's).
+let focusFlow: (shown: boolean | string) => void = () => undefined;
+function Holding() {
+  useStandUpHold();
+  return null;
+}
+function FocusFlow() {
+  const [shown, setShown] = useState<boolean | string>(false);
+  focusFlow = setShown;
+  return shown ? <Holding key={String(shown)} /> : null;
+}
 
 afterEach(() => {
   mockedAppState.currentState = appStateAtLoad;
@@ -281,7 +295,7 @@ describe('where the reminder lives: the signed-in, onboarded shell', () => {
     foreground();
     const view = await openToday();
     fireEvent.press(screen.getByRole('tab', { name: 'Lộ trình' }));
-    expect(await screen.findByText('Phần này đang được hoàn thiện')).toBeTruthy();
+    expect(await screen.findByRole('tab', { name: 'Lộ trình', selected: true })).toBeTruthy();
     await pass(60 * MIN);
     expect(prompt()).toBeTruthy();
     view.unmount();
@@ -298,6 +312,56 @@ describe('where the reminder lives: the signed-in, onboarded shell', () => {
     fireEvent.press(screen.getByRole('button', { name: ACTION }));
     expect(await screen.findByText('Đã ghi nhận · +10 XP')).toBeTruthy();
     expect(standUps()).toHaveLength(1);
+    view.unmount();
+  });
+
+  test('a focus-flow screen holds the reminder: no prompt over it when the hour runs out; once it has left, a new hour begins', async () => {
+    fakeTimers();
+    foreground();
+    const view = await openToday({ extra: <FocusFlow /> });
+    await pass(50 * MIN);
+    act(() => focusFlow(true));
+    // the hour runs out ten minutes into the hold
+    await pass(20 * MIN);
+    expect(prompt()).toBeNull();
+    act(() => focusFlow(false));
+    // not at once either: the person has just been moving
+    expect(prompt()).toBeNull();
+    await pass(59 * MIN);
+    expect(prompt()).toBeNull();
+    await pass(MIN);
+    expect(prompt()).toBeTruthy();
+    expect(standUps()).toEqual([]);
+    view.unmount();
+  });
+
+  test('a prompt that is on screen when the focus flow begins is taken away', async () => {
+    fakeTimers();
+    foreground();
+    const view = await openToday({ extra: <FocusFlow /> });
+    await pass(60 * MIN);
+    expect(prompt()).toBeTruthy();
+    act(() => focusFlow(true));
+    expect(prompt()).toBeNull();
+    view.unmount();
+  });
+
+  test('two focus-flow screens in a row (the session, then its result) are one hold', async () => {
+    fakeTimers();
+    foreground();
+    const view = await openToday({ extra: <FocusFlow /> });
+    await pass(55 * MIN);
+    act(() => focusFlow(true));
+    await pass(10 * MIN);
+    // the first screen is replaced by the second in one step
+    act(() => focusFlow('result'));
+    await pass(10 * MIN);
+    expect(prompt()).toBeNull();
+    act(() => focusFlow(false));
+    await pass(59 * MIN);
+    expect(prompt()).toBeNull();
+    await pass(MIN);
+    expect(prompt()).toBeTruthy();
     view.unmount();
   });
 

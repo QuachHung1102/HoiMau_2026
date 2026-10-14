@@ -17,6 +17,11 @@ import { OnbTargetsScreen, TargetsScreen } from '../features/onboarding/TargetsS
 import { ManualKcalScreen } from '../features/nutrition/ManualKcalScreen';
 import { EndOfDayScreen } from '../features/quests/EndOfDayScreen';
 import { QuestBoardScreen } from '../features/quests/QuestBoardScreen';
+import { FocusSessionScreen } from '../features/workout/FocusSessionScreen';
+import { PlanScreen } from '../features/workout/PlanScreen';
+import { WorkoutCatalogScreen } from '../features/workout/WorkoutCatalogScreen';
+import { WorkoutDetailScreen } from '../features/workout/WorkoutDetailScreen';
+import { WorkoutResultScreen } from '../features/workout/WorkoutResultScreen';
 import { tabLabel } from '../shared/i18n/vi/nav';
 import type { ScreenEntry, TabRoot } from './routes';
 
@@ -38,7 +43,10 @@ export const onboardingScreens: ScreenEntry[] = [
 ];
 
 /** The first screen of each tab. */
-export const tabRoots: TabRoot[] = [{ name: 'Today', component: TodayScreen, label: tabLabel.Today, icon: 'Sun' }];
+export const tabRoots: TabRoot[] = [
+  { name: 'Today', component: TodayScreen, label: tabLabel.Today, icon: 'Sun' },
+  { name: 'Plan', component: PlanScreen, label: tabLabel.Plan, icon: 'Route' },
+];
 
 /** Screens that open inside the stack of whichever tab they were opened from. */
 export const detailScreens: ScreenEntry[] = [
@@ -47,7 +55,12 @@ export const detailScreens: ScreenEntry[] = [
   { name: 'QuestBoard', component: QuestBoardScreen },
   { name: 'EndOfDay', component: EndOfDayScreen },
   { name: 'ManualKcal', component: ManualKcalScreen },
+  { name: 'WorkoutCatalog', component: WorkoutCatalogScreen },
+  { name: 'WorkoutDetail', component: WorkoutDetailScreen },
 ];
 
 /** Full-screen modal flow above the tabs; the tab bar cannot interrupt it. */
-export const focusScreens: ScreenEntry[] = [];
+export const focusScreens: ScreenEntry[] = [
+  { name: 'FocusSession', component: FocusSessionScreen },
+  { name: 'WorkoutResult', component: WorkoutResultScreen },
+];

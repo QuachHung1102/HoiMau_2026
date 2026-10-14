@@ -43,6 +43,24 @@ export function useStandUpMinutes(): number | null {
   return state?.running ? Math.max(1, Math.ceil(msLeft(state, Date.now()) / MINUTE_MS)) : null;
 }
 
+// The focus flow must not be interrupted: while one of its screens is mounted no prompt is shown, and one that is
+// already on screen is taken away. When the last of them leaves, a new hour begins (the person has just been moving).
+let holds = 0;
+let onHold: (() => void) | null = null;
+let onHoldEnd: (() => void) | null = null;
+
+/** Call it in a screen over which the stand-up prompt must not appear (the focus session and its result). */
+export function useStandUpHold(): void {
+  useEffect(() => {
+    holds += 1;
+    if (holds === 1) onHold?.();
+    return () => {
+      holds -= 1;
+      if (holds === 0) onHoldEnd?.();
+    };
+  }, []);
+}
+
 /** Mounts the reminder for exactly as long as the signed-in, onboarded shell lives (navigation.tsx); draws nothing. */
 export function StandUpHost() {
   useStandUp();
@@ -57,6 +75,7 @@ export function StandUpHost() {
  *   "Mình vừa đứng dậy" (one STAND_UP tick, with its own S11 snackbar and Undo), and a new hour begins. Never an OS
  *   notification (AR-23).
  * - A part recorded from anywhere (the prompt, the board) also begins a new hour.
+ * - While a focus-flow screen holds it (`useStandUpHold`) no prompt is shown; when the hold ends a new hour begins.
  * - The countdown is kept under `standup:v1:<userId>` (timing only) so that a restart of the app does not give a
  *   free hour; sign-out removes it.
  */
@@ -86,6 +105,7 @@ export function useStandUp(): void {
     let countdown: StandUpState | undefined; // undefined until what was kept has been read
     let foreground = AppState.currentState === 'active';
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let promptUntil = 0; // while the prompt of this hook may still be on screen
 
     const arm = () => {
       clearTimeout(timer);
@@ -102,12 +122,14 @@ export function useStandUp(): void {
       if (countdown) commit(standUpTimer(countdown, event, Date.now()));
     };
     function due() {
-      if (!countdown) return;
+      // Held by the focus flow: nothing is asked for now; the end of the hold begins a new hour.
+      if (!countdown || holds > 0) return;
       const now = Date.now();
       if (!isDue(countdown, now)) return arm(); // fired early: wait for the rest
       commit(standUpTimer(countdown, 'RESTART', now));
       const { full, tick: record, snackbar: bar } = latest.current;
       if (full) return; // the quest is complete (or every part is on its way): nothing to ask for
+      promptUntil = now + PROMPT_SCREEN_READER_MS;
       bar.show({
         message: vi.standUpPrompt,
         action: { label: vi.standUpAction, onPress: record },
@@ -117,6 +139,11 @@ export function useStandUp(): void {
     }
 
     restart.current = () => apply('RESTART');
+    onHold = () => {
+      if (Date.now() < promptUntil) latest.current.snackbar.dismiss();
+      promptUntil = 0;
+    };
+    onHoldEnd = () => apply('RESTART');
     const subscription = AppState.addEventListener('change', next => {
       foreground = next === 'active';
       apply(foreground ? 'FOREGROUND' : 'BACKGROUND');
@@ -134,6 +161,8 @@ export function useStandUp(): void {
       clearTimeout(timer);
       subscription.remove();
       restart.current = () => undefined;
+      onHold = null;
+      onHoldEnd = null;
       publish(null);
     };
   }, [status, userId]);

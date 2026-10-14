@@ -1,0 +1,175 @@
+{
+  "catalog": [
+    {
+      "id": "3b6f1d2a-7c41-4e58-9a10-5d2e8f4c0b01",
+      "code": "FULL_BODY_EASY",
+      "name": "Toàn thân vừa sức",
+      "modality": "RESISTANCE",
+      "durationSec": 900,
+      "spaceNeeded": "ROOM",
+      "equipment": [],
+      "recommended": true,
+      "kcalEstimate": 70
+    },
+    {
+      "id": "3b6f1d2a-7c41-4e58-9a10-5d2e8f4c0b17",
+      "code": "ROOM_CARDIO_15",
+      "name": "Cardio nhẹ trong phòng",
+      "modality": "CARDIO",
+      "durationSec": 900,
+      "spaceNeeded": "ROOM",
+      "equipment": [],
+      "recommended": false,
+      "kcalEstimate": 80
+    },
+    {
+      "id": "3b6f1d2a-7c41-4e58-9a10-5d2e8f4c0b23",
+      "code": "ROOM_MOBILITY_15",
+      "name": "Giãn cơ nhẹ toàn thân",
+      "modality": "MOBILITY",
+      "durationSec": 900,
+      "spaceNeeded": "ROOM",
+      "equipment": [],
+      "recommended": false,
+      "kcalEstimate": 40
+    },
+    {
+      "id": "3b6f1d2a-7c41-4e58-9a10-5d2e8f4c0b20",
+      "code": "ROOM_HIIT_15",
+      "name": "Ngắt quãng nhẹ",
+      "modality": "HIIT",
+      "durationSec": 900,
+      "spaceNeeded": "ROOM",
+      "equipment": [],
+      "recommended": false,
+      "kcalEstimate": 100
+    },
+    {
+      "id": "3b6f1d2a-7c41-4e58-9a10-5d2e8f4c0b25",
+      "code": "ROOM_BREATH_15",
+      "name": "Thở chậm trước giờ ngủ",
+      "modality": "BREATHING",
+      "durationSec": 900,
+      "spaceNeeded": "ROOM",
+      "equipment": [],
+      "recommended": false,
+      "kcalEstimate": 20
+    }
+  ],
+  "detail": {
+    "id": "3b6f1d2a-7c41-4e58-9a10-5d2e8f4c0b01",
+    "code": "FULL_BODY_EASY",
+    "name": "Toàn thân vừa sức",
+    "modality": "RESISTANCE",
+    "durationSec": 900,
+    "spaceNeeded": "ROOM",
+    "equipment": [],
+    "recommended": true,
+    "kcalEstimate": 70,
+    "sets": 3,
+    "steps": [
+      {
+        "position": 1,
+        "phase": "WARMUP",
+        "seconds": 30,
+        "repsText": "30 giây",
+        "move": {
+          "code": "XOAY_VAI",
+          "name": "Xoay vai",
+          "demoCode": "exercise-xoay-vai",
+          "steps": [
+            "Đứng thẳng, hai chân rộng bằng vai, hai tay thả lỏng.",
+            "Nhấc vai lên gần tai, rồi đưa ra sau theo vòng tròn chậm.",
+            "Sau vài vòng, đổi chiều xoay và giữ nhịp thở đều."
+          ],
+          "caution": "Dừng nếu vai đau, tê, khó chịu hoặc thấy chóng mặt; có thể xoay vòng nhỏ hơn."
+        }
+      },
+      {
+        "position": 2,
+        "phase": "MAIN",
+        "seconds": 90,
+        "repsText": "12 lần",
+        "move": {
+          "code": "SQUAT_TAY_TRUOC_NGUC",
+          "name": "Squat tay trước ngực",
+          "demoCode": "exercise-squat",
+          "steps": [
+            "Đứng hai chân rộng bằng vai, hai tay chắp trước ngực.",
+            "Đẩy hông ra sau, hạ người như ngồi xuống ghế, lưng thẳng, đầu gối hướng theo mũi chân.",
+            "Đẩy gót chân xuống sàn để đứng lên, thở ra khi đứng."
+          ],
+          "caution": "Dừng nếu đầu gối hoặc lưng đau; hạ người nông hơn, hoặc nghỉ nếu thấy chóng mặt."
+        }
+      },
+      {
+        "position": 3,
+        "phase": "MAIN",
+        "seconds": 80,
+        "repsText": "10 lần",
+        "move": {
+          "code": "CHONG_DAY_TUA_BAN",
+          "name": "Chống đẩy tựa bàn",
+          "demoCode": "exercise-chong-day-tua-ban",
+          "steps": [
+            "Đặt hai tay lên mép bàn vững, rộng hơn vai một chút, người thẳng từ đầu đến gót.",
+            "Gập khuỷu tay, hạ ngực về phía mép bàn, bụng siết nhẹ.",
+            "Đẩy tay để trở về, thở ra khi đẩy lên."
+          ],
+          "caution": "Chọn bàn thật vững, không trượt. Dừng nếu cổ tay hoặc vai đau; đứng gần bàn hơn cho nhẹ sức, hoặc nghỉ."
+        }
+      },
+      {
+        "position": 4,
+        "phase": "MAIN",
+        "seconds": 90,
+        "repsText": "8 lần mỗi bên",
+        "move": {
+          "code": "CHUNG_CHAN_LUI",
+          "name": "Chùng chân lùi",
+          "demoCode": "exercise-chung-chan-lui",
+          "steps": [
+            "Đứng thẳng, vịn vào thành ghế hoặc tường nếu cần giữ thăng bằng.",
+            "Bước một chân ra sau, hạ người thẳng xuống; đầu gối trước trên mắt cá, đầu gối sau không chạm sàn.",
+            "Đẩy chân trước để đứng lên; làm đủ số lần một bên rồi đổi bên."
+          ],
+          "caution": "Dừng nếu đầu gối đau hoặc mất thăng bằng; bước ngắn hơn và hạ người nông hơn."
+        }
+      },
+      {
+        "position": 5,
+        "phase": "MAIN",
+        "seconds": 20,
+        "repsText": "giữ 20 giây",
+        "move": {
+          "code": "PLANK_TUA_GOI",
+          "name": "Plank tựa gối",
+          "demoCode": "exercise-plank-tua-goi",
+          "steps": [
+            "Quỳ trên thảm hoặc khăn gấp, chống hai khuỷu tay ngay dưới vai.",
+            "Nhấc người sao cho thẳng từ đầu đến đầu gối, siết bụng nhẹ.",
+            "Giữ yên và thở đều, rồi hạ người xuống nghỉ."
+          ],
+          "caution": "Dừng nếu lưng dưới, vai hoặc khuỷu tay đau; hạ người xuống nghỉ bất cứ lúc nào."
+        }
+      },
+      {
+        "position": 6,
+        "phase": "COOLDOWN",
+        "seconds": 30,
+        "repsText": "30 giây",
+        "move": {
+          "code": "THA_LONG_VAI",
+          "name": "Thả lỏng vai",
+          "demoCode": "exercise-tha-long-vai",
+          "steps": [
+            "Đứng hoặc ngồi thoải mái, hai tay buông dọc người.",
+            "Hít vào và nhấc hai vai lên nhẹ.",
+            "Thở ra thật chậm, thả vai xuống, lặp lại vài nhịp."
+          ],
+          "caution": "Nhấc vai vừa phải; dừng nếu cổ hoặc vai khó chịu, hoặc thấy chóng mặt."
+        }
+      }
+    ]
+  }
+}
