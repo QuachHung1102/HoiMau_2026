@@ -2,7 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen } from '@testing-library/react-native';
 import { AppState } from 'react-native';
 import { wipeQueries } from '../../shared/api/session';
-import { dayOf, installTodayTestEnv, openToday, queryClient, settle, STAND_UP, USER, world, writes } from '../dashboard/todayTestKit';
+import { app, dayOf, installTodayTestEnv, meOf, openToday, queryClient, requested, settle, STAND_UP, USER, world, writes } from '../dashboard/todayTestKit';
+import { mountApp } from '../sync/syncTestKit';
 import { STAND_UP_INTERVAL_MS } from './standUpTimer';
 
 installTodayTestEnv();
@@ -271,5 +272,68 @@ describe('leaving', () => {
     // the queries are dropped as sign-out does (their own garbage-collection timers would be left otherwise)
     wipeQueries(queryClient());
     expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
+describe('where the reminder lives: the signed-in, onboarded shell', () => {
+  test('another tab on top: the prompt still comes', async () => {
+    fakeTimers();
+    foreground();
+    const view = await openToday();
+    fireEvent.press(screen.getByRole('tab', { name: 'Lộ trình' }));
+    expect(await screen.findByText('Phần này đang được hoàn thiện')).toBeTruthy();
+    await pass(60 * MIN);
+    expect(prompt()).toBeTruthy();
+    view.unmount();
+  });
+
+  test('a detail screen on top: the prompt still comes, and its action records the tick', async () => {
+    fakeTimers();
+    foreground();
+    const view = await openToday();
+    fireEvent.press(screen.getByRole('button', { name: 'Xem tất cả nhiệm vụ' }));
+    await screen.findByRole('header', { name: 'Nhiệm vụ hôm nay' });
+    await pass(60 * MIN);
+    expect(prompt()).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: ACTION }));
+    expect(await screen.findByText('Đã ghi nhận · +10 XP')).toBeTruthy();
+    expect(standUps()).toHaveLength(1);
+    view.unmount();
+  });
+
+  test('a person who has not finished onboarding has no reminder: nothing is read, kept or armed', async () => {
+    fakeTimers();
+    foreground();
+    world.me = meOf({ user: { ...meOf().user, onboarded: false } });
+    const view = await mountApp({ landed: false });
+    await screen.findByText('Bắt đầu từ bạn');
+    await pass(3 * 60 * MIN);
+    expect(prompt()).toBeNull();
+    expect(requested('/day')).toBe(0);
+    expect(await stored()).toBeNull();
+    view.unmount();
+    wipeQueries(queryClient());
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test('after sign-out nothing is armed, nothing is kept, and nothing is left running', async () => {
+    fakeTimers();
+    foreground();
+    const view = await openToday();
+    await pass(20 * MIN);
+    await system('background');
+    await settle();
+    expect(await stored()).not.toBeNull();
+    await system('active');
+    await act(() => app.session.signOut());
+    await settle();
+    expect(await stored()).toBeNull();
+    await pass(3 * 60 * MIN);
+    expect(prompt()).toBeNull();
+    view.unmount();
+    wipeQueries(queryClient());
+    expect(jest.getTimerCount()).toBe(0);
+    // and it was not written back after the wipe
+    expect(await stored()).toBeNull();
   });
 });

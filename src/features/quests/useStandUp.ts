@@ -43,8 +43,14 @@ export function useStandUpMinutes(): number | null {
   return state?.running ? Math.max(1, Math.ceil(msLeft(state, Date.now()) / MINUTE_MS)) : null;
 }
 
+/** Mounts the reminder for exactly as long as the signed-in, onboarded shell lives (navigation.tsx); draws nothing. */
+export function StandUpHost() {
+  useStandUp();
+  return null;
+}
+
 /**
- * The stand-up reminder. Mount it ONCE, on a screen that lives as long as the signed-in app (Hôm nay does).
+ * The stand-up reminder. Mount it ONCE: StandUpHost does, inside the main (onboarded) group, whichever tab or screen is on top.
  * - A 60-minute countdown (`standUpTimer`) that runs only while the app is in the foreground; the hook feeds it
  *   `AppState` changes and the clock, and owns the one timer, which is cleared on unmount and on sign-out.
  * - When it runs out and the quest still has parts left: a snackbar "Đến lúc đứng dậy vươn vai một chút" with

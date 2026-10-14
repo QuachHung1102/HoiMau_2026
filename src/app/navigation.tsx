@@ -30,7 +30,8 @@ import { Screen } from '../shared/ui/Screen';
 import { SnackbarProvider } from '../shared/ui/Snackbar';
 import { EmptyState, ErrorState, LoadingState } from '../shared/ui/States';
 import { routeNames, type RouteName, type ScreenEntry, type TabRootName } from './routes';
-import { authScreens, detailScreens, focusScreens, onboardingScreens, tabRoots } from './screens';
+import { StandUpHost } from '../features/quests/useStandUp';
+import { authScreens,detailScreens, focusScreens, onboardingScreens, tabRoots } from './screens';
 import { TAB_BAR_HEIGHT, TabBar } from './TabBar';
 
 // Structure (PLAN P1.6): one root stack whose content follows the session.
@@ -178,10 +179,14 @@ function SignedIn() {
     return <Root.Navigator screenOptions={noHeader}>{screensOf(Root, onboardingScreens)}</Root.Navigator>;
   }
   return (
-    <Root.Navigator screenOptions={noHeader}>
-      <Root.Screen name={MAIN_TABS} component={MainTabs} />
-      <Root.Group screenOptions={focusFlow}>{screensOf(Root, focusScreens)}</Root.Group>
-    </Root.Navigator>
+    <>
+      <Root.Navigator screenOptions={noHeader}>
+        <Root.Screen name={MAIN_TABS} component={MainTabs} />
+        <Root.Group screenOptions={focusFlow}>{screensOf(Root, focusScreens)}</Root.Group>
+      </Root.Navigator>
+      {/* The stand-up reminder lives as long as the signed-in, onboarded shell, whichever tab or screen is on top. */}
+      <StandUpHost />
+    </>
   );
 }
 

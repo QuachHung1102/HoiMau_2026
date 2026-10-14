@@ -106,7 +106,8 @@ const app = (initialState?: ReturnType<typeof stateForRoute>) => (
 type Options = { signedIn?: boolean; onboarded?: boolean; initialState?: ReturnType<typeof stateForRoute> };
 async function open({ signedIn = true, onboarded = true, initialState }: Options = {}) {
   if (signedIn) await Keychain.setGenericPassword(USER, 'tok-1');
-  fetchMock.mockResolvedValue(respond(200, meOf(onboarded)));
+  // The stand-up reminder (StandUpHost) reads the day in every onboarded shell; this stand-in has none to give.
+  fetchMock.mockImplementation(async (url: string) => (url.endsWith('/day') ? respond(404) : respond(200, meOf(onboarded))));
   render(app(initialState));
 }
 const press = (text: string) => fireEvent.press(screen.getByText(text));

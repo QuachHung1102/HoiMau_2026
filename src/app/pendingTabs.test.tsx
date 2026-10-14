@@ -37,7 +37,8 @@ const realFetch = globalThis.fetch;
 let client: QueryClient;
 let errors: jest.SpyInstance;
 beforeEach(async () => {
-  globalThis.fetch = jest.fn(async (url: string) => (url.endsWith('/auth/logout') ? respond(204) : respond(200, me))) as unknown as typeof fetch;
+  // The stand-up reminder (StandUpHost) reads the day in every onboarded shell; this stand-in has none to give.
+  globalThis.fetch = jest.fn(async (url: string) => (url.endsWith('/auth/logout') ? respond(204) : url.endsWith('/day') ? respond(404) : respond(200, me))) as unknown as typeof fetch;
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   errors = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   await Keychain.setGenericPassword(USER, 'tok-1');
