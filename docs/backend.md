@@ -187,9 +187,9 @@ Cổng 1 không biết một request thật làm được gì; cổng 2 không b
 
 1. **Vai trò.** `app_conn` là `LOGIN NOINHERIT`; không vai trò `app_*` nào khác đăng nhập được; không vai trò `app_*` nào là superuser, `BYPASSRLS`, `CREATEROLE`, `CREATEDB`, `REPLICATION`. Quan hệ thành viên có dính tới một vai trò `app_*` (ở cả hai chiều) chỉ gồm đúng ba dòng: `app_conn` trong `app_anon`, `app_auth`, `app_job` với `INHERIT FALSE, SET TRUE`, không `ADMIN`. Không vai trò `app_*` nào là thành viên của vai trò khác (kể cả `pg_read_all_data`), và không vai trò ngoài nào là thành viên của một vai trò `app_*`.
 2. **Thiết lập lưu sẵn và quyền trên tham số.** `pg_db_role_setting` không có dòng nào áp dụng cho một vai trò `app_*` trong cơ sở dữ liệu này (`ALTER ROLE … SET`, `ALTER DATABASE … SET`, `ALTER ROLE ALL SET`). `pg_parameter_acl` không cấp tham số cấu hình nào cho một vai trò `app_*` hay `PUBLIC` (`GRANT SET ON PARAMETER …`).
-3. **Sở hữu.** Không cơ sở dữ liệu, schema, bảng, view, sequence hay hàm nào thuộc sở hữu của một vai trò `app_*`: chủ sở hữu không cần GRANT và không chịu policy.
+3. **Sở hữu.** Không cơ sở dữ liệu, schema, bảng, view, sequence hay hàm nào thuộc sở hữu của một vai trò `app_*`: chủ sở hữu không cần GRANT và không chịu policy. Mọi hàm của dự án thuộc về **một** vai trò: vai trò sở hữu schema `meta`, tức vai trò chạy các file SQL. Hàm `SECURITY DEFINER` chạy bằng quyền của chủ nó và chủ nó thay được thân hàm, nên một hàm bị trao cho vai trò khác (kể cả vai trò ngoài bộ `app_*`) bị báo `function … is owned by …`.
 4. **Sổ đăng ký tự nó hợp lệ, và khớp catalog.** Mỗi dòng đăng ký bảng có lớp thuộc bốn lớp và đúng những gì lớp cho phép (`own_read`, `content`: chỉ `{SELECT}`; `internal`: không gì; `own_rw`: chỉ trong `SELECT`, `INSERT`, `UPDATE`, `DELETE`; `owner_column` có với `own_*`, rỗng với hai lớp kia); mỗi dòng đăng ký hàm chỉ nêu `app_anon`, `app_auth`, `app_job`. Mọi bảng và view trong `public` đều đã đăng ký; mọi bảng đã đăng ký đều tồn tại; cột `owner_column` và các cột `UPDATE` đã đăng ký đều tồn tại. Mọi hàm trong `public`, `app`, `meta` đều đã đăng ký; mọi hàm đã đăng ký đều tồn tại; hàm nội bộ (tên bắt đầu bằng `_` ở bất kỳ schema nào, và `meta.*`) đăng ký với tập vai trò rỗng.
-5. **View và rule.** View phải là `security_invoker`; không có materialized view, không có foreign table. **Rule (`CREATE RULE`) bị cấm trên mọi bảng**: phần một rule thêm vào câu lệnh chạy bằng quyền của chủ bảng, vượt qua mọi GRANT và policy, mà không phải là một hàm đã đăng ký. (View chỉ có đúng rule `_RETURN` làm nên nó.)
+5. **View, rule, trigger và các đối tượng của cả cơ sở dữ liệu.** View phải là `security_invoker`; không có materialized view, không có foreign table. **Rule (`CREATE RULE`) bị cấm trên mọi bảng**: phần một rule thêm vào câu lệnh chạy bằng quyền của chủ bảng, vượt qua mọi GRANT và policy, mà không phải là một hàm đã đăng ký. (View chỉ có đúng rule `_RETURN` làm nên nó.) **Trigger chưa được phép** trên bất kỳ bảng nào của dự án: trigger chạy hàm của nó ở mọi lần ghi vào bảng, bất kể ai ghi, và `ENABLE ALWAYS` hay hàm `SECURITY DEFINER` quyết định nó chạy lúc nào, bằng quyền ai; chưa có sổ nào đăng ký trigger nên trạng thái còn nguyên là không có trigger nào (`trigger "…" on … is not allowed yet`; trigger nội bộ của khóa ngoại không tính). Cũng không có **event trigger** (hàm của nó chạy bên trong lệnh của mọi vai trò, kể cả chủ sở hữu), **publication** (đưa dòng ra khỏi cơ sở dữ liệu, không qua GRANT hay policy nào), **foreign-data wrapper** hay **foreign server** nào.
 6. **RLS** bật với các lớp `own_read`, `own_rw`, `internal`. **Lớp là một lời khai**, nên bảng `content` còn bị xét theo khóa ngoại: nó chỉ được tham chiếu bảng `content` khác. Bảng `content` có khóa ngoại tới bảng thuộc lớp khác (hay tới bảng chưa đăng ký) là dữ liệu người dùng bị khai nhầm lớp, và mọi người đã đăng nhập sẽ đọc được toàn bộ.
 7. **Quyền, đọc từ ACL, bằng đúng tập mong đợi** (`WITH GRANT OPTION` cũng là sai lệch):
    - cơ sở dữ liệu: chỉ mặc định `CONNECT` và `TEMPORARY` cho `PUBLIC` (không ai có `CREATE`);
@@ -200,11 +200,11 @@ Cổng 1 không biết một request thật làm được gì; cổng 2 không b
    - hàm: `EXECUTE` cho đúng tập vai trò đã đăng ký;
    - **quyền mặc định** (`pg_default_acl`: thứ mà bảng, sequence hay hàm *tạo sau này* sinh ra đã có): không dòng nào cấp gì cho ai ngoài chính vai trò của dòng đó, kể cả dòng theo schema (`ALTER DEFAULT PRIVILEGES IN SCHEMA …`); và mặc định `EXECUTE` cho `PUBLIC` trên hàm phải đang bị gỡ với vai trò sở hữu các hàm của dự án. `ALTER DEFAULT PRIVILEGES GRANT INSERT ON TABLES TO app_auth` vì thế đỏ ngay, không chờ tới khi có bảng mới.
 
-   Chủ sở hữu được xét trước những gì suy ra từ nó: một bảng thuộc về vai trò `app_*` được báo là "owned by app role", không phải là sai lệch quyền trên cột của nó (chủ sở hữu không cần GRANT nên các quyền đó biến khỏi ACL).
+   Chủ sở hữu được xét trước những gì suy ra từ nó: một bảng thuộc về vai trò `app_*` được báo là "owned by app role", không phải là sai lệch quyền trên cột của nó (chủ sở hữu không cần GRANT nên các quyền đó biến khỏi ACL). Cũng vậy với sequence của cột `IDENTITY`, vốn đổi chủ theo bảng: bảng được xét trước sequence, nên câu trả lời nêu tên bảng. Hàm được xét trước quyền mặc định của chủ nó.
 8. **Policy** trên mỗi bảng là đúng các policy đã đăng ký: `PERMISSIVE`, `TO app_auth`, cùng lệnh, biểu thức `USING` và `WITH CHECK` bằng nguyên văn; bảng `internal` không có policy nào.
 9. **Thiết lập của hàm `SECURITY DEFINER`** phải là đúng một `SET search_path` với một trong hai giá trị `public, pg_temp` hoặc `pg_catalog, pg_temp`, **và không có `SET` nào khác** (một `SET session_replication_role = replica` đi kèm sẽ tắt trigger trong thân hàm). Không đặt, đặt `public` (thiếu `pg_temp` ở cuối), hay `pg_temp, public` đều bị từ chối: mọi vai trò đều tạo được bảng tạm, và bảng tạm trùng tên sẽ che bảng thật trong thân hàm đặc quyền.
    **Hàm `SECURITY INVOKER` cũng vậy khi nó có `SET`**: hoặc không `SET` gì (khi đó nó dùng `search_path` của hàm gọi nó), hoặc đúng một trong hai giá trị trên và không gì khác. Hàm nội bộ được một hàm `SECURITY DEFINER` gọi thì chạy bằng quyền chủ sở hữu với thiết lập của chính nó. Đã chạy thử: `app._throttle_hit` với `search_path = pg_temp, public` ghi bộ đếm đăng nhập sai vào bảng tạm của người gọi, bảng thật không nhận dòng nào.
-10. **Chế độ của hàm** (chạy bằng quyền ai) bằng đúng chế độ đã đăng ký: `prosecdef` của catalog so với `'definer'` / `'invoker'` trong `meta.expected_functions`, bằng dấu bằng. Đổi chế độ một mình (`ALTER FUNCTION … SECURITY INVOKER`), hay đổi cùng lúc với thiết lập cho hàm trông vẫn chỉnh tề ở chế độ mới (`… SECURITY DEFINER SET search_path = public, pg_temp`, `… SECURITY INVOKER RESET search_path`), đều bị báo `function security: … found: <chữ ký> is SECURITY …, registered …`. Sổ đăng ký chỉ nhận hai giá trị đó (giá trị khác: `registry: function …: the security mode is definer or invoker`). Cổng 1 **không** suy chế độ từ tên hay từ `SET`: hàm nội bộ `_…` được phép là `definer` (hàm trigger phải ghi bảng nội bộ), hàm gọi được được phép là `invoker` có `SET search_path` (đọc dưới RLS của người gọi), miễn là file khai đúng như vậy.
+10. **Chế độ của hàm** (chạy bằng quyền ai) bằng đúng chế độ đã đăng ký: `prosecdef` của catalog so với `'definer'` / `'invoker'` trong `meta.expected_functions`, bằng dấu bằng. Đổi chế độ một mình (`ALTER FUNCTION … SECURITY INVOKER`), hay đổi cùng lúc với thiết lập cho hàm trông vẫn chỉnh tề ở chế độ mới (`… SECURITY DEFINER SET search_path = public, pg_temp`, `… SECURITY INVOKER RESET search_path`), đều bị báo `function security: … found: <chữ ký> is SECURITY …, registered …`. Sổ đăng ký chỉ nhận hai giá trị đó (giá trị khác: `registry: function …: the security mode is definer or invoker`). Cổng 1 **không** suy chế độ từ tên hay từ `SET`: hàm nội bộ `_…` được phép là `definer` (hàm trigger phải ghi bảng nội bộ), hàm gọi được được phép là `invoker` có `SET search_path` (đọc dưới RLS của người gọi), miễn là file khai đúng như vậy. Không hàm nào của dự án là `LEAKPROOF`: đó là lời hứa rằng hàm không để lộ gì về tham số, và planner được phép chạy hàm như vậy trên những dòng RLS **chưa** lọc.
 11. `meta.test_clock` rỗng.
 
 Giới hạn cần biết: phép so ACL coi mọi quyền ngoài mô tả là vi phạm, nên một vai trò vận hành (sao lưu, đọc báo cáo) được cấp quyền trực tiếp trên bảng sẽ làm cổng 1 đỏ; quyền `CONNECT` cấp riêng cho `app_conn` trên cơ sở dữ liệu cũng vậy, và một vai trò quản trị không phải superuser tạo ra các vai trò `app_*` sẽ tự có quan hệ thành viên `ADMIN` với chúng. Muốn có những thứ đó thì sửa mô tả trong `90-verify.sql` cùng một ca đột biến tương ứng, không nới phép so.
@@ -348,13 +348,13 @@ Chạy trên một cơ sở dữ liệu thứ hai, mỗi ca: phép kiểm đang 
 
 ### Cách chạy
 
-- Một bản sao của cơ sở dữ liệu mẫu, một kết nối superuser. Mỗi đột biến: `BEGIN` → câu lệnh phá hàng rào → toàn bộ `90-verify.sql` → đòi exception → `ROLLBACK`. Không tạo lại bản sao cho từng đột biến; cả cổng chạy trong khoảng 20 giây.
+- Một bản sao của cơ sở dữ liệu mẫu, một kết nối superuser. Mỗi đột biến: `BEGIN` → câu lệnh phá hàng rào → toàn bộ `90-verify.sql` → đòi exception → `ROLLBACK`. Không tạo lại bản sao cho từng đột biến; cả cổng chạy trong khoảng một phút (lược đồ thật khoảng 25 giây, lược đồ "tương lai" ở dưới khoảng 30 giây).
 - Trước đột biến đầu tiên `90-verify.sql` phải đạt trên bản sao còn nguyên; sau đột biến cuối cùng nó phải đạt lần nữa, qua một **kết nối mới**.
 - In một dòng `PASS <đột biến> -> "<thông báo của cổng 1>"` cho từng đột biến, rồi số đột biến của từng lớp và dòng tổng `mutation-check: N of N detected, … classes`.
 
 ### Một đột biến, một câu trả lời
 
-Đạt ⟺ SQLSTATE `P0001` (exception do chính `90-verify.sql` ném) **và** thông báo chứa mọi mảnh đã ghi cho đột biến đó. Mọi kết cục khác là hỏng, mỗi kết cục một tên:
+Đạt ⟺ SQLSTATE `P0001` (exception do chính `90-verify.sql` ném) **và** thông báo chứa mọi mảnh đã ghi cho đột biến đó, trong đó **mảnh thứ nhất phải đứng ở đầu thông báo** (hoặc ở đầu mục thứ nhất sau `found: `). Mọi kết cục khác là hỏng, mỗi kết cục một tên:
 
 | Cổng 3 in ra | Nghĩa |
 |---|---|
@@ -365,38 +365,40 @@ Chạy trên một cơ sở dữ liệu thứ hai, mỗi ca: phép kiểm đang 
 | `class "…": covered 0` | Một lớp không liệt kê được đối tượng nào. |
 
 - **Mảnh được viết theo đúng câu của phép khẳng định đang thử**, không chỉ là tên đối tượng: `table users: grants are` cùng `app_job:TRUNCATE`, chứ không phải `users`. Lý do có thật: sau `ALTER TABLE users OWNER TO app_auth`, phép so quyền cũng lệch, và câu của nó cũng chứa cả `users` lẫn `app_auth`. Chính ca này đã lộ ra khi cổng 3 chạy lần đầu: cổng 1 trả lời bằng sai lệch quyền trên cột thay vì "owned by app role".
-- Tên được so **nguyên từ**: `users` không nằm trong `user_settings` hay `app.users`.
+- Tên được so **nguyên từ**: `users` không nằm trong `user_settings` hay `app.users`. Mảnh thứ nhất là chủ ngữ của câu và chỉ được tính ở chỗ câu bắt đầu: `schema public: grants are` cũng nằm giữa thông báo về quyền mặc định `… in schema public: grants are …`, và không được tính ở đó.
 - Chỉ liệt kê thứ lược đồ còn nguyên **chưa có** (quyền chưa được cấp, quan hệ thành viên chưa tồn tại). Một đột biến cấp lại thứ đã có sẽ không đổi gì và bị báo `verify did not raise`.
-- Cổng tự thử mình bằng sáu cái bẫy, mỗi cái phải bị báo đúng tên: `SELECT 1` (không phá gì), một đột biến thật khai tên bảng khác, một đột biến thật khai một tên chỉ là một phần của tên trong thông báo, một câu lệnh không chạy được, một đột biến không khai mảnh nào, một lớp rỗng.
+- Cổng tự thử mình bằng bảy cái bẫy, mỗi cái phải bị báo đúng tên: `SELECT 1` (không phá gì), một đột biến thật khai tên bảng khác, một đột biến thật khai một tên chỉ là một phần của tên trong thông báo, một đột biến thật khai một mảnh có trong thông báo nhưng không ở đầu câu, một câu lệnh không chạy được, một đột biến không khai mảnh nào, một lớp rỗng.
 
 ### Các lớp đột biến
 
-Số trong ngoặc là của lược đồ lúc viết mục này (19 bảng trong `public`, 4 bảng trong `meta`, 11 policy, 29 hàm): 1404 đột biến trong 43 lớp.
+Số trong ngoặc là của lược đồ lúc viết mục này (19 bảng trong `public`, 4 bảng trong `meta`, 11 policy, 29 hàm): 1542 đột biến trong 53 lớp.
 
 | Liệt kê theo | Đột biến | Cổng 1 phải nói |
 |---|---|---|
 | mỗi bảng có RLS (15) | `DISABLE ROW LEVEL SECURITY` | `table … (lớp): row level security is off` |
 | mỗi bảng của dự án, kể cả `meta` (23) | `OWNER TO app_auth` | `table … is owned by app role app_auth` |
-| mỗi bảng (23) | `CREATE RULE … DO ALSO NOTHING` | `rule "…" on … is not allowed` |
-| mỗi bảng × `PUBLIC` và từng vai trò `app_*` × **mọi loại quyền trên bảng mà PostgreSQL có** (đọc từ `acldefault`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER`, `MAINTAIN`) mà bên đó chưa có (907) | `GRANT … ON … TO …` | `table …: grants are` kèm `<vai trò>:<quyền>` |
+| mỗi bảng (23) | `CREATE RULE … DO ALSO NOTHING`; một trigger `ENABLE ALWAYS` gọi một hàm đã đăng ký | `rule "…" on … is not allowed`; `trigger "…" on … is not allowed yet` |
+| mỗi bảng, view và **sequence** × `PUBLIC` và từng vai trò `app_*` × **mọi loại quyền mà PostgreSQL có cho loại đối tượng đó** (đọc từ `acldefault`: với bảng là `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER`, `MAINTAIN`) mà bên đó chưa có (907) | `GRANT … ON … TO …` | `table …: grants are` (hoặc `view …`, `sequence …`) kèm `<vai trò>:<quyền>` |
+| mỗi quyền mức bảng mà một vai trò `app_*` đang có (13) | cấp lại `WITH GRANT OPTION` | `table …: grants are` kèm `<vai trò>:<quyền>*` |
 | mỗi bảng: cột đầu tiên chưa đăng ký `UPDATE` (23) | `GRANT UPDATE (cột) … TO app_auth` | `column bảng.cột: grants are` kèm `app_auth:UPDATE` |
 | mỗi bảng không phải `content` có khóa chính (15) | tạo bảng có khóa ngoại tới nó, cấp `SELECT`, đăng ký là `content` | `content table … has a foreign key to … (lớp)` |
-| mỗi bảng × mỗi lệnh bảng cấp cho `app_auth`; `FOR ALL` với bảng không cấp gì (21) | thêm policy thứ hai `… TO app_auth USING (true)` | `policy "…" on table … is not registered`, hoặc `internal table … has policy "…"` |
+| mỗi bảng (không tính view) × mỗi lệnh bảng cấp cho `app_auth`; `FOR ALL` với bảng không cấp gì (21) | thêm policy thứ hai `… TO app_auth USING (true)` | `policy "…" on table … is not registered`, hoặc `internal table … has policy "…"` |
 | mỗi policy, mỗi biểu thức `USING` / `WITH CHECK` (13) | tạo lại với `(<nguyên bản>) OR true` | `policy "…" on table …: USING is` / `WITH CHECK is` |
 | như trên (13) | tạo lại với cột đầu tiên nó đọc bị thay bằng cột khác | như trên |
-| mỗi policy (11 mỗi loại) | xóa; tạo lại `AS RESTRICTIVE`; `ALTER POLICY … TO PUBLIC` | `registered policy … does not exist`; `is RESTRICTIVE`; `applies to {PUBLIC}` |
+| mỗi policy (11 mỗi loại) | xóa; tạo lại `AS RESTRICTIVE`; tạo lại `FOR ALL`; `ALTER POLICY … TO PUBLIC` | `registered policy … does not exist`; `is RESTRICTIVE`; `command is ALL, registered …`; `applies to {PUBLIC}` |
 | mỗi hàm × `PUBLIC` và từng vai trò `app_*` chưa có `EXECUTE` (119) | `GRANT EXECUTE` | `function …: grants are` kèm `<vai trò>:EXECUTE` |
-| mỗi hàm (29) | `OWNER TO app_auth` | `function … is owned by app role app_auth` |
+| mỗi hàm (29 mỗi loại) | `OWNER TO app_auth`; `OWNER TO` một vai trò mới ngoài bộ `app_*`; `LEAKPROOF` | `function … is owned by app role app_auth`; `function … is owned by <vai trò>`; `function … is LEAKPROOF` |
 | mỗi hàm `SECURITY DEFINER` (14) | `RESET search_path` | `<chữ ký> {}` trong câu về thiết lập của hàm |
 | mỗi hàm, kể cả `SECURITY INVOKER` (29) | `SET search_path = pg_temp, public` | `<chữ ký> {"search_path=pg_temp, public"}` |
-| mỗi hàm `SECURITY DEFINER` (14) | `SECURITY INVOKER` | `<chữ ký> is SECURITY INVOKER` |
-| mỗi hàm `SECURITY INVOKER` (15) | `SECURITY DEFINER` | `<chữ ký> is SECURITY DEFINER` nếu hàm có `SET` hợp lệ, ngược lại `<chữ ký> {}` (câu về thiết lập) |
+| mỗi hàm `SECURITY DEFINER` (14 mỗi loại) | `SECURITY INVOKER`; `SECURITY INVOKER RESET search_path` (đổi chế độ cùng thiết lập, cho hàm trông vẫn chỉnh tề) | `<chữ ký> is SECURITY INVOKER, registered definer` |
+| mỗi hàm `SECURITY INVOKER` (15 mỗi loại) | `SECURITY DEFINER`; `SECURITY DEFINER SET search_path = public, pg_temp` | `<chữ ký> is SECURITY DEFINER, registered invoker`; riêng `SECURITY DEFINER` một mình trên hàm không có `SET` thì câu về thiết lập trả lời trước: `<chữ ký> {}` |
 | mỗi schema của dự án × `PUBLIC` và từng vai trò × `USAGE`, `CREATE` chưa có (24) | `GRANT … ON SCHEMA` | `schema …: grants are` kèm `<vai trò>:<quyền>` |
 | `PUBLIC` và từng vai trò × bảng, hàm, sequence × toàn cục và `IN SCHEMA public` (30) | `ALTER DEFAULT PRIVILEGES … GRANT …` | `default privileges for … created by …: grants are` |
 | mỗi vai trò `app_*` × năm thuộc tính (20) | `ALTER ROLE … SUPERUSER` / `BYPASSRLS` / `CREATEROLE` / `CREATEDB` / `REPLICATION` | `role … is SUPERUSER, BYPASSRLS, …` |
 | mỗi vai trò request (3); vai trò đăng nhập (1) | `ALTER ROLE … LOGIN`; `ALTER ROLE app_conn INHERIT` | `role … can log in`; `role app_conn must be LOGIN NOINHERIT` |
 | mỗi cặp vai trò `app_*` chưa có quan hệ thành viên ở cả hai chiều (6); mỗi quan hệ đang có (3) | `GRANT a TO b`; `GRANT … WITH INHERIT TRUE` | `b in a`; `… (inherit t, set t, admin f)` |
-| mỗi vai trò `app_*` × `role`, `app.user_id` (8) | `ALTER ROLE … IN DATABASE <bản sao> SET …` | `role …, database …: {…}` |
+| mỗi vai trò `app_*` × `role`, `app.user_id` (8) | `ALTER ROLE … IN DATABASE <bản sao> SET …` | `a stored setting applies to an app role: role …, database …: {…}` |
+| đối tượng của cả cơ sở dữ liệu, mỗi thứ một lần (4) | event trigger; publication `FOR ALL TABLES`; foreign-data wrapper; foreign server cấp `USAGE` cho `app_auth` | `event trigger … is not allowed`; `publication … is not allowed`; `foreign-data wrapper … is not allowed`; `foreign server … is not allowed` |
 | mỗi thứ một lần (3) | bảng chưa đăng ký trong `public`; hàm chưa đăng ký trong `public`; một dòng trong `meta.test_clock` | `table … is not registered`; `function is not registered`; `meta.test_clock is not empty` |
 
 `GRANT USAGE ON SCHEMA app TO app_auth` **không** có trong danh sách: `app_auth` vốn có quyền đó theo thiết kế (policy gọi `app.current_user_id()`), nên câu lệnh không đổi gì. Thay cho nó là `GRANT CREATE ON SCHEMA app TO app_auth` và `GRANT USAGE ON SCHEMA app` cho `PUBLIC`, `app_conn`.
@@ -413,20 +415,21 @@ RLS không áp dụng cho chủ sở hữu bảng trừ khi bảng có `FORCE RO
 
 Cho không, không cần sửa gì ở file cổng:
 
-- **Bảng mới** (đã đăng ký bằng `meta.expect_table`): tắt RLS (nếu bảng có RLS), đổi chủ sở hữu, rule, mọi loại quyền cho `PUBLIC` và từng vai trò `app_*`, `UPDATE` trên một cột chưa đăng ký, policy thứ hai cho mỗi lệnh bảng cấp, và bảng "content" bám vào nó (nếu nó không phải `content`).
-- **Policy mới** (đã đăng ký bằng `meta.expect_policy`): `OR true` và đổi cột trên từng biểu thức, xóa, `RESTRICTIVE`, `TO PUBLIC`.
-- **Hàm mới** (đã đăng ký bằng `meta.expect_function`): `EXECUTE` cho `PUBLIC` và cho từng vai trò `app_*` chưa đăng ký, đổi chủ sở hữu, `search_path` hỏng, đổi chế độ `DEFINER` / `INVOKER`, và gỡ `search_path` nếu là `DEFINER`.
+- **Bảng mới** (đã đăng ký bằng `meta.expect_table`): tắt RLS (nếu bảng có RLS), đổi chủ sở hữu, rule, trigger, mọi loại quyền (kể cả trên sequence của cột `IDENTITY`), cấp lại `WITH GRANT OPTION` quyền đang có, cho `PUBLIC` và từng vai trò `app_*`, `UPDATE` trên một cột chưa đăng ký, policy thứ hai cho mỗi lệnh bảng cấp, và bảng "content" bám vào nó (nếu nó không phải `content`).
+- **Policy mới** (đã đăng ký bằng `meta.expect_policy`): `OR true` và đổi cột trên từng biểu thức, xóa, `RESTRICTIVE`, `FOR ALL`, `TO PUBLIC`.
+- **Hàm mới** (đã đăng ký bằng `meta.expect_function`, kèm chế độ): `EXECUTE` cho `PUBLIC` và cho từng vai trò `app_*` chưa đăng ký, đổi chủ sở hữu (sang `app_auth` và sang một vai trò ngoài), `LEAKPROOF`, `search_path` hỏng, đổi chế độ một mình và đổi chế độ cùng `SET` / `RESET` tương ứng, và gỡ `search_path` nếu là `DEFINER`.
 
 Đòi lại: lược đồ phải **đạt cổng 1 trước đã** (test đầu tiên của cổng 3). Mọi thứ còn lại là hệ quả của các luật đăng ký ở mục dưới. Những trường hợp một nhiệm vụ sau có thể thấy cổng 3 đỏ, và việc cần làm:
 
 - `verify did not raise` trên một đối tượng mới: cổng 1 mù với hàng rào đó. Sửa `90-verify.sql` bằng điều kiện nhỏ nhất, thêm ca viết tay vào `verify.test.ts`; **không** gỡ đột biến.
 - `the mutation did not apply` ở lớp "đổi cột": cột có tên phải đặt trong dấu nháy kép (cổng thay tên cột trần trong biểu thức). Đặt tên cột bằng chữ thường và gạch dưới, hoặc sửa hàm `onAnotherColumn` trong file cổng.
 - Policy không đọc cột nào (ví dụ chỉ gọi hàm) không có đột biến "đổi cột"; văn bản của nó vẫn được canh bằng `OR true`.
-- Đối tượng thuộc loại **chưa có** trong lược đồ (sequence, view, trigger): hiện không có lớp đột biến nào cho chúng, vì một lớp rỗng là một lớp hỏng. Nhiệm vụ đầu tiên thêm một view hay một sequence thì thêm lớp của nó vào `CLASSES` (ca viết tay tương ứng đã có trong `verify.test.ts`).
+- **Khóa `IDENTITY`, view `security_invoker`, hàm `invoker` gọi được có ghim `search_path`, hàm nội bộ `definer`**: lược đồ thật chưa có thứ nào trong số đó, nên cổng tự thử trên một bản sao thứ hai có đủ cả bốn (test "a schema with an identity key, a view …"): mọi lớp phải áp dụng được, mọi đột biến phải bị bắt (lúc viết: 1675 trên 1675), và sáu dòng `PASS` nêu đích danh các đối tượng mới phải có mặt. Một lớp chỉ phá riêng view (gỡ `security_invoker`) thì chưa có, vì trên lược đồ thật nó sẽ rỗng mà lớp rỗng là lớp hỏng: ca viết tay trong `verify.test.ts` giữ hàng rào đó cho tới khi lược đồ có view đầu tiên.
+- **Trigger, event trigger, publication, foreign-data wrapper, foreign server, hàm `LEAKPROOF`**: cổng 1 từ chối tất cả. Nhiệm vụ đầu tiên thật sự cần một trigger thì thêm sổ đăng ký trigger vào `02-meta.sql` (bảng `meta.expected_triggers` và hàm `meta.expect_trigger`), đổi phép khẳng định "không có trigger" trong `90-verify.sql` thành phép so với sổ đó, và thêm ca viết tay cùng lớp đột biến của nó, trong cùng một thay đổi.
 
 ### Phần cổng 3 không phá
 
-Những hàng rào không gắn với từng bảng hay từng hàm chỉ có ca viết tay trong `verify.test.ts`, trên lược đồ mẫu: quyền và chủ sở hữu của cơ sở dữ liệu, chủ sở hữu schema, quyền trên tham số cấu hình (`GRANT SET ON PARAMETER`), `ALTER DATABASE … SET` và `ALTER ROLE ALL SET`, vai trò ngoài bộ `app_*` (thành viên của `pg_read_all_data`, vai trò lạ được cấp quyền), view không `security_invoker`, materialized view, foreign table, sequence, sổ đăng ký tự mâu thuẫn. Cổng 3 cũng chỉ phá theo chiều **mở rộng** quyền; chiều thu hẹp (`REVOKE` một quyền đã đăng ký) có ca viết tay và làm test của từng mảng đỏ.
+Những hàng rào không gắn với từng bảng hay từng hàm chỉ có ca viết tay trong `verify.test.ts`, trên lược đồ mẫu: quyền và chủ sở hữu của cơ sở dữ liệu, chủ sở hữu schema, quyền trên tham số cấu hình (`GRANT SET ON PARAMETER`), `ALTER DATABASE … SET` và `ALTER ROLE ALL SET`, vai trò ngoài bộ `app_*` (thành viên của `pg_read_all_data`, vai trò lạ được cấp quyền), view không `security_invoker`, materialized view, foreign table, sequence, sổ đăng ký tự mâu thuẫn. Cổng 3 cũng chỉ phá theo chiều **mở rộng** quyền; chiều thu hẹp (`REVOKE` một quyền đã đăng ký) có ca viết tay và làm test của từng mảng đỏ. Cụ thể, trong 39 lệnh `RAISE` của `90-verify.sql` có 12 lệnh không đột biến nào của cổng 3 chạm tới (đếm bằng cách đối chiếu từng thông báo `PASS` với từng lệnh `RAISE`); mỗi lệnh có ca viết tay của nó trong `verify.test.ts`: `app_conn cannot SET ROLE` (`REVOKE app_job FROM app_conn`); `a configuration parameter is granted` (ba ca `GRANT … ON PARAMETER`); ba lệnh `registry:` (các ca "the registry itself is not trusted", `PUBLIC` / `app_conn` trong danh sách vai trò, chế độ `owner`); `registered table does not exist` (`DROP TABLE fx_internal`); `materialized view … is not allowed` (`fx_copy`); `foreign table … is not allowed` (`fx_remote`); `view … must be WITH (security_invoker = true)` (bốn ca view); `registered column does not exist` (hai ca `RENAME COLUMN`); `registered function does not exist` (`DROP FUNCTION fx_fn(text)`); `internal function must be registered with no role` (ba ca).
 
 ### Những gì cổng 1 không nhìn thấy, và cái gì giữ thay
 
@@ -447,7 +450,7 @@ Cổng 1 đọc catalog về **ai được làm gì trên đối tượng nào**
 | Mật khẩu, giới hạn kết nối của `app_conn` | im lặng | Không gì cả: việc của vận hành (xem "`app_conn` trần vẫn làm được gì"). |
 | Hàm bị đổi thành `STRICT` | im lặng | Không phải hàng rào (hàm trả `NULL` sớm hơn); test của từng mảng. |
 
-Hai thứ từng nằm trong danh sách này và nay cổng 1 đã thấy: hàm nội bộ bị đổi thành `SECURITY DEFINER`, và `ALTER DEFAULT PRIVILEGES`.
+Những thứ từng im lặng và nay cổng 1 đã thấy: hàm bị đổi chế độ `DEFINER` / `INVOKER` (kể cả đổi cùng `SET`), `ALTER DEFAULT PRIVILEGES`, rule, trigger, event trigger, publication, foreign-data wrapper và foreign server, hàm `LEAKPROOF`, hàm bị trao cho vai trò khác.
 
 ## Cách đăng ký bảng, policy, hàm
 
@@ -502,7 +505,7 @@ Quy tắc dùng, mỗi dòng là một điều cổng 1 sẽ bắt:
 - **Hàm `SECURITY DEFINER`**: đúng `SET search_path = public, pg_temp` và không `SET` nào khác; `REVOKE ALL … FROM PUBLIC` (cùng các vai trò `app_*`, để file tự đủ khi chạy lại); rồi `GRANT EXECUTE` cho **đúng** các vai trò sẽ đăng ký.
 - **Hàm nội bộ và hàm trigger**: tên bắt đầu bằng `_` (hàm nhận user id tường minh luôn thuộc loại này), không `GRANT EXECUTE` cho ai, đăng ký với `'{}'`. Hàm nội bộ **không cần** `SECURITY DEFINER`: nó được hàm `SECURITY DEFINER` gọi nên đã chạy bằng quyền chủ sở hữu, và để nó là `invoker` thì một `GRANT EXECUTE` lạc vào nó vẫn dừng ở quyền trên bảng. Ngoại lệ có thật là hàm trigger phải ghi một bảng mà người gây ra trigger không có quyền: viết `SECURITY DEFINER` và đăng ký `'definer'`. `SET search_path = public, pg_temp` trên hàm `invoker` là tùy chọn (không có thì nó dùng của hàm gọi), nhưng đã viết thì phải đúng giá trị đó.
 - **Chế độ của hàm** đăng ký ở tham số thứ hai của `meta.expect_function`: `'definer'` cho hàm viết `SECURITY DEFINER`, `'invoker'` cho mọi hàm còn lại. Khai khác với cái file tạo ra là đỏ ở cuối lần migrate (`function security: … is SECURITY INVOKER, registered definer`). Hàm client gọi để làm việc đặc quyền là `definer`; hàm nội bộ mặc định là `invoker`; hàm gọi được mà chỉ đọc dữ liệu của chính người gọi có thể là `invoker` (RLS lọc hộ) và được phép ghim `SET search_path = public, pg_temp`.
-- **Không `CREATE RULE`.** Việc đặc quyền là hàm đã đăng ký; trigger thì gọi một hàm đã đăng ký.
+- **Không `CREATE RULE`, và chưa có trigger.** Việc đặc quyền là hàm đã đăng ký. Trigger bị cổng 1 từ chối cho tới khi có sổ đăng ký trigger (xem "Bảng, policy, hàm mới: cổng 3 cho gì và đòi gì"); event trigger, publication, foreign-data wrapper, foreign server và hàm `LEAKPROOF` bị từ chối hẳn.
 - **Bảng `content`** chỉ có khóa ngoại tới bảng `content`. Bảng có khóa ngoại tới `users` hay tới bất kỳ bảng `own_*`, `internal` nào là dữ liệu người dùng: đăng ký nó theo đúng lớp.
 - **View**: `CREATE VIEW … WITH (security_invoker = true)`, đăng ký như bảng lớp `content`. Không materialized view, không foreign table.
 - **Khóa chính**: `uuid` (`gen_random_uuid()`) hoặc cột `GENERATED … AS IDENTITY`. Không dùng `serial`: nó đòi `GRANT USAGE` trên sequence, mà sequence không được cấp cho ai.
