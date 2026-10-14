@@ -118,7 +118,13 @@ export function TodayScreen({ navigation }: ScreenProps<'Today'>) {
         {header}
         <View style={styles.section}>
           {/* First load only: a refresh keeps what is on screen. */}
-          {dayQuery.isError ? <ErrorState message={failureText(code)} onRetry={() => dayQuery.refetch()} /> : <LoadingState active={focused} />}
+          {/* The error state only when nothing is on its way: a read that failed earlier says nothing about the one
+              that is out now (the re-read at the close of the day, or the retry of this very state). */}
+          {dayQuery.isError && !dayQuery.isFetching ? (
+            <ErrorState message={failureText(code)} onRetry={() => dayQuery.refetch()} />
+          ) : (
+            <LoadingState active={focused} />
+          )}
         </View>
       </Screen>
     );

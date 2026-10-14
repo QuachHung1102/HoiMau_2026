@@ -115,18 +115,28 @@ test('a workout waiting to be sent changes nothing here', () => {
   expect(applyPending(day, [action('/workout/complete', { id: 'w1', elapsedSec: 600 })])).toEqual({ ...day, pending: { ticks: {}, bedtime: false, kcal: 0 } });
 });
 
-test('records made for another logical day are not shown in this one', () => {
+test('records made before this logical day began are not shown in it', () => {
   const shown = applyPending(day, [
     water('2026-10-13T19:59:59.999Z'), // the last moment of the day before
     water('2026-10-13T20:00:00.000Z'), // the first moment of this day
     water('2026-10-14T19:59:59.999Z'), // its last moment
-    water('2026-10-14T20:00:00.000Z'), // already the next day
     action('/day/bedtime', {}, '2026-10-13T15:00:00.000Z'),
     action('/nutrition/log', { kcal: 500 }, '2026-10-13T12:00:00.000Z'),
   ]);
   expect(progressOf(shown, 'WATER_8')).toBe(5);
   expect(shown.bedtimeMarkedAt).toBeNull();
   expect(shown.caloriesIn).toBe(1650);
+});
+
+test('a record made after the close of the day on screen is shown on it: that day is on screen then only because the server still calls it today', () => {
+  const shown = applyPending(day, [
+    water('2026-10-14T20:00:00.000Z'), // the close itself, by this device's clock
+    water('2026-10-14T20:04:00.000Z'),
+    action('/day/bedtime', {}, '2026-10-14T20:05:00.000Z'),
+    action('/nutrition/log', { kcal: 120 }, '2026-10-14T20:06:00.000Z'),
+  ]);
+  expect(progressOf(shown, 'WATER_8')).toBe(5);
+  expect(shown.pending).toEqual({ ticks: { WATER_8: 2 }, bedtime: true, kcal: 120 });
 });
 
 test('the day passed in is left as it was', () => {

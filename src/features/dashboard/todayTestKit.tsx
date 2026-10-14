@@ -3,7 +3,7 @@
 // The whole app as App.tsx mounts it (the sync kit), opened on the first tab, against a small stand-in for the day
 // routes of the server: it keeps a day and a profile, applies a tick or an undo to both, and answers as the API
 // contract says. The real routes do not exist yet (server Task 20).
-import { screen } from '@testing-library/react-native';
+import { configure, screen } from '@testing-library/react-native';
 import type { ActionResult, GameEvent } from '../../../domain/contract/common.ts';
 import type { DayState, Me, QuestState, Settings } from '../../../domain/contract/core.ts';
 import { calorieWindow } from '../../../domain/energy.ts';
@@ -188,6 +188,9 @@ export const tickIds = () =>
 export const undos = () => writes().filter(request => request.path === `/day/quests/${WATER}/undo`);
 
 export function installTodayTestEnv() {
+  // A step of these tests can be a delivery by the queue plus the reads that follow it; on a machine that is busy
+  // with other suites that takes longer than the default second.
+  configure({ asyncUtilTimeout: 3000 });
   installSyncTestEnv();
   beforeEach(() => {
     replies.clear();

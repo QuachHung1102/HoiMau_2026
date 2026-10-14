@@ -423,16 +423,157 @@ describe('the day changes', () => {
     view.unmount();
   });
 
-  test('the server still gives the same day after its close by this clock: it is shown as the server says, and not asked for in a loop', async () => {
+  describe('this device\'s clock runs ahead: the server still gives the same day after its close by this clock', () => {
+    /** The close has just passed by this clock, the server has answered with the same day: 2 requests so far. */
+    async function pastTheClose() {
+      fakeTimers();
+      world.day = dayOf({ closesAt: new Date(Date.now() + 60_000).toISOString() });
+      const view = await openToday();
+      // to a moment just past the close (opening took a few fake milliseconds of the minute)
+      await act(() => jest.advanceTimersByTimeAsync(60_000));
+      expect(requested('/day')).toBe(2);
+      return view;
+    }
+
+    test('the day is shown as the server says, and asked for again once a minute, five times at most', async () => {
+      const view = await pastTheClose();
+      expect(screen.getByText('3 / 8 phần')).toBeTruthy();
+      expect(screen.queryByText(NEW_DAY)).toBeNull();
+      expect(screen.queryByRole('progressbar', { name: 'Đang tải' })).toBeNull();
+      for (const asked of [3, 4, 5, 6, 7]) {
+        await act(() => jest.advanceTimersByTimeAsync(59_000));
+        expect(requested('/day')).toBe(asked - 1);
+        await act(() => jest.advanceTimersByTimeAsync(1_000));
+        expect(requested('/day')).toBe(asked);
+      }
+      expect(screen.getByText('3 / 8 phần')).toBeTruthy();
+      // a clock more than five minutes ahead: no further asking on a schedule
+      await act(() => jest.advanceTimersByTimeAsync(30 * 60_000));
+      expect(requested('/day')).toBe(7);
+      view.unmount();
+    });
+
+    test('the asking stops as soon as the server gives the new day', async () => {
+      const view = await pastTheClose();
+      await act(() => jest.advanceTimersByTimeAsync(60_000));
+      expect(requested('/day')).toBe(3);
+      world.day = dayOf({ logicalDate: '2026-10-15' }, { progress: 0, lastTick: null });
+      await act(() => jest.advanceTimersByTimeAsync(60_000));
+      expect(requested('/day')).toBe(4);
+      expect(await screen.findByText('0 / 8 phần')).toBeTruthy();
+      await act(() => jest.advanceTimersByTimeAsync(30 * 60_000));
+      expect(requested('/day')).toBe(4);
+      view.unmount();
+    });
+
+    test('a part recorded then, without a network, stays on the day shown, waiting: the server decides which day it belongs to', async () => {
+      const view = await pastTheClose();
+      world.down = true;
+      fireEvent.press(record());
+      expect(await screen.findByText('Đang chờ gửi')).toBeTruthy();
+      await act(() => jest.advanceTimersByTimeAsync(2_000));
+      expect(screen.getByText('4 / 8 phần')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Nước hôm nay. 4 / 8 phần. Có phần đang chờ gửi. Chạm để ghi thêm một phần.' })).toBeTruthy();
+      view.unmount();
+    });
+
+    test('leaving leaves no timer of that schedule behind', async () => {
+      const view = await pastTheClose();
+      expect(jest.getTimerCount()).toBeGreaterThan(0);
+      view.unmount();
+      wipeQueries(queryClient());
+      expect(jest.getTimerCount()).toBe(0);
+    });
+  });
+
+  describe('a provisional day on screen', () => {
+    /** Cold start without a network, the kept day over: the provisional day, after one failed `GET /day`. */
+    async function provisional() {
+      world.down = true;
+      await AsyncStorage.setItem(meCache, JSON.stringify(world.me));
+      await AsyncStorage.setItem(dayCache, JSON.stringify(finishedDay(-60_000)));
+      const view = await openToday();
+      await screen.findByText(NEW_DAY);
+      await settle();
+      expect(requested('/day')).toBe(1);
+      return view;
+    }
+
+    test('the network returns and any request gets through: the day is read once, and the server day replaces the guess', async () => {
+      const view = await provisional();
+      world.down = false;
+      await act(() => api.get('/settings').then(() => undefined));
+      await waitFor(() => expect(screen.queryByText(NEW_DAY)).toBeNull());
+      expect(screen.getByText('3 / 8 phần')).toBeTruthy();
+      expect(screen.getByLabelText('4 ngày')).toBeTruthy();
+      await settle();
+      expect(requested('/day')).toBe(2);
+      // with the server's day on screen, further requests do not read it again
+      await act(() => api.get('/settings').then(() => undefined));
+      await settle();
+      expect(requested('/day')).toBe(2);
+      view.unmount();
+    });
+
+    test('a request that fails says nothing about the network being back: the day is not asked for', async () => {
+      const view = await provisional();
+      await act(() => api.get('/settings').catch(() => undefined));
+      await settle();
+      expect(requested('/day')).toBe(1);
+      expect(screen.getByText(NEW_DAY)).toBeTruthy();
+      view.unmount();
+    });
+
+    test('coming back to the app reads it again too', async () => {
+      const listeners: ((state: string) => void)[] = [];
+      jest.spyOn(AppState, 'addEventListener').mockImplementation(((_event: string, listener: (state: string) => void) => {
+        listeners.push(listener);
+        return { remove: () => undefined };
+      }) as never);
+      const view = await provisional();
+      world.down = false;
+      await act(async () => listeners.forEach(listener => listener('active')));
+      await waitFor(() => expect(screen.queryByText(NEW_DAY)).toBeNull());
+      expect(screen.getByText('3 / 8 phần')).toBeTruthy();
+      expect(requested('/day')).toBe(2);
+      view.unmount();
+    });
+
+    test('whether there is unread mail is not known: the bell has no dot and says only what it opens', async () => {
+      const view = await provisional();
+      expect(screen.getByRole('button', { name: 'Hộp thư' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Hộp thư, có thư mới' })).toBeNull();
+      view.unmount();
+    });
+  });
+
+  test('a read had failed earlier in the day; at the close the day is read again: the loading state while that request is out, not the error state', async () => {
+    const listeners: ((state: string) => void)[] = [];
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((_event: string, listener: (state: string) => void) => {
+      listeners.push(listener);
+      return { remove: () => undefined };
+    }) as never);
     fakeTimers();
     world.day = dayOf({ closesAt: new Date(Date.now() + 60_000).toISOString() });
     const view = await openToday();
-    await act(() => jest.advanceTimersByTimeAsync(61_000));
+    // a failed read in the afternoon: the day stays on screen
+    world.down = true;
+    await act(async () => listeners.forEach(listener => listener('active')));
+    await act(() => jest.advanceTimersByTimeAsync(100));
     expect(requested('/day')).toBe(2);
     expect(screen.getByText('3 / 8 phần')).toBeTruthy();
-    expect(screen.queryByText(NEW_DAY)).toBeNull();
-    await act(() => jest.advanceTimersByTimeAsync(30 * 60_000));
-    expect(requested('/day')).toBe(2);
+
+    // the close: the request for the new day is on its way
+    world.down = false;
+    const day = hold('GET /day');
+    world.day = dayOf({ logicalDate: '2026-10-15' }, { progress: 0, lastTick: null });
+    await act(() => jest.advanceTimersByTimeAsync(60_000));
+    expect(requested('/day')).toBe(3);
+    expect(screen.getByRole('progressbar', { name: 'Đang tải' })).toBeTruthy();
+    expect(screen.queryByText('Chưa tải được dữ liệu')).toBeNull();
+    expect(screen.queryByText('3 / 8 phần')).toBeNull();
+    await act(async () => day.release());
+    expect(await screen.findByText('0 / 8 phần')).toBeTruthy();
     view.unmount();
   });
 

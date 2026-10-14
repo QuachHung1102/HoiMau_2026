@@ -57,6 +57,8 @@ test('the morning after: the next logical day, closing 24 h later, with the same
   expect(today.calorieWindow).toEqual(kept.calorieWindow);
   // yesterday's milestone is not celebrated again from a guess
   expect(today.celebrations).toEqual([]);
+  // whether there is unread mail this morning is not known: none is claimed
+  expect(today.unreadCount).toBe(0);
 });
 
 test.each([

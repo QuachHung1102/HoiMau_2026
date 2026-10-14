@@ -19,7 +19,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * What the screens show while records wait in the queue (`usePendingActions`): each waiting tick fills its quest up
  * to the target, a waiting bedtime mark counts as marked, waiting manual kcal are added. Nothing the server grants
- * is added: no completion, no XP, no coins, no streak. Only records made inside this logical day count.
+ * is added: no completion, no XP, no coins, no streak. Records made before this logical day began do not count.
  * A planned-meal log (`{ mealSlot }`) carries no kcal, so it changes nothing here.
  */
 export function applyPending(day: DayState, pending: readonly PendingAction[]): PendingDay {
@@ -31,7 +31,10 @@ export function applyPending(day: DayState, pending: readonly PendingAction[]): 
     const at = Date.parse(createdAt);
     // ponytail: the logical day is taken as the 24 h before `closesAt`, an hour off on a daylight-saving change day;
     // map `createdAt` with domain/logicalDate and the user's zone if that hour ever matters.
-    if (!(at >= closes - DAY_MS && at < closes)) continue;
+    // No upper end: a day that is over is never on screen (`useDay`), so a record made after `closesAt` can only meet
+    // a day the server still calls today (this device's clock runs ahead) — it is shown on it; the server decides
+    // which day it belongs to.
+    if (!(at >= closes - DAY_MS)) continue;
     const [, area, group, code, verb, extra] = path.split('/');
     if (area === 'day' && group === 'quests' && verb === 'progress' && extra === undefined) waiting[code] = (waiting[code] ?? 0) + 1;
     else if (path === '/day/bedtime') bedtimeAt ??= createdAt;
