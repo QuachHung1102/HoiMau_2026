@@ -140,6 +140,8 @@ export function useStandUp(): void {
 
     restart.current = () => apply('RESTART');
     onHold = () => {
+      // The snackbar is one slot: within 30 s of a prompt this also takes away whatever replaced it there (the Undo of
+      // a part recorded from the prompt). The record itself is untouched.
       if (Date.now() < promptUntil) latest.current.snackbar.dismiss();
       promptUntil = 0;
     };

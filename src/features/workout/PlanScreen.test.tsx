@@ -2,7 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen } from '@testing-library/react-native';
 import type { DayState } from '../../../domain/contract/core.ts';
 import { clearUserCache } from '../../shared/storage/cache';
-import { dayOf, hold, meOf, queryClient, seedQueue, stored, USER, world } from '../dashboard/todayTestKit';
+import { app, dayOf, hold, idsOnDisk, meOf, queryClient, seedQueue, settle, stored, TICK, USER, world } from '../dashboard/todayTestKit';
+import { tickPath, WATER } from '../quests/api';
 import { COMPLETE, detail, installWorkoutTestEnv, openPlan } from './workoutTestKit';
 
 // The real registry; `navigate` of the tab roots and detail screens is recorded on its way to the navigator, so a link
@@ -93,6 +94,30 @@ describe('S12: the plan tab', () => {
     expect(screen.getByText('Buổi tập chính: chưa bắt đầu')).toBeTruthy();
     expect(screen.queryByText(/đã hoàn thành/)).toBeNull();
     expect(screen.queryByText(/XP/)).toBeNull();
+    view.unmount();
+  });
+});
+
+describe('S12 and a session that is on its way', () => {
+  test('a session behind another record in flight is not called waiting: nothing is, until a send gets no answer', async () => {
+    const view = await openPlan();
+    const tick = hold(TICK);
+    let sends: Promise<unknown>[] = [];
+    await act(async () => {
+      sends = [app.send({ path: tickPath(WATER), body: {} }), app.send({ path: '/workout/complete', body: { exerciseItemId: detail.id, elapsedSec: 600 } })];
+    });
+    await settle();
+    // both are on this device; the first is out, the session stands behind it, untouched
+    expect(await idsOnDisk()).toHaveLength(2);
+    expect(screen.queryByText('Có buổi tập đã lưu trên máy, đang chờ gửi')).toBeNull();
+    expect(screen.queryByText(/chờ gửi/)).toBeNull();
+
+    await act(async () => {
+      tick.release();
+      await Promise.all(sends);
+    });
+    expect(await screen.findByText('Buổi tập chính: đã hoàn thành')).toBeTruthy();
+    expect(screen.queryByText('Có buổi tập đã lưu trên máy, đang chờ gửi')).toBeNull();
     view.unmount();
   });
 });

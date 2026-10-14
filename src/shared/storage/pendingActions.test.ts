@@ -640,3 +640,89 @@ describe('deliver (what useQueuedWrite is told)', () => {
     expect((await onDisk(`rejected:v1:${A}`))?.map(item => item.id)).toEqual(['a2']);
   });
 });
+
+describe('an id the caller supplies (one action, however often it is tried)', () => {
+  const session = (more: Partial<PendingAction> = {}) => action('s1', A, { path: '/workout/complete', body: { exerciseItemId: 'w1', elapsedSec: 600 }, ...more });
+
+  test('a first enqueue is "added"', async () => {
+    await expect(enqueueAction(session())).resolves.toBe('added');
+    expect(await idsOnDisk(A)).toEqual(['s1']);
+  });
+
+  test('the same id with the same path and body while it waits: joined, with no second entry and no second write to disk', async () => {
+    fetchMock.mockImplementation(offline);
+    await enqueueAction(session());
+    await flushPending(A);
+    const kept = await onDisk(`pending:v1:${A}`);
+    const writes = jest.spyOn(AsyncStorage, 'setItem');
+    jest.setSystemTime(T0 + 5 * 60_000);
+    // the body is compared by what it says, not by the order its keys were written in
+    await expect(enqueueAction(session({ body: { elapsedSec: 600, exerciseItemId: 'w1' }, createdAt: new Date().toISOString() }))).resolves.toBe('joined');
+    expect(writes).not.toHaveBeenCalled();
+    // one record, the one that was waiting, with the moment it was first made
+    expect(await onDisk(`pending:v1:${A}`)).toEqual(kept);
+    expect(await unsentCount(A)).toBe(1);
+
+    fetchMock.mockImplementation(async () => respond(200, { ok: true }));
+    expect(await flushPending(A)).toEqual({ sent: ['s1'], rejected: [], remaining: 0 });
+    // the attempt without a network, then one delivery: never two requests for two entries
+    expect(keysSent()).toEqual(['s1', 's1']);
+    expect(sent()[1].body).toEqual({ exerciseItemId: 'w1', elapsedSec: 600, occurredAt: new Date(T0).toISOString() });
+  });
+
+  test.each([
+    ['another body', { body: { exerciseItemId: 'w1', elapsedSec: 601 } }],
+    ['a body with one member more', { body: { exerciseItemId: 'w1', elapsedSec: 600, occurredAt: '2026-10-14T08:00:00.000Z' } }],
+    ['another path', { path: '/nutrition/log' }],
+  ] as const)('the same id with %s: refused with ID_CONFLICT, nothing stored, and the waiting record goes out as it was', async (_what, more) => {
+    fetchMock.mockImplementation(offline);
+    await enqueueAction(session());
+    await flushPending(A);
+    const kept = await onDisk(`pending:v1:${A}`);
+    await expect(enqueueAction(session(more))).rejects.toMatchObject({ name: 'QueueError', code: 'ID_CONFLICT' });
+    expect(await onDisk(`pending:v1:${A}`)).toEqual(kept);
+
+    fetchMock.mockImplementation(async () => respond(200, { ok: true }));
+    expect(await flushPending(A)).toEqual({ sent: ['s1'], rejected: [], remaining: 0 });
+    // one key, one action, one body: the other one was never sent
+    expect(sent().map(request => [request.path, request.body.elapsedSec])).toEqual([
+      ['/workout/complete', 600],
+      ['/workout/complete', 600],
+    ]);
+  });
+
+  test('after a refusal removed the record, the same id may be filed again (a new try of the same action)', async () => {
+    await enqueueAction(session());
+    fetchMock.mockImplementation(async () => refuse(409, 'DAY_CLOSED'));
+    expect(await deliver(A, 's1')).toMatchObject({ state: 'failed', code: 'DAY_CLOSED' });
+    expect(await idsOnDisk(A)).toEqual([]);
+
+    await expect(enqueueAction(session())).resolves.toBe('added');
+    expect(await idsOnDisk(A)).toEqual(['s1']);
+    fetchMock.mockImplementation(async () => respond(200, { completed: true }));
+    expect(await deliver(A, 's1')).toEqual({ state: 'confirmed', result: { completed: true } });
+    expect(keysSent()).toEqual(['s1', 's1']);
+  });
+
+  test('after delivery the same id may be filed again: the server replays its answer, or says it already has the key', async () => {
+    await enqueueAction(session());
+    expect(await flushPending(A)).toEqual({ sent: ['s1'], rejected: [], remaining: 0 });
+
+    await expect(enqueueAction(session())).resolves.toBe('added');
+    fetchMock.mockImplementation(async () => respond(200, { completed: true }));
+    expect(await deliver(A, 's1')).toEqual({ state: 'confirmed', result: { completed: true } });
+
+    await expect(enqueueAction(session({ body: { exerciseItemId: 'w1', elapsedSec: 700 } }))).resolves.toBe('added');
+    fetchMock.mockImplementation(async () => refuse(409, 'IDEMPOTENCY_KEY_REUSED'));
+    // "already committed" is delivery, not a refusal
+    expect(await flushPending(A)).toEqual({ sent: ['s1'], rejected: [], remaining: 0 });
+    expect(await AsyncStorage.getItem(`rejected:v1:${A}`)).toBeNull();
+  });
+
+  test('two filings of one id made at the same moment end as one record', async () => {
+    fetchMock.mockImplementation(offline);
+    const both = await Promise.all([enqueueAction(session()), enqueueAction(session())]);
+    expect(both).toEqual(['added', 'joined']);
+    expect(await idsOnDisk(A)).toEqual(['s1']);
+  });
+});

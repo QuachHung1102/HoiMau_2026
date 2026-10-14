@@ -20,7 +20,7 @@ import {
   stored,
   writes,
 } from './syncTestKit';
-import type { QueuedWriteResult } from './useQueuedWrite';
+import type { QueuedWriteInput, QueuedWriteResult } from './useQueuedWrite';
 
 // The main group without its screens: every tab shows the notice with "Đăng xuất", whatever tabs the app has by now.
 jest.mock('../../app/screens', () => ({ ...jest.requireActual('../../app/screens'), tabRoots: [] }));
@@ -29,7 +29,7 @@ installSyncTestEnv();
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const tick = { path: WATER, body: { amount: 1 } };
-async function send(input: { path: string; body: Record<string, unknown> } = tick) {
+async function send(input: QueuedWriteInput = tick) {
   let result!: QueuedWriteResult<unknown>;
   await act(async () => {
     result = await app.send(input);
@@ -204,4 +204,59 @@ test('once a sign-out is under way (the revoke is out, the token still bound) a 
   expect(app.session.status).toBe('signedOut');
   expect(await AsyncStorage.getAllKeys()).toEqual([]);
   view.unmount();
+});
+
+describe('a record that carries its own id (one action, however often it is tried)', () => {
+  const SESSION = '3f0e8a52-6c1b-4d7e-9a34-2b5c7d8e9f01';
+  const session = { id: SESSION, path: '/workout/complete', body: { exerciseItemId: 'w1', elapsedSec: 600 } };
+
+  test('the id is the one given, on this device and on the wire; after a refusal the same id is a new try', async () => {
+    const view = await mountApp();
+    server.write = () => refuse(409, 'DAY_CLOSED');
+    expect(await send(session)).toEqual({ state: 'failed', id: SESSION, code: 'DAY_CLOSED' });
+    server.write = () => respond(200, { completed: true });
+    expect(await send(session)).toEqual({ state: 'confirmed', id: SESSION, result: { completed: true } });
+    expect(writes()).toEqual([
+      { path: session.path, id: SESSION, body: session.body },
+      { path: session.path, id: SESSION, body: session.body },
+    ]);
+    expect(await idsOnDisk()).toEqual([]);
+    await settle();
+    view.unmount();
+  });
+
+  test('filed again while it still waits: "queued", it is the record that waits (no second entry, no request of its own)', async () => {
+    const view = await mountApp();
+    server.down = true;
+    expect(await send(session)).toEqual({ state: 'queued', id: SESSION });
+    const requests = writes().length;
+    expect(await send(session)).toEqual({ state: 'queued', id: SESSION });
+    expect(await idsOnDisk()).toEqual([SESSION]);
+    expect(writes()).toHaveLength(requests);
+    // the banner counts one record, and its retry delivers one
+    expect(screen.getByText(waitingOnDevice(1))).toBeTruthy();
+    server.down = false;
+    fireEvent.press(screen.getByRole('button', { name: retry }));
+    await settle();
+    expect(await idsOnDisk()).toEqual([]);
+    expect(writes().filter(request => request.id === SESSION)).toHaveLength(requests + 1);
+    view.unmount();
+  });
+
+  test('the same id with another body: "failed" with ID_CONFLICT; it is never stored and never sent, and the first record is untouched', async () => {
+    const view = await mountApp();
+    server.down = true;
+    expect(await send(session)).toEqual({ state: 'queued', id: SESSION });
+    const requests = writes().length;
+    expect(await send({ ...session, body: { exerciseItemId: 'w1', elapsedSec: 900 } })).toEqual({ state: 'failed', id: SESSION, code: 'ID_CONFLICT' });
+    expect(writes()).toHaveLength(requests);
+    server.down = false;
+    fireEvent.press(screen.getByRole('button', { name: retry }));
+    await settle();
+    expect(writes().at(-1)).toEqual({ path: session.path, id: SESSION, body: session.body });
+    expect(writes().every(request => request.body.elapsedSec === 600)).toBe(true);
+    // it is the caller's mistake, said to the caller: no notice of a refused record
+    expect(screen.queryByText(rejectedTitle)).toBeNull();
+    view.unmount();
+  });
 });

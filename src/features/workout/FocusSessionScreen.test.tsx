@@ -19,6 +19,7 @@ const SAVE = 'Kết thúc và lưu';
 const CONTINUE = 'Tập tiếp';
 const EXIT = 'Thoát buổi tập?';
 const QUEUED = 'Buổi tập đã lưu trên máy, đang chờ gửi';
+const DAY_CLOSED = 'Ngày đó đã khép lại nên ghi nhận này không được tính. Bạn không làm gì sai cả.';
 
 /** The time on the ring, as a screen reader gets it. */
 const left = () => screen.getByRole('progressbar', { name: /^Thời gian còn lại/ }).props.accessibilityLabel.slice(-5);
@@ -411,6 +412,42 @@ describe('the session waits on this device', () => {
     view.unmount();
   });
 
+  test('sent later by the queue and refused (the day had closed): the screen shows the refusal and its reason, with no retry and no reward', async () => {
+    const view = await begin();
+    await pass(600 * S);
+    world.down = true;
+    await endAndSave();
+    await screen.findByRole('header', { name: QUEUED });
+    world.down = false;
+    const server = world.answer;
+    world.answer = (request, init) => (request === COMPLETE ? refuse(409, 'DAY_CLOSED') : server?.(request, init));
+    fireEvent.press(screen.getByRole('button', { name: 'Thử lại' }));
+    expect(await screen.findByRole('header', { name: 'Buổi tập không được tính' })).toBeTruthy();
+    // it does not read as if all were well
+    expect(header('Buổi tập không còn chờ trên máy')).toBeNull();
+    expect(header(QUEUED)).toBeNull();
+    // the app-wide notice and this screen say the same thing
+    expect(screen.getByRole('header', { name: 'Ghi nhận không được tính' })).toBeTruthy();
+    expect(screen.getAllByText(DAY_CLOSED)).toHaveLength(2);
+
+    // reading the notice makes the queue forget the refusal; the screen keeps what it saw
+    press('Đã hiểu');
+    await settle();
+    expect(header('Ghi nhận không được tính')).toBeNull();
+    expect(header('Buổi tập không được tính')).toBeTruthy();
+    expect(screen.getAllByText(DAY_CLOSED)).toHaveLength(1);
+    expect(screen.getByText('Bạn đã tập 10:00 trên 15:00.')).toBeTruthy();
+    // nothing is left to try again (the queue has removed the record), and nothing was earned
+    expect(screen.queryByRole('button', { name: 'Thử lại' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Đã hiểu' })).toBeNull();
+    expect(screen.queryByText(/XP|xu\b|hoàn thành/)).toBeNull();
+    expect(new Set(sessions().map(sent => sent.id)).size).toBe(1);
+    // hardware Back and the close button simply leave: there is nothing to lose
+    press('Quay lại bài tập');
+    expect(await screen.findByRole('button', { name: 'Bắt đầu tập' })).toBeTruthy();
+    view.unmount();
+  });
+
   test('the session ends while the request is out (the session expired): nothing of the answer reaches this device', async () => {
     let queue: ReturnType<typeof useCelebrationQueue> = [];
     const Watch = () => {
@@ -447,7 +484,7 @@ describe('the session is refused', () => {
     world.answer = (request, init) => (request === COMPLETE ? refuse(409, 'DAY_CLOSED') : server?.(request, init));
     await endAndSave();
     expect(await screen.findByRole('header', { name: 'Chưa lưu được buổi tập' })).toBeTruthy();
-    expect(screen.getByText('Ngày đó đã khép lại nên ghi nhận này không được tính. Bạn không làm gì sai cả.')).toBeTruthy();
+    expect(screen.getByText(DAY_CLOSED)).toBeTruthy();
     expect(screen.getByText('Bạn đã tập 10:00 trên 15:00.')).toBeTruthy();
     expect(screen.queryByText(/XP|xu\b|hoàn thành/)).toBeNull();
     // said here, next to the retry: the app-wide notice does not repeat it
@@ -478,6 +515,57 @@ describe('the session is refused', () => {
     expect(await screen.findByRole('header', { name: 'Bạn đã dành thời gian cho mình' })).toBeTruthy();
     expect(sessions()).toHaveLength(1);
     expect(sessions()[0].id).toMatch(UUID);
+    view.unmount();
+  });
+
+  test('the close button asks first: a session that is saved nowhere is not dropped with one tap', async () => {
+    const view = await begin();
+    await pass(600 * S);
+    const server = world.answer;
+    world.answer = (request, init) => (request === COMPLETE ? refuse(409, 'DAY_CLOSED') : server?.(request, init));
+    await endAndSave();
+    await screen.findByRole('header', { name: 'Chưa lưu được buổi tập' });
+    press('Thoát buổi tập');
+    expect(await screen.findByText('Buổi tập chưa được lưu')).toBeTruthy();
+    expect(screen.getByText('Nếu thoát bây giờ, 10:00 bạn vừa tập sẽ không được ghi lại.')).toBeTruthy();
+    // still on the session: nothing was left
+    expect(header('Chưa lưu được buổi tập')).toBeTruthy();
+    // the dialog offers the retry and the explicit way out, beside the two of the screen under it
+    expect(screen.getAllByRole('button', { name: 'Thử lại' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Thoát, không lưu' })).toHaveLength(2);
+    // the dialog's own "leave, unsaved": only now does the session go
+    press('Thoát, không lưu');
+    expect(await screen.findByRole('button', { name: 'Bắt đầu tập' })).toBeTruthy();
+    expect(sessions()).toHaveLength(1);
+    view.unmount();
+  });
+
+  test('hardware Back (Android) asks first as well; "Thử lại" in the dialog sends the same session again', async () => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    const handlers: (() => boolean | null | undefined)[] = [];
+    jest.spyOn(BackHandler, 'addEventListener').mockImplementation(((_event: string, handler: () => boolean) => {
+      handlers.push(handler);
+      return { remove: () => handlers.splice(handlers.indexOf(handler), 1) };
+    }) as never);
+    const view = await begin();
+    await pass(600 * S);
+    const server = world.answer;
+    world.answer = (request, init) => (request === COMPLETE ? refuse(409, 'DAY_CLOSED') : server?.(request, init));
+    await endAndSave();
+    await screen.findByRole('header', { name: 'Chưa lưu được buổi tập' });
+    let handled = false;
+    act(() => {
+      handled = [...handlers].reverse().some(handler => handler() === true);
+    });
+    expect(handled).toBe(true);
+    expect(await screen.findByText('Buổi tập chưa được lưu')).toBeTruthy();
+    expect(header('Chưa lưu được buổi tập')).toBeTruthy();
+
+    world.answer = server;
+    press('Thử lại');
+    expect(await screen.findByRole('header', { name: 'Bạn đã dành thời gian cho mình' })).toBeTruthy();
+    expect(sessions()).toHaveLength(2);
+    expect(sessions()[1]).toEqual(sessions()[0]);
     view.unmount();
   });
 

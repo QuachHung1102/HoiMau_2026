@@ -3,9 +3,10 @@ import type { WorkoutCatalog, WorkoutDetail, WorkoutResult } from '../../../doma
 import type { DayState } from '../../../domain/contract/core.ts';
 import { catalogKey, workoutKey, type CatalogFilters } from '../../../src/features/workout/api';
 import fixture from '../../../src/features/workout/workoutFixture.json';
+import { retry } from '../../../src/shared/i18n/vi/common';
 import * as vi from '../../../src/shared/i18n/vi/workout';
 import type { Entries } from '../harness';
-import { app, dayOf } from './today';
+import { app, dayOf, meOf, pathOf, respond, settingsOf } from './today';
 
 // The answers of the server for a person who has 15 minutes, a room and no equipment: values copied from the real
 // content (server/content/exercises.ts) by .superpowers/sdd/evidence/task-27/make-fixture.mjs.
@@ -42,7 +43,21 @@ const afterTraining = (seconds: number) => () => {
   Date.now = () => real() + seconds * 1000;
   return true;
 };
-const session = (...steps: (() => boolean)[]) => app({ route: 'FocusSession', params: { id: detail.id }, queries: withDetail, extra: <Script steps={steps} /> });
+const session = (steps: (() => boolean)[], fetchStub?: (url: string, init?: RequestInit) => unknown) =>
+  app({ route: 'FocusSession', params: { id: detail.id }, queries: withDetail, fetchStub, extra: <Script steps={steps} /> });
+
+/** No answer to the first send of the session; every later send of it is refused because its day has closed. */
+const refusedLater = () => {
+  let sends = 0;
+  return (url: string, init?: RequestInit) => {
+    if (init?.method === 'POST') {
+      if ((sends += 1) === 1) throw new TypeError('Network request failed');
+      return respond(409, { error: { code: 'DAY_CLOSED', message: 'preview' } });
+    }
+    const path = pathOf(url);
+    return path === '/day' ? respond(200, dayOf()) : path === '/me' ? respond(200, meOf()) : path === '/settings' ? respond(200, settingsOf()) : respond(404);
+  };
+};
 
 // What the server answers to a recorded session (AR-11): at least half completes the quest (the rest of its 50 XP
 // and 20 coins), less gives its share of the XP and no coins.
@@ -68,11 +83,15 @@ export const entries: Entries = {
   's17-catalog': () => app({ route: 'WorkoutCatalog', queries: [[catalogKey(START), catalog]] }),
   's48-catalog-empty': () => app({ route: 'WorkoutCatalog', queries: [[catalogKey(START), { items: [] } satisfies WorkoutCatalog]] }),
   's18-workout-detail': () => app({ route: 'WorkoutDetail', params: { id: detail.id }, queries: withDetail }),
-  's19-focus-session': () => session(afterTraining(PART), shown('08:42')),
-  's41-focus-paused': () => session(afterTraining(PART), shown('08:42'), press(vi.pause)),
-  's63-exit-dialog': () => session(afterTraining(PART), shown('08:42'), press(vi.endSession)),
+  's19-focus-session': () => session([afterTraining(PART), shown('08:42')]),
+  's41-focus-paused': () => session([afterTraining(PART), shown('08:42'), press(vi.pause)]),
+  's63-exit-dialog': () => session([afterTraining(PART), shown('08:42'), press(vi.endSession)]),
   's20-result-completed': () => app({ route: 'WorkoutResult', params: { result: result(detail.durationSec) } }),
   's64-result-partial': () => app({ route: 'WorkoutResult', params: { result: result(PART) } }),
   // Ended after ten minutes with no network (no fetch stub: every request fails): kept on this device, no reward named.
-  's20-result-queued': () => session(afterTraining(600), shown('05:00'), press(vi.endSession), press(vi.endAndSave)),
+  's20-result-queued': () => session([afterTraining(600), shown('05:00'), press(vi.endSession), press(vi.endAndSave)]),
+  // The same, then the network returns and the retry of the S38 row sends it: refused, the day had closed. (The
+  // app-wide notice that says the same is RejectedNotice, mounted by App.tsx and not by these entries.)
+  's20-result-refused-later': () =>
+    session([afterTraining(600), shown('05:00'), press(vi.endSession), press(vi.endAndSave), shown(vi.queuedTitle), press(retry)], refusedLater()),
 };

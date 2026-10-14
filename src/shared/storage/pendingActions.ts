@@ -31,8 +31,12 @@ export type Settled =
   | { state: 'failed'; code: string; details?: Record<string, unknown> };
 
 export class QueueError extends Error {
-  /** `QUEUE_FULL`: the cap is reached. `STORAGE_FAILED`: this device could not keep it. `NOT_QUEUEABLE`: a caller bug. */
-  code: 'QUEUE_FULL' | 'STORAGE_FAILED' | 'NOT_QUEUEABLE';
+  /**
+   * `QUEUE_FULL`: the cap is reached. `STORAGE_FAILED`: this device could not keep it. `NOT_QUEUEABLE`: a caller bug.
+   * `ID_CONFLICT`: a caller bug as well, the id is already waiting with another path or body (one key is one action
+   * with one body; the second one is never stored and never sent).
+   */
+  code: 'QUEUE_FULL' | 'STORAGE_FAILED' | 'NOT_QUEUEABLE' | 'ID_CONFLICT';
 
   constructor(code: QueueError['code']) {
     super(code);
@@ -153,7 +157,8 @@ function ready(userId: string): Promise<Queue> {
 
 /**
  * Applies `change` to one of the two lists: on disk first, then in memory, in turn with every other write of this
- * user. `change` runs twice (for the disk, then on the list as it is afterwards), so it must be pure.
+ * user. `change` runs twice (for the disk, then on the list as it is afterwards), so it must be pure. When it returns
+ * the list it was given, nothing has changed and nothing is written.
  * With `mustPersist` a failed disk write rejects and changes nothing; without it the memory still moves on.
  */
 function commit<K extends 'pending' | 'rejected'>(
@@ -170,7 +175,9 @@ function commit<K extends 'pending' | 'rejected'>(
       return;
     }
     try {
-      await AsyncStorage.setItem(KEY[list](userId), JSON.stringify(change(queue[list])));
+      const next = change(queue[list]);
+      if (next === queue[list]) return;
+      await AsyncStorage.setItem(KEY[list](userId), JSON.stringify(next));
     } catch (failure) {
       if (mustPersist) throw failure;
     }
@@ -180,21 +187,45 @@ function commit<K extends 'pending' | 'rejected'>(
   });
 }
 
-/** Writes the action to this device. Resolves once it is on disk; rejects with a `QueueError` when it is not. */
-export async function enqueueAction(action: Omit<PendingAction, 'attempts' | 'status'>): Promise<void> {
+/** The same JSON value, whatever order the members of an object were written in. */
+const sameJson = (a: unknown, b: unknown): boolean => {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null || Array.isArray(a) !== Array.isArray(b)) return false;
+  const [one, other] = [a as Record<string, unknown>, b as Record<string, unknown>];
+  const keys = Object.keys(one);
+  return keys.length === Object.keys(other).length && keys.every(key => key in other && sameJson(one[key], other[key]));
+};
+
+/**
+ * Writes the action to this device. Resolves once it is on disk; rejects with a `QueueError` when it is not.
+ * One id is one action with one body, so an id that is already in the queue is never stored a second time:
+ * - the same path and body (the same action, filed again): `'joined'`, nothing is written, and the record that
+ *   waits goes out as it was, with the moment it was first made;
+ * - another path or body: rejected with `ID_CONFLICT` (a caller bug), and the waiting record is left alone.
+ * An id that is no longer in the queue (delivered, or refused and removed) is filed as a new entry: `'added'`.
+ */
+export async function enqueueAction(action: Omit<PendingAction, 'attempts' | 'status'>): Promise<'added' | 'joined'> {
   if (action.method !== 'POST' || !isQueueable(action.path)) throw new QueueError('NOT_QUEUEABLE');
   try {
     const queue = await ready(action.userId);
+    let joined = false;
     await commit(
       action.userId,
       queue,
       'pending',
       items => {
+        const waiting = items.find(item => item.id === action.id);
+        if (waiting) {
+          if (waiting.path !== action.path || !sameJson(waiting.body, action.body)) throw new QueueError('ID_CONFLICT');
+          joined = true;
+          return items;
+        }
         if (items.length >= QUEUE_LIMIT) throw new QueueError('QUEUE_FULL');
         return [...items, { ...action, attempts: 0, status: 'queued' }];
       },
       { signal: queue.abort.signal, mustPersist: true },
     );
+    return joined ? 'joined' : 'added';
   } catch (failure) {
     throw failure instanceof QueueError ? failure : new QueueError('STORAGE_FAILED');
   }

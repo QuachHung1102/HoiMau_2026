@@ -108,6 +108,11 @@ export const queuedBody = 'Phần thưởng được tính khi hệ thống nh�
 export const sentTitle = 'Buổi tập không còn chờ trên máy';
 export const sentBody = 'Mở Hôm nay để xem kết quả.';
 export const notSavedTitle = 'Chưa lưu được buổi tập';
+// Leaving a session that is not saved anywhere: asked first.
+export const unsavedTitle = 'Buổi tập chưa được lưu';
+export const unsavedBody = (done: string) => `Nếu thoát bây giờ, ${done} bạn vừa tập sẽ không được ghi lại.`;
+// Sent later by the queue and refused by the system: it is kept nowhere any more.
+export const refusedTitle = 'Buổi tập không được tính';
 export const leaveUnsaved = 'Thoát, không lưu';
 export const toToday = 'Về Hôm nay';
 
