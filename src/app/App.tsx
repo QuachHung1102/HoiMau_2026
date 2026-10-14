@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OnboardingProvider } from '../features/onboarding/OnboardingProvider';
+import { CelebrationHost } from '../features/progression/CelebrationHost';
 import { PendingBanner } from '../features/sync/PendingBanner';
 import { RejectedNotice } from '../features/sync/RejectedNotice';
 import { SessionProvider, wipeQueries } from '../shared/api/session';
@@ -26,7 +27,10 @@ function App() {
                 {/* Offline / waiting-to-send (S38): its own row above the app, so it never covers a screen or the
                     snackbar. It also runs the pending queue; mounted exactly once. */}
                 <PendingBanner />
-                <AppNavigation />
+                {/* The overlays S65 / S66 are not routes: the host lives inside the container, above the navigators. */}
+                <AppNavigation>
+                  <CelebrationHost />
+                </AppNavigation>
               </View>
               <RejectedNotice />
             </OnboardingProvider>

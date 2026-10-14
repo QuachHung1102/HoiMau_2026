@@ -48,18 +48,30 @@ export function useStandUpMinutes(): number | null {
 let holds = 0;
 let onHold: (() => void) | null = null;
 let onHoldEnd: (() => void) | null = null;
+const holdListeners = new Set<() => void>();
+const subscribeHold = (listener: () => void) => {
+  holdListeners.add(listener);
+  return () => {
+    holdListeners.delete(listener);
+  };
+};
 
 /** Call it in a screen over which the stand-up prompt must not appear (the focus session and its result). */
 export function useStandUpHold(): void {
   useEffect(() => {
     holds += 1;
     if (holds === 1) onHold?.();
+    holdListeners.forEach(listener => listener());
     return () => {
       holds -= 1;
       if (holds === 0) onHoldEnd?.();
+      holdListeners.forEach(listener => listener());
     };
   }, []);
 }
+
+/** True while a screen holds (the focus flow is on top): nothing may be laid over it, the celebrations wait for the end of it. */
+export const useFocusHeld = (): boolean => useSyncExternalStore(subscribeHold, () => holds > 0);
 
 /** Mounts the reminder for exactly as long as the signed-in, onboarded shell lives (navigation.tsx); draws nothing. */
 export function StandUpHost() {

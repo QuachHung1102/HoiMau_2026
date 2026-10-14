@@ -289,3 +289,78 @@ describe('the day the stand-in holds', () => {
     expect(dayOf().unreadCount).toBe(0);
   });
 });
+
+// Task 28's routes: server Task 20 (history), Task 22 (the inbox, `celebrations`) and Task 14 (`/progression`).
+describe('GET /progression and the history (Task 14, Task 20 §5)', () => {
+  test('/progression is the profile\'s progression; before onboarding it is 409 ONBOARDING_REQUIRED', async () => {
+    expect((await get('/progression')).json).toEqual(world.me.progression);
+    world.me = { ...world.me, progression: null };
+    expect(code(await get('/progression'))).toBe('409 ONBOARDING_REQUIRED');
+  });
+
+  test('a range is one summary per date, oldest first, both ends included: OPEN from the server\'s today on, NONE before; at most 92 dates', async () => {
+    world.history = { '2026-10-13': { summary: { logicalDate: '2026-10-13', outcome: 'FROZEN', storyDone: 0, storyTotal: 2, waterMl: 0, caloriesIn: 0, workoutMinutes: 0 }, actions: [] } };
+    const range = await get('/day/history?from=2026-10-12&to=2026-10-15');
+    expect(range.status).toBe(200);
+    expect((range.json.days as { logicalDate: string; outcome: string }[]).map(day => `${day.logicalDate} ${day.outcome}`)).toEqual([
+      '2026-10-12 NONE',
+      '2026-10-13 FROZEN',
+      '2026-10-14 OPEN',
+      '2026-10-15 OPEN',
+    ]);
+    expect((await get('/day/history?from=2026-07-15&to=2026-10-14')).json.days).toHaveLength(92);
+    const tooMany = await get('/day/history?from=2026-07-14&to=2026-10-14');
+    expect([code(tooMany), fields(tooMany)]).toEqual(['422 VALIDATION_FAILED', [{ field: 'to', rule: 'max' }]]);
+    const backwards = await get('/day/history?from=2026-10-15&to=2026-10-14');
+    expect([code(backwards), fields(backwards)]).toEqual(['422 VALIDATION_FAILED', [{ field: 'to', rule: 'min' }]]);
+  });
+
+  test('from and to are required calendar dates', async () => {
+    expect(fields(await get('/day/history?to=2026-10-14'))).toEqual([{ field: 'from', rule: 'required' }]);
+    expect(fields(await get('/day/history?from=2026-10-14'))).toEqual([{ field: 'to', rule: 'required' }]);
+    expect(fields(await get('/day/history?from=2026-02-30&to=2026-10-14'))).toEqual([{ field: 'from', rule: 'format' }]);
+    expect(fields(await get('/day/history?from=yesterday&to=2026-10-14'))).toEqual([{ field: 'from', rule: 'format' }]);
+  });
+
+  test('one date: its summary and its actions as stored; a date nothing was recorded on has none; a bad date is 422', async () => {
+    const action = { id: 'a1', kind: 'BEDTIME', at: '2026-10-13T15:30:00.000Z', mealSlot: null, label: null, value: null, undone: false };
+    world.history = { '2026-10-13': { summary: { logicalDate: '2026-10-13', outcome: 'COMPLETED', storyDone: 2, storyTotal: 2, waterMl: 2000, caloriesIn: 2400, workoutMinutes: 30 }, actions: [action as never] } };
+    expect((await get('/day/history/2026-10-13')).json).toEqual({ summary: world.history['2026-10-13'].summary, actions: [action] });
+    expect((await get('/day/history/2026-10-12')).json).toEqual({ summary: expect.objectContaining({ logicalDate: '2026-10-12', outcome: 'NONE' }), actions: [] });
+    expect(fields(await get('/day/history/2026-13-40'))).toEqual([{ field: 'date', rule: 'format' }]);
+  });
+});
+
+describe('POST /inbox/read (Task 22 §5)', () => {
+  const ITEM = '9d1c2f3a-4b5e-4f60-8a71-b2c3d4e5f601';
+  const OTHER = '9d1c2f3a-4b5e-4f60-8a71-b2c3d4e5f602';
+  const item = (id: string) => ({ id, kind: 'STREAK_MILESTONE' as const, createdAt: '2026-10-14T01:00:00.000Z', readAt: null, payload: { days: 7 as const, coins: 50, badgeCode: 'BADGE_STREAK_7' } });
+  beforeEach(() => {
+    world.day = dayOf({ celebrations: [item(ITEM), item(OTHER)], unreadCount: 3 });
+  });
+
+  test('the ids given are read: the day lists the others and the unread count is the day\'s, less those; an unknown id changes nothing', async () => {
+    const answer = await post('/inbox/read', { ids: [ITEM, '9d1c2f3a-4b5e-4f60-8a71-b2c3d4e5f6ff'] });
+    expect([answer.status, answer.json]).toEqual([200, { unreadCount: 2 }]);
+    expect(world.day.celebrations.map(each => each.id)).toEqual([OTHER]);
+  });
+
+  test('without ids it reads every unread item', async () => {
+    expect((await post('/inbox/read', {})).json).toEqual({ unreadCount: 1 });
+    expect(world.day.celebrations).toEqual([]);
+  });
+
+  test('ids that are not an array of UUIDs are 422 ids/format; no body 422 body/required', async () => {
+    for (const ids of ['x', [1], ['not-a-uuid'], null]) expect([code(await post('/inbox/read', { ids })), fields(await post('/inbox/read', { ids }))]).toEqual(['422 VALIDATION_FAILED', [{ field: 'ids', rule: 'format' }]]);
+    const none = await send('POST', '/inbox/read');
+    expect([code(none), fields(none)]).toEqual(['422 VALIDATION_FAILED', [{ field: 'body', rule: 'required' }]]);
+    expect(world.day.celebrations).toHaveLength(2);
+  });
+
+  test('the same key again is the stored answer; the same key with another body is 409 IDEMPOTENCY_KEY_REUSED', async () => {
+    const first = await post('/inbox/read', { ids: [ITEM] });
+    expect((await post('/inbox/read', { ids: [ITEM] }, first.key)).json).toEqual(first.json);
+    expect(code(await post('/inbox/read', { ids: [OTHER] }, first.key))).toBe('409 IDEMPOTENCY_KEY_REUSED');
+    expect(world.day.celebrations.map(each => each.id)).toEqual([OTHER]);
+  });
+});

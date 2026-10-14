@@ -87,7 +87,7 @@ export function useLogKcal() {
         if (boundUserId() !== userId) return undefined;
         const { day, delta } = outcome.result;
         acceptDay(queryClient, userId, day);
-        pushCelebrations(delta.events);
+        pushCelebrations(delta.events, outcome.id);
         return {
           state: 'confirmed',
           total: day.caloriesIn,

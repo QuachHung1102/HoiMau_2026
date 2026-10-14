@@ -5,8 +5,9 @@
 // Tasks 20 and 21 do (status, error code, body, what a replay remembers).
 import { configure, screen } from '@testing-library/react-native';
 import type { ActionResult, GameEvent } from '../../../domain/contract/common.ts';
-import type { DayState, Me, QuestState, Settings } from '../../../domain/contract/core.ts';
+import type { DayDetail, DaySummary, DayState, InboxReadResult, Me, QuestState, Settings } from '../../../domain/contract/core.ts';
 import { calorieWindow } from '../../../domain/energy.ts';
+import { addDays, daysBetween } from '../../../domain/logicalDate.ts';
 import { cumulativeXpForLevel, levelForXp, perkPointsEarned, titleKeyForLevel, xpRequiredForLevel } from '../../../domain/progression.ts';
 import { mapStats } from '../../../domain/stats.ts';
 import { tabLabel } from '../../shared/i18n/vi/nav';
@@ -25,6 +26,7 @@ export const STAND_UP = 'STAND_UP';
 export const BEDTIME = 'POST /day/bedtime';
 export const NUTRITION = 'POST /nutrition/log';
 export const HIDDEN = 'BEDTIME_BEFORE_23';
+export const INBOX_READ = 'POST /inbox/read';
 const NUTRITION_QUEST = 'NUTRITION_TARGET';
 /** The kcal target behind the fixture's calorie window and its `en` stat. */
 const CALORIE_TARGET = 2394;
@@ -130,6 +132,8 @@ export const world = {} as {
   skew: number;
   /** The highest XP the profile has had: LEVEL_UP fires when a grant moves it over a level. */
   highWater?: number;
+  /** What `GET /day/history` knows per date; a date not listed is OPEN from today on and NONE before. */
+  history: Record<string, DayDetail>;
   /** Minutes of the last seven days, behind `stats.str` and `stats.spd`. */
   minutes: { resistance: number; cardio: number };
   answer?: (request: string, init: Init) => unknown;
@@ -277,6 +281,10 @@ export function serverAnswer(request: string, init: Init): unknown {
   if (request === 'GET /me') return respond(200, world.me);
   if (request === 'GET /day') return respond(200, world.day);
   if (request === 'GET /settings') return respond(200, world.settings);
+  if (request === 'GET /progression') return world.me.progression ? respond(200, world.me.progression) : refuse(409, 'ONBOARDING_REQUIRED');
+  const [, route, query] = /^GET (\/day\/history(?:\/[^?]*)?)(?:\?(.*))?$/.exec(request) ?? [];
+  if (route) return guard(() => history(route, new URLSearchParams(query)));
+  if (request === INBOX_READ) return keyed(request, init, inboxRead);
   if (request === 'POST /auth/logout') return respond(204);
   if (request === BEDTIME) return keyed(request, init, bedtime);
   if (request === NUTRITION) return keyed(request, init, nutritionLog);
@@ -284,6 +292,40 @@ export function serverAnswer(request: string, init: Init): unknown {
   if (verb === 'progress') return keyed(request, init, (key, body) => tick(code, key, body));
   if (verb === 'undo') return keyed(request, init, (key, body) => undo(code, key, body));
   return respond(404);
+}
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const HISTORY_MAX_DATES = 92;
+/** A date as the server reads it: 422 `required` when missing, `format` when it is not a calendar date. */
+function dateOf(value: string | null | undefined, field: string) {
+  if (!value) stop(422, 'VALIDATION_FAILED', [{ field, rule: 'required' }]);
+  const at = Date.parse(`${value}T00:00:00Z`);
+  // a date that exists: 30 February is not rolled over into March
+  if (!DATE.test(value) || Number.isNaN(at) || new Date(at).toISOString().slice(0, 10) !== value) stop(422, 'VALIDATION_FAILED', [{ field, rule: 'format' }]);
+  return value;
+}
+const summaryOf = (date: string): DaySummary =>
+  world.history[date]?.summary ?? { logicalDate: date, outcome: date >= world.day.logicalDate ? 'OPEN' : 'NONE', storyDone: 0, storyTotal: 2, waterMl: 0, caloriesIn: 0, workoutMinutes: 0 };
+/** `GET /day/history?from&to` (at most 92 dates, oldest first) and `GET /day/history/{date}`. */
+function history(route: string, query: URLSearchParams) {
+  if (route === '/day/history') {
+    const from = dateOf(query.get('from'), 'from');
+    const to = dateOf(query.get('to'), 'to');
+    const dates = daysBetween(from, to) + 1;
+    if (dates < 1) stop(422, 'VALIDATION_FAILED', [{ field: 'to', rule: 'min' }]);
+    if (dates > HISTORY_MAX_DATES) stop(422, 'VALIDATION_FAILED', [{ field: 'to', rule: 'max' }]);
+    return respond(200, { days: Array.from({ length: dates }, (_, n) => summaryOf(addDays(from, n))) });
+  }
+  const date = dateOf(route.slice('/day/history/'.length), 'date');
+  return respond(200, { summary: summaryOf(date), actions: world.history[date]?.actions ?? [] } satisfies DayDetail);
+}
+/** `POST /inbox/read`: `ids` absent = every unread item; else UUIDs. The unread count is the day's, less what was read. */
+function inboxRead(_key: string, body: Record<string, unknown>) {
+  const { ids } = body;
+  if (ids !== undefined && (!Array.isArray(ids) || !ids.every(id => typeof id === 'string' && UUID.test(id)))) stop(422, 'VALIDATION_FAILED', [{ field: 'ids', rule: 'format' }]);
+  const read = world.day.celebrations.filter(item => ids === undefined || (ids as string[]).includes(item.id));
+  world.day = { ...world.day, celebrations: world.day.celebrations.filter(item => !read.includes(item)), unreadCount: Math.max(0, world.day.unreadCount - read.length) };
+  return respond(200, { unreadCount: world.day.unreadCount } satisfies InboxReadResult);
 }
 
 /** One tick of a DAILY daily. Refusals in the server's order: unknown, not tickable, `occurredAt`, complete. */
@@ -407,7 +449,7 @@ export function installTodayTestEnv() {
   beforeEach(() => {
     replies.clear();
     ledger.clear();
-    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, hour: 19, closedDate: undefined, skew: 0, highWater: undefined, minutes: { resistance: 60, cardio: 45 }, answer: undefined });
+    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, hour: 19, closedDate: undefined, skew: 0, highWater: undefined, minutes: { resistance: 60, cardio: 45 }, history: {}, answer: undefined });
     fetchMock.mockImplementation(async (url, init) => {
       const request = `${init.method} ${url.replace(BASE, '')}`;
       const taken = await world.answer?.(request, init);

@@ -131,7 +131,7 @@ export function useTick(questCode: string) {
       const { actionId, day: next, delta } = outcome.result;
       // Before the local count goes down, in the same render: the cell never empties in between.
       acceptDay(queryClient, userId, next);
-      pushCelebrations(delta.events);
+      pushCelebrations(delta.events, actionId);
       const at = Date.now();
       showReward(delta.xp);
       snackbar.show({
