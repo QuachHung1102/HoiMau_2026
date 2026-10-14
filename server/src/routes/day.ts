@@ -28,7 +28,7 @@ const DATE_TIME =
   /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/;
 
 /** The last instant written with a four-digit year: PostgreSQL reads no later spelling. */
-const LAST_INSTANT = Date.UTC(9999, 11, 31, 23, 59, 59, 999);
+export const LAST_INSTANT = Date.UTC(9999, 11, 31, 23, 59, 59, 999);
 
 export const refuse = (field: string, rule: FieldError['rule']) =>
   new AppError('VALIDATION_FAILED', { fields: [{ field, rule }] });
@@ -63,7 +63,7 @@ function isCalendarDate(value: string): boolean {
  * 00 to 23, minute and second 00 to 59, and a zone be given. JavaScript alone reads 30 February
  * as 2 March and 24:00 as the next midnight.
  */
-function instantOf(value: unknown): number {
+export function instantOf(value: unknown): number {
   const parts = typeof value === 'string' ? DATE_TIME.exec(value) : null;
   if (parts === null) {
     return NaN;

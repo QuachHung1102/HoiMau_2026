@@ -12,6 +12,7 @@ import type {
   DayDetail,
   DayState,
   DaySummary,
+  InboxItemStreakMilestone,
   QuestState,
 } from '../../../domain/contract/core.ts';
 import { calorieWindow } from '../../../domain/energy.ts';
@@ -32,6 +33,8 @@ type DayRow = {
   streak_current: number;
   streak_best: number;
   quests: QuestState[];
+  unread_count: number;
+  celebrations: InboxItemStreakMilestone[];
 };
 
 // One statement: one snapshot of the database for everything the day shows. $1: the date, or
@@ -39,6 +42,8 @@ type DayRow = {
 // that day is today and the wall clock is before 18:00 (the hours day_bedtime refuses).
 // closes_at: the instant the label of today changes, counted from now; for another date, from
 // noon of that date on the zone's wall clock (an instant that carries that label).
+// unread_count: the caller's unread inbox items; celebrations: the unread STREAK_MILESTONE ones,
+// oldest first (the order they were reached in).
 const DAY = `
   WITH me AS (
     SELECT u.id, u.timezone, u.archetype, app.now() AS now,
@@ -69,7 +74,14 @@ const DAY = `
                  ) ORDER BY q.position, q.code), '[]'::jsonb)
             FROM quests q
             LEFT JOIN quest_completions c ON c.quest_id = q.id AND c.daily_log_id = d.id
-           WHERE q.is_active AND me.archetype = ANY (q.archetypes)) AS quests
+           WHERE q.is_active AND me.archetype = ANY (q.archetypes)) AS quests,
+         (SELECT count(*)::int FROM notifications n
+           WHERE n.user_id = me.id AND n.read_at IS NULL) AS unread_count,
+         (SELECT coalesce(jsonb_agg(jsonb_build_object(
+                   'id', n.id, 'kind', n.kind, 'payload', n.payload,
+                   'createdAt', n.created_at, 'readAt', n.read_at) ORDER BY n.created_at), '[]'::jsonb)
+            FROM notifications n
+           WHERE n.user_id = me.id AND n.read_at IS NULL AND n.kind = 'STREAK_MILESTONE') AS celebrations
     FROM me
     JOIN prescriptions p ON p.user_id = me.id
     JOIN progression_state g ON g.user_id = me.id
@@ -83,7 +95,8 @@ const DAY = `
  * `closesAt` is the earliest instant after now at which the label of today changes
  * (app.logical_day_end): a write sent before it lands on this day, one sent at it on the next.
  * `lastTick.at` is the instant the server recorded the tick: the undo window counts from it.
- * `unreadCount` and `celebrations` are empty until the inbox exists (Task 22).
+ * `unreadCount` counts the caller's unread inbox items; `celebrations` are the unread
+ * STREAK_MILESTONE items, oldest first, until POST /inbox/read marks them.
  */
 export async function buildDay(
   { db }: Reader,
@@ -117,8 +130,11 @@ export async function buildDay(
       total: story.length,
     },
     streak: { current: row.streak_current, best: row.streak_best },
-    unreadCount: 0,
-    celebrations: [],
+    unreadCount: row.unread_count,
+    celebrations: row.celebrations.map(item => ({
+      ...item,
+      createdAt: new Date(item.createdAt).toISOString(),
+    })),
   };
 }
 
@@ -136,8 +152,8 @@ type SummaryRow = {
 
 // One row per date from $1 to $2. A date before the user's first day is NONE; one the day-close
 // job has not processed is OPEN; a closed one is COMPLETED when its log says the story was
-// done, else MISSED (a missed day needs no log). Task 22 adds FROZEN. workout_minutes: the
-// seconds of the date's sessions / 60.
+// done, else FROZEN when a ticket was used for it, else MISSED (a missed day needs no log): the
+// order closeDays decides in (AR-10). workout_minutes: the seconds of the date's sessions / 60.
 // With $3 the row also carries the recorded actions of its date, newest first, read in this
 // same statement: the summary and the list are one snapshot. TICK: every tick, the undone ones
 // marked. NUTRITION: every log, its kcal and slot (null for a manual entry). WORKOUT: every
@@ -148,6 +164,8 @@ const SUMMARIES = `
          CASE WHEN g.day < s.onboard_date THEN 'NONE'
               WHEN s.last_closed_date IS NULL OR g.day > s.last_closed_date THEN 'OPEN'
               WHEN d.story_completed THEN 'COMPLETED'
+              WHEN EXISTS (SELECT 1 FROM freeze_tickets t
+                            WHERE t.user_id = u.id AND t.used_for_date = g.day) THEN 'FROZEN'
               ELSE 'MISSED' END AS outcome,
          k.story_done, k.story_total,
          coalesce(d.water_ml, 0) AS water_ml, coalesce(d.calories_in, 0) AS calories_in,
