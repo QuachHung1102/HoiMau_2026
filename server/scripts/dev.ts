@@ -63,6 +63,21 @@ try {
     }
   });
   await asOwner(DATABASE, async owner => {
+    // A clock left by `npm --prefix server run scenario` would fail the self-check of migrate
+    // (90-verify.sql), and a server must not start on a frozen clock nobody remembers: it goes.
+    const { rows } = await owner.query<{ has: boolean }>(
+      "SELECT to_regclass('meta.test_clock') IS NOT NULL AS has",
+    );
+    if (rows[0].has) {
+      const cleared = await owner.query<{ now: Date }>(
+        'DELETE FROM meta.test_clock RETURNING now',
+      );
+      if (cleared.rows.length > 0) {
+        console.log(
+          `Removed the test clock (${cleared.rows[0].now.toISOString()}): the API runs on real time.`,
+        );
+      }
+    }
     await migrate(owner, SQL_DIR);
     // Development password only; production sets it out of band.
     await owner.query(
