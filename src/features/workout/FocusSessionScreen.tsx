@@ -7,11 +7,11 @@ import { ApiError } from '../../shared/api/client';
 import { useSession } from '../../shared/api/session';
 import { newActionId } from '../../shared/api/uuid';
 import * as common from '../../shared/i18n/vi/common';
-import { failureText } from '../../shared/i18n/vi/sync';
+import { failureText, rejectionText } from '../../shared/i18n/vi/sync';
 import * as vi from '../../shared/i18n/vi/workout';
 import { motion } from '../../shared/motion/motion';
 import { useReducedMotion } from '../../shared/motion/useReducedMotion';
-import { usePendingActions } from '../../shared/storage/pendingActions';
+import { usePendingActions, useRejectedActions } from '../../shared/storage/pendingActions';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { sizes, spacing } from '../../shared/theme/tokens';
 import { AppText } from '../../shared/ui/AppText';
@@ -35,7 +35,15 @@ import { MoveGuide } from './WorkoutDetailScreen';
 const TICK_MS = 250;
 
 /** What has become of the session: running (or paused), then its record. */
-type Phase = { at: 'running' } | { at: 'saving' } | { at: 'queued' } | { at: 'failed'; code: string };
+type Phase =
+  | { at: 'running' }
+  | { at: 'saving' }
+  /** Kept on this device; the queue sends it. */
+  | { at: 'queued' }
+  /** Refused while this screen was waiting for the answer: kept nowhere, can be tried again under the same id. */
+  | { at: 'failed'; code: string }
+  /** Refused later, on a send by the queue: the queue has removed it, there is nothing left to try again. */
+  | { at: 'refused'; code: string };
 
 function CloseButton({ onPress }: { onPress: () => void }) {
   const palette = useTheme();
@@ -52,6 +60,7 @@ function Session({ detail, navigation }: { detail: WorkoutDetail; navigation: Sc
   const reduced = useReducedMotion();
   const { userId } = useSession();
   const pending = usePendingActions(userId);
+  const rejected = useRejectedActions(userId);
   const { complete } = useCompleteWorkout();
   // No stand-up prompt on top of a session.
   useStandUpHold();
@@ -70,6 +79,8 @@ function Session({ detail, navigation }: { detail: WorkoutDetail; navigation: Sc
   const [asking, setAsking] = useState<{ wasRunning: boolean } | null>(null);
   // The seconds that were recorded, fixed when the session ended.
   const ended = useRef<number | null>(null);
+  // Leaving a session that is not saved anywhere asks first.
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
   const running = phase.at === 'running';
   const paused = clock.pausedAtMs !== null;
@@ -125,6 +136,7 @@ function Session({ detail, navigation }: { detail: WorkoutDetail; navigation: Sc
     if (Platform.OS !== 'android') return undefined;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (phase.at === 'running') askToLeave();
+      else if (phase.at === 'failed') setConfirmLeave(true);
       else if (phase.at !== 'saving') leave();
       return true;
     });
@@ -135,10 +147,12 @@ function Session({ detail, navigation }: { detail: WorkoutDetail; navigation: Sc
   const position = positionAt(schedule, elapsed);
 
   const record = async (seconds: number) => {
+    setConfirmLeave(false);
     setPhase({ at: 'saving' });
     // Only the sending can throw, and by then the record is on this device: that is the waiting state, not a stuck one.
     const outcome = await complete({ id: sessionId, exerciseItemId: detail.id, elapsedSec: seconds }).catch(() => ({ state: 'queued' }) as const);
     // Nothing comes back for a second press, or for a person who has signed out meanwhile.
+    // (Signed out: the view stays on "saving" with no way out, for the moment it takes the signed-in shell to unmount.)
     if (!outcome) return;
     if (outcome.state === 'confirmed') navigation.replace('WorkoutResult', { result: outcome.result });
     else setPhase(outcome.state === 'queued' ? { at: 'queued' } : { at: 'failed', code: outcome.code });
@@ -159,6 +173,14 @@ function Session({ detail, navigation }: { detail: WorkoutDetail; navigation: Sc
   useEffect(() => {
     if (reachedEnd) finishRef.current();
   }, [reachedEnd]);
+
+  // The queue sent the waiting record later and the server refused it: the queue has removed it and tells the person
+  // app-wide. That notice forgets the refusal once it is read, so this screen keeps what it saw.
+  const refusal = phase.at === 'queued' ? rejected.find(item => item.id === sessionId) : undefined;
+  useEffect(() => {
+    if (refusal) setPhase({ at: 'refused', code: refusal.code });
+  }, [refusal]);
+  const refusedCode = phase.at === 'refused' ? phase.code : refusal?.code;
 
   // motion: focus-pause (the paused label fades in; with reduced motion it is simply there)
   const [fade] = useState(() => new Animated.Value(1));
@@ -181,7 +203,7 @@ function Session({ detail, navigation }: { detail: WorkoutDetail; navigation: Sc
     const waiting = pending.some(action => action.id === sessionId);
     return (
       <Screen>
-        {phase.at === 'saving' ? null : <CloseButton onPress={leave} />}
+        {phase.at === 'saving' ? null : <CloseButton onPress={phase.at === 'failed' ? () => setConfirmLeave(true) : leave} />}
         {phase.at === 'saving' ? (
           <>
             <AppText variant="headline" accessibilityRole="header">
@@ -190,6 +212,23 @@ function Session({ detail, navigation }: { detail: WorkoutDetail; navigation: Sc
             <AppText variant="secondary">{trained}</AppText>
             <View style={styles.section}>
               <LoadingState blocks={1} />
+            </View>
+          </>
+        ) : refusedCode !== undefined ? (
+          <>
+            <View accessibilityLiveRegion="polite" style={styles.text}>
+              <AppText variant="headline" accessibilityRole="header">
+                {vi.refusedTitle}
+              </AppText>
+              <AppText variant="secondary">{trained}</AppText>
+            </View>
+            {/* What the app-wide notice says. No retry: the record is no longer anywhere, and no reward was named. */}
+            <View style={styles.section}>
+              <InlineError message={rejectionText(refusedCode)} />
+            </View>
+            <View style={styles.actions}>
+              <Button label={vi.toToday} onPress={() => navigation.navigate('Today')} />
+              <Button variant="secondary" label={vi.backToWorkout} onPress={leave} />
             </View>
           </>
         ) : phase.at === 'queued' ? (
@@ -210,7 +249,7 @@ function Session({ detail, navigation }: { detail: WorkoutDetail; navigation: Sc
               <Button variant="secondary" label={vi.backToWorkout} onPress={leave} />
             </View>
           </>
-        ) : (
+        ) : phase.at === 'failed' ? (
           <>
             <AppText variant="headline" accessibilityRole="header">
               {vi.notSavedTitle}
@@ -225,7 +264,16 @@ function Session({ detail, navigation }: { detail: WorkoutDetail; navigation: Sc
               <Button variant="secondary" label={vi.leaveUnsaved} onPress={leave} />
             </View>
           </>
-        )}
+        ) : null}
+        {phase.at === 'failed' && confirmLeave ? (
+          <Dialog
+            title={vi.unsavedTitle}
+            body={vi.unsavedBody(time(elapsed))}
+            primary={{ label: common.retry, onPress: () => record(ended.current ?? 1) }}
+            secondary={{ label: vi.leaveUnsaved, onPress: leave }}
+            onDismiss={() => setConfirmLeave(false)}
+          />
+        ) : null}
       </Screen>
     );
   }

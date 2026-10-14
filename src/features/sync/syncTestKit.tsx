@@ -22,7 +22,7 @@ import { fetchMock, installAuthTestEnv, me, respond, TOKEN, USER } from '../auth
 import { OnboardingProvider } from '../onboarding/OnboardingProvider';
 import { PendingBanner } from './PendingBanner';
 import { RejectedNotice } from './RejectedNotice';
-import { useQueuedWrite, type QueuedWriteResult } from './useQueuedWrite';
+import { useQueuedWrite, type QueuedWriteInput, type QueuedWriteResult } from './useQueuedWrite';
 
 export { fetchMock, refuse, respond, TOKEN, USER } from '../auth/authTestKit';
 
@@ -60,7 +60,7 @@ export const seedQueue = (actions: PendingAction[], userId = USER) => AsyncStora
 export const idsOnDisk = async (userId = USER) => (JSON.parse((await AsyncStorage.getItem(pendingKey(userId))) ?? '[]') as { id: string }[]).map(item => item.id);
 
 /** What a recording screen holds: the session and the queued write. */
-export const app = {} as { session: Session; send: (input: { path: string; body: Record<string, unknown> }) => Promise<QueuedWriteResult<unknown>> };
+export const app = {} as { session: Session; send: (input: QueuedWriteInput) => Promise<QueuedWriteResult<unknown>> };
 function Recorder() {
   app.session = useSession();
   app.send = useQueuedWrite<unknown>().send;

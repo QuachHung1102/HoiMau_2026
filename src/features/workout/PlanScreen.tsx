@@ -10,7 +10,7 @@ import * as questsVi from '../../shared/i18n/vi/quests';
 import { failureText } from '../../shared/i18n/vi/sync';
 import * as today from '../../shared/i18n/vi/today';
 import * as vi from '../../shared/i18n/vi/workout';
-import { usePendingActions } from '../../shared/storage/pendingActions';
+import { usePendingActions, useWaitingCount } from '../../shared/storage/pendingActions';
 import { spacing } from '../../shared/theme/tokens';
 import { AppText } from '../../shared/ui/AppText';
 import { Card, ListRow } from '../../shared/ui/Card';
@@ -43,8 +43,9 @@ export function PlanScreen({ navigation }: ScreenProps<'Plan'>) {
   const day = dayQuery.data;
   const view = useMemo(() => (day ? applyPending(day, pending) : undefined), [day, pending]);
   const workout = view?.quests.find(quest => quest.code === WORKOUT_QUEST);
-  // A session that settled as waiting on this device. One that is being sent right now is not waiting.
-  const sessionWaiting = pending.some(action => action.path === WORKOUT_COMPLETE_PATH && action.status === 'queued');
+  // A session that waits on this device, by the queue's own rule for what is shown as waiting (the one the app-wide row uses):
+  // nothing is waiting while requests are simply on their way, also not a record that stands behind one in flight.
+  const sessionWaiting = useWaitingCount(userId) > 0 && pending.some(action => action.path === WORKOUT_COMPLETE_PATH);
   const kcal = view ? today.kcalLine(view.caloriesIn, view.calorieWindow) : undefined;
   const dayCode = dayQuery.error instanceof ApiError ? dayQuery.error.code : '';
 
