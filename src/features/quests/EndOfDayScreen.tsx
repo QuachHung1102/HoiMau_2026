@@ -79,7 +79,7 @@ export function EndOfDayScreen({ navigation }: ScreenProps<'EndOfDay'>) {
         const { day: next, delta } = outcome.result;
         // The server's day first, then this screen's own state, in the same block: no render in between.
         acceptDay(queryClient, userId, next);
-        pushCelebrations(delta.events);
+        pushCelebrations(delta.events, outcome.id);
         setResult({ xp: delta.xp, rewarded: delta.events.some(event => event.type === 'QUEST_COMPLETED' && event.questCode === BEDTIME) });
       }
       // Queued: nothing to do, the waiting state comes from the queue. Refused: it is not kept anywhere.

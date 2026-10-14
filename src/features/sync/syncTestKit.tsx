@@ -70,10 +70,10 @@ function Recorder() {
 let client: QueryClient | undefined;
 export const queryClient = () => client as QueryClient;
 
-type Options = { signedIn?: boolean; motion?: 'REDUCED' | 'FULL'; extra?: ReactNode; landed?: boolean };
+type Options = { signedIn?: boolean; motion?: 'REDUCED' | 'FULL'; extra?: ReactNode; /** Mounted inside the navigation container, as the celebration host is in App.tsx. */ inside?: ReactNode; landed?: boolean };
 
 /** The app as App.tsx mounts it. `signedIn: false` starts on Welcome; `landed: false` does not wait for the main group. */
-export async function mountApp({ signedIn = true, motion = 'REDUCED', extra, landed = signedIn }: Options = {}) {
+export async function mountApp({ signedIn = true, motion = 'REDUCED', extra, inside, landed = signedIn }: Options = {}) {
   if (signedIn) await Keychain.setGenericPassword(USER, TOKEN);
   if (client) wipeQueries(client); // a second mount in one test: the first tree is unmounted, its cache must not keep timers
   client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -86,7 +86,7 @@ export async function mountApp({ signedIn = true, motion = 'REDUCED', extra, lan
               <OnboardingProvider>
                 <View style={styles.fill}>
                   <PendingBanner />
-                  <AppNavigation />
+                  <AppNavigation>{inside}</AppNavigation>
                 </View>
                 <RejectedNotice />
                 <Recorder />

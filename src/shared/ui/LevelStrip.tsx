@@ -9,7 +9,8 @@ import { useNumberRoll } from './Badges';
 import { Touchable } from './Touchable';
 
 /** The drawn bar only. Callers always put the number next to it as text. `ratio` is 0-1. */
-export function BarTrack({ ratio, track = 'soft' }: { ratio: number; track?: 'soft' | 'line' }) {
+export type Track = 'soft' | 'line' | 'white';
+export function BarTrack({ ratio, track = 'soft' }: { ratio: number; track?: Track }) {
   const palette = useTheme();
   const reduced = useReducedMotion();
   const [stretch] = useState(() => new Animated.Value(1));
@@ -49,7 +50,7 @@ function barRange(value: number, max: number) {
 }
 
 /** A bar with its value written under it (`label`, e.g. "64% tới Chồi non"). */
-export function ProgressBar({ value, max, label }: { value: number; max: number; label: string }) {
+export function ProgressBar({ value, max, label, track }: { value: number; max: number; label: string; track?: Track }) {
   const range = barRange(value, max);
   return (
     <View
@@ -59,7 +60,7 @@ export function ProgressBar({ value, max, label }: { value: number; max: number;
       accessibilityValue={{ min: 0, max: range.max, now: range.now }}
       style={styles.bar}
     >
-      <BarTrack ratio={range.max > 0 ? range.now / range.max : 0} />
+      <BarTrack ratio={range.max > 0 ? range.now / range.max : 0} track={track} />
       <AppText variant="caption">{label}</AppText>
     </View>
   );
@@ -72,9 +73,11 @@ type LevelStripProps = {
   xpIntoLevel: number;
   xpForNextLevel: number;
   onPress?: () => void;
+  /** The colour of the empty part of the bar; white on a soft card, where the default would vanish. */
+  track?: Track;
 };
 
-export function LevelStrip({ level, title, xpIntoLevel, xpForNextLevel, onPress }: LevelStripProps) {
+export function LevelStrip({ level, title, xpIntoLevel, xpForNextLevel, onPress, track }: LevelStripProps) {
   const heading = vi.levelTitle(level, title);
   // The text shows the same clamped numbers the bar reports.
   const { now, max } = barRange(xpIntoLevel, xpForNextLevel);
@@ -82,7 +85,7 @@ export function LevelStrip({ level, title, xpIntoLevel, xpForNextLevel, onPress 
   const content = (
     <View style={styles.strip}>
       <AppText weight="semibold">{heading}</AppText>
-      <ProgressBar value={now} max={max} label={vi.xpProgress(rolling, max)} />
+      <ProgressBar value={now} max={max} label={vi.xpProgress(rolling, max)} track={track} />
     </View>
   );
   if (!onPress) return content;

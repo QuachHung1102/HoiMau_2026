@@ -15,6 +15,10 @@ import { ProfileStepScreen } from '../features/onboarding/ProfileStepScreen';
 import { stepOptions } from '../features/onboarding/StepScreen';
 import { OnbTargetsScreen, TargetsScreen } from '../features/onboarding/TargetsScreen';
 import { ManualKcalScreen } from '../features/nutrition/ManualKcalScreen';
+import { DayHistoryScreen } from '../features/progression/DayHistoryScreen';
+import { JourneyScreen } from '../features/progression/JourneyScreen';
+import { LevelsScreen } from '../features/progression/LevelsScreen';
+import { ProfileScreen } from '../features/progression/ProfileScreen';
 import { EndOfDayScreen } from '../features/quests/EndOfDayScreen';
 import { QuestBoardScreen } from '../features/quests/QuestBoardScreen';
 import { FocusSessionScreen } from '../features/workout/FocusSessionScreen';
@@ -46,6 +50,7 @@ export const onboardingScreens: ScreenEntry[] = [
 export const tabRoots: TabRoot[] = [
   { name: 'Today', component: TodayScreen, label: tabLabel.Today, icon: 'Sun' },
   { name: 'Plan', component: PlanScreen, label: tabLabel.Plan, icon: 'Route' },
+  { name: 'Profile', component: ProfileScreen, label: tabLabel.Profile, icon: 'User' },
 ];
 
 /** Screens that open inside the stack of whichever tab they were opened from. */
@@ -57,6 +62,9 @@ export const detailScreens: ScreenEntry[] = [
   { name: 'ManualKcal', component: ManualKcalScreen },
   { name: 'WorkoutCatalog', component: WorkoutCatalogScreen },
   { name: 'WorkoutDetail', component: WorkoutDetailScreen },
+  { name: 'Journey', component: JourneyScreen },
+  { name: 'DayHistory', component: DayHistoryScreen },
+  { name: 'Levels', component: LevelsScreen },
 ];
 
 /** Full-screen modal flow above the tabs; the tab bar cannot interrupt it. */

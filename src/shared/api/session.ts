@@ -3,6 +3,7 @@ import { createContext, createElement, useCallback, useContext, useEffect, useMe
 import * as Keychain from 'react-native-keychain';
 import * as syncVi from '../i18n/vi/sync';
 import { clearUserCache } from '../storage/cache';
+import { clearCelebratedLevel } from '../storage/celebrated';
 import { clearPendingFor, flushPending, unsentCount } from '../storage/pendingActions';
 import { clearStandUp } from '../storage/standUp';
 import { Dialog } from '../ui/Dialog';
@@ -102,6 +103,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (userId && !expired) await bestEffort(clearPendingFor(userId));
         // The stand-up countdown (timing only) goes with the person who leaves, whichever way the session ended.
         if (userId) await bestEffort(clearStandUp(userId));
+        // So does the level that was last celebrated: the next sign-in seeds it from the first profile it reads.
+        if (userId) await bestEffort(clearCelebratedLevel(userId));
         setState({ status: 'signedOut', userId: null, expired });
         reply(false); // a question still open belongs to a session that is gone
       })().finally(() => {

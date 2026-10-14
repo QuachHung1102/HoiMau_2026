@@ -77,7 +77,7 @@ export function useCompleteWorkout() {
         if (outcome.state === 'failed') return { state: 'failed', code: outcome.code };
         if (boundUserId() !== userId) return undefined;
         acceptDay(queryClient, userId, outcome.result.day);
-        pushCelebrations(outcome.result.delta.events);
+        pushCelebrations(outcome.result.delta.events, id);
         return { state: 'confirmed', result: outcome.result };
       } finally {
         sending.current = false;
