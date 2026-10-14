@@ -230,7 +230,7 @@ Nó gồm ba phần, trong cùng một file:
 | `DECOY_1` | `00000000-0000-4000-8000-0000000000d1` | `decoy-1@decoy.invalid` |
 | `DECOY_2` | `00000000-0000-4000-8000-0000000000d2` | `decoy-2@decoy.invalid` |
 
-`DECOY_1` có ít nhất một dòng trong mọi bảng chứa dữ liệu người dùng đang có: `users`, `credentials`, `sessions` (một phiên đã thu hồi nhưng chưa hết hạn), `reset_codes` (đã dùng, đã hết hạn), `idempotency_keys` (một câu trả lời `200` đã lưu), `progression_state`, `xp_ledger`, `coin_ledger`, `inventory` và `perk_unlocks` (trỏ tới vật phẩm đã seed `THEME_FOREST` theo `code`), `biometric_snapshots`, `prescriptions`, `user_settings`; và, từ `81-decoy-day.sql`, `daily_logs`, `quest_completions`, `quest_ticks` (một ngày có một lượt tick của nhiệm vụ đã seed `WATER_8`). `DECOY_2` chỉ có dòng `users`; các mảng cần hai người (bang hội, nudge) dùng nó.
+`DECOY_1` có ít nhất một dòng trong mọi bảng chứa dữ liệu người dùng đang có: `users`, `credentials`, `sessions` (một phiên đã thu hồi nhưng chưa hết hạn), `reset_codes` (đã dùng, đã hết hạn), `idempotency_keys` (một câu trả lời `200` đã lưu), `progression_state`, `xp_ledger`, `coin_ledger`, `inventory` và `perk_unlocks` (trỏ tới vật phẩm đã seed `THEME_FOREST` theo `code`), `biometric_snapshots`, `prescriptions`, `user_settings`; và, từ `81-decoy-day.sql`, `daily_logs`, `quest_completions`, `quest_ticks` (một ngày có một lượt tick của nhiệm vụ đã seed `WATER_8`); và, từ `82-decoy-story.sql`, `nutrition_logs`, `workout_sessions` (một lần ghi calo và một buổi tập của bài tập đã seed `DESK_STRETCH`, trên ngày đó). `DECOY_2` chỉ có dòng `users`; các mảng cần hai người (bang hội, nudge) dùng nó.
 
 - **Không bao giờ xóa hay "dọn" dòng mồi nhử**, bằng tay hay bằng job. Job xóa dữ liệu cũ (phiên hết hạn, mã đã dùng, khóa idempotency quá 7 ngày, tài khoản quá hạn xóa) phải bỏ qua người dùng có email kết thúc bằng `@decoy.invalid`. Mất một dòng mồi nhử là cổng 2 đỏ với `no decoy row in <bảng>` (phép kiểm 12, cho mọi bảng có khóa ngoại dẫn về `users`). Lưu ý: cổng chạy trên bản sao mới của cơ sở dữ liệu mẫu, nơi chưa job nào chạy, nên nó **không** bắt được một job xóa nhầm; job nào xóa dữ liệu thì tự mang ca tấn công của mình (chạy job với đồng hồ đẩy xa về sau, rồi đòi dòng mồi nhử còn nguyên).
 - File chạy lặp lại được: id cố định và `ON CONFLICT DO NOTHING`. Chạy lại migrate đưa về những dòng đã mất, không sửa dòng đang có.
@@ -655,6 +655,7 @@ Server là `node:http` trần: không framework, không middleware. Mọi route 
 | `routes/auth.ts` | Năm route xác thực: đăng ký, đăng nhập, đăng xuất, quên và đặt lại mật khẩu. |
 | `routes/me.ts`, `routes/settings.ts`, `routes/progression.ts` | Onboarding, hồ sơ, số đo, hệ phái, đơn kê, cài đặt, tiến trình, thú (xem "Hồ sơ và tiến trình"). |
 | `routes/day.ts` | Ngày hiện tại, tick, hoàn tác, giờ ngủ, lịch sử (xem "Ngày và nhiệm vụ"). |
+| `routes/nutrition.ts`, `routes/workout.ts` | Ghi calo, danh mục bài tập, một bài tập, ghi buổi tập (xem "Hai nhiệm vụ cốt truyện"). |
 | `readModels/me.ts` | `buildMe`, `buildProgression`, `buildPet`, `buildPrescription`: những gì người dùng đọc lại về chính mình. |
 | `readModels/day.ts`, `readModels/delta.ts` | `buildDay`, `buildDaySummaries`, `buildDayDetail`; `buildDelta`, `logGrants`: ngày của người dùng, và phần "vừa thay đổi gì" của một request ghi. |
 | `seed/*.ts` | Seeder nội dung, chạy trong `migrate`. |
@@ -1064,7 +1065,7 @@ Mọi từ chối ở đây đều được **ném** (`AppError`, hoặc `HM000`
 
 - `buildMe` trả bốn phần `progression`, `stats`, `pet`, `appearance` là `null` trước onboarding. Ba hàm còn lại dành cho route `auth: 'user'` và ném lỗi nếu người gọi chưa onboarding.
 - `milestones` lấy từ các huy hiệu `BADGE_STREAK_*` đang sở hữu; `breakNotice` có khi `streak_before_break` khác `NULL`.
-- `stats` đọc nước, dấu giờ ngủ và calo từ dòng `daily_logs` của **hôm nay** (ngày logic của `app.now()` theo múi giờ người dùng); ngày chưa có dòng nào thì cả ba bằng 0, và việc đọc không tạo dòng. Phút tập vẫn là 0 cho tới khi có buổi tập được ghi (nhiệm vụ về bài tập).
+- `stats` đọc nước, dấu giờ ngủ và calo từ dòng `daily_logs` của **hôm nay** (ngày logic của `app.now()` theo múi giờ người dùng); ngày chưa có dòng nào thì cả ba bằng 0, và việc đọc không tạo dòng. Phút tập (`resistanceMinutes7d`, `cardioMinutes7d`) là tổng `elapsed_sec` / 60 của các buổi tập thuộc ngày logic hôm nay và sáu ngày trước, theo loại (CARDIO và HIIT gộp làm một); xem "Hai nhiệm vụ cốt truyện".
 
 ### Test
 
@@ -1145,7 +1146,7 @@ Luật riêng:
 |---|---|
 | `app._occurred_at(timestamptz) → timestamptz` | Luật `occurredAt` ở trên; trả về thời điểm lượt ghi được tính cho. |
 | `app._open_log(p_user uuid, p_occurred_at timestamptz) → daily_logs` | Khóa dòng `users` của người dùng, xét ngày (`DAY_CLOSED`), rồi trả về dòng `daily_logs` của ngày đó, **tạo nếu chưa có**, đã khóa tới hết transaction. Mọi hàm đưa một lượt ghi vào một ngày (calo, buổi tập, nhật ký ở các nhiệm vụ sau) gọi nó trước tiên. |
-| `app._story_check(p_daily_log uuid) → boolean` | Đặt `story_completed` khi mọi nhiệm vụ `STORY` đang hoạt động của hệ phái người dùng đều có `completed_at` trong ngày đó; `true` **chỉ ở lần gọi tạo ra thay đổi**. Ngày không có nhiệm vụ `STORY` nào thì không bao giờ "xong hết". Chưa hàm nào ở đây gọi nó (tick và giờ ngủ không hoàn thành nhiệm vụ `STORY`); hàm ghi calo và buổi tập gọi nó rồi báo `STORY_ALL_DONE`. |
+| `app._story_check(p_daily_log uuid) → boolean` | Đặt `story_completed` khi mọi nhiệm vụ `STORY` đang hoạt động của hệ phái người dùng đều có `completed_at` trong ngày đó; `true` **chỉ ở lần gọi tạo ra thay đổi**. Ngày không có nhiệm vụ `STORY` nào thì không bao giờ "xong hết". Tick và giờ ngủ không gọi nó (chúng không hoàn thành nhiệm vụ `STORY`); `app._add_calories` và `workout_complete` (`31-story.sql`) gọi nó ngay khi hoàn thành một nhiệm vụ `STORY`, và route báo `STORY_ALL_DONE` đúng ở lượt đó. |
 
 Ba hàm nội bộ đăng ký `'invoker'`, không vai trò nào được gọi.
 
@@ -1184,13 +1185,13 @@ Mọi từ chối đều được **ném** (`AppError`, hoặc `HM000` từ hàm
 - **`occurredAt` phải là một thời điểm có thật**, viết theo RFC 3339 kèm múi giờ (`…Z` hoặc `…+07:00`): ngày có trên lịch (`2027-02-30` không có; JavaScript tự nó sẽ đọc thành 2 tháng 3), giờ 00–23 (`T24:00:00` bị từ chối), phút và giây 00–59, độ lệch tới `23:59`. Sai là `422 VALIDATION_FAILED` (`occurredAt` / `format`), như nhau ở tick và giờ ngủ. Route chuyển nó về một cách viết duy nhất trước khi đưa vào SQL. `tickId` phải là UUID. Mã nhiệm vụ trong đường dẫn là bất cứ chuỗi nào: chuỗi lạ là `404`, không bao giờ `500`.
 - **`GET /day`** không tạo dòng nào. `locked` chỉ đúng với nhiệm vụ `HIDDEN` khi giờ địa phương là 03:00–17:59 (đúng những giờ `day_bedtime` từ chối). `lastTick` là tick sống mới nhất của một nhiệm vụ `DAILY` (để hoàn tác sau khi mở lại app); sau một lượt hoàn tác nó trỏ về tick sống đứng trước, không về `null`. `unreadCount` là 0 và `celebrations` rỗng cho tới khi có hộp thư.
 - **`closesAt` là thời điểm sớm nhất sau "bây giờ" mà nhãn ngày logic đổi**, do SQL tính bằng `app.logical_day_end` trong cùng câu lệnh đọc ngày: cùng hàm, cùng cơ sở dữ liệu múi giờ với nhãn của `GET /day` và với ngày một lượt ghi rơi vào. Có test qua HTTP: tick gửi một mili giây trước `closesAt` rơi vào ngày `GET /day` đang hiện, tick gửi đúng `closesAt` rơi vào ngày sau, ở tám ranh giới (hai ngày đổi giờ 2026 của New York, Kolkata, Kathmandu, Lord Howe, Athens, Kiritimati, Pago Pago) và ở bốn múi giờ mà Node đọc khác PostgreSQL; cùng một test cho `Pacific/Chatham`, nơi nhãn đi lùi.
-- **`GET /day/history`**: `from`, `to` là nhãn ngày có thật (`2027-02-30` và năm `0000` là `format`), `to ≥ from` (`to` / `min`), nhiều nhất 92 ngày (`to` / `max`). `outcome`: trước `onboard_date` là `NONE`; sau `last_closed_date` là `OPEN` (kể cả ngày chưa tới); đã đóng và `story_completed` là `COMPLETED`; đã đóng còn lại là `MISSED` (ngày bỏ lỡ không cần dòng `daily_logs`). `FROZEN` đến cùng job đóng ngày, `workoutMinutes` đến cùng buổi tập.
-- **`GET /day/history/{date}`**: tóm tắt của ngày đó và các hành động, mới nhất trước (theo `occurred_at`), đọc bằng **một** câu lệnh: một tick commit trong lúc đó có mặt ở cả hai phần hoặc không ở phần nào. `TICK`: `label` là mã nhiệm vụ, `undone` đúng với tick đã hoàn tác (tick đó vẫn được liệt kê). `BEDTIME`: `id` là id của dòng `daily_logs`. `mealSlot` và `value` là `null` với cả hai loại.
+- **`GET /day/history`**: `from`, `to` là nhãn ngày có thật (`2027-02-30` và năm `0000` là `format`), `to ≥ from` (`to` / `min`), nhiều nhất 92 ngày (`to` / `max`). `outcome`: trước `onboard_date` là `NONE`; sau `last_closed_date` là `OPEN` (kể cả ngày chưa tới); đã đóng và `story_completed` là `COMPLETED`; đã đóng còn lại là `MISSED` (ngày bỏ lỡ không cần dòng `daily_logs`). `FROZEN` đến cùng job đóng ngày. `workoutMinutes` là tổng giây của các buổi tập của ngày đó / 60.
+- **`GET /day/history/{date}`**: tóm tắt của ngày đó và các hành động, mới nhất trước (theo `occurred_at`), đọc bằng **một** câu lệnh: một tick commit trong lúc đó có mặt ở cả hai phần hoặc không ở phần nào. `TICK`: `label` là mã nhiệm vụ, `undone` đúng với tick đã hoàn tác (tick đó vẫn được liệt kê). `BEDTIME`: `id` là id của dòng `daily_logs`. `mealSlot` và `value` là `null` với cả hai loại. `NUTRITION` và `WORKOUT`: xem "Hai nhiệm vụ cốt truyện".
 
 ### Read model
 
 - `buildDay(ctx, logicalDate?)`: một câu lệnh, một thời điểm của cơ sở dữ liệu cho cả ngày, kể cả `closesAt`. Không truyền ngày thì là hôm nay; truyền ngày thì là ngày đó (`closesAt` khi ấy tính từ 12:00 trưa của ngày đó theo đồng hồ múi giờ; nhiệm vụ ẩn chỉ `locked` khi ngày đó là hôm nay). File này không import gì về múi giờ từ `domain/`.
-- `buildDaySummaries(ctx, from, to)`, `buildDayDetail(ctx, date)`: cùng một câu lệnh (`SUMMARIES`), `buildDayDetail` bật thêm cột hành động. Nhiệm vụ về bài tập và job đóng ngày mở rộng chính câu lệnh đó (phút tập, `FROZEN`, hành động `NUTRITION` / `WORKOUT` thêm vào `UNION` bên trong), không thêm câu lệnh thứ hai.
+- `buildDaySummaries(ctx, from, to)`, `buildDayDetail(ctx, date)`: cùng một câu lệnh (`SUMMARIES`), `buildDayDetail` bật thêm cột hành động. Phút tập và hành động `NUTRITION` / `WORKOUT` đã nằm trong chính câu lệnh đó (`UNION` bên trong); job đóng ngày thêm `FROZEN` vào đó, không thêm câu lệnh thứ hai.
 - `buildDelta(grants, events)` và `logGrants(ctx, grants)` (`readModels/delta.ts`): `grants` là các kết quả `app._grant` kèm `reason`, `ref` mà hàm SQL trả về; `events` là những gì route tự biết (`QUEST_COMPLETED`, `STORY_ALL_DONE`). Mọi route ghi có thưởng dùng lại cặp này.
 - Tất cả chạy bằng `app_auth` trong transaction của request, điều kiện người dùng viết tường minh, RLS lọc bên dưới. Không hàm nào ghi.
 
@@ -1216,3 +1217,93 @@ Cổng 1 và cổng 3 đọc catalog; cổng 2 gọi hàm để hỏi quyền v�
 - job đóng ngày chưa tồn tại: chưa gì chứng minh nó lấy khóa dòng `users` trước khi dời `last_closed_date`. Nhiệm vụ viết job đó phải mang test cuộc đua "tick với đóng ngày" của mình.
 
 Sửa `30-day.sql` thì chạy `npm run server:test`, không chỉ `npm run db:verify`.
+
+## Hai nhiệm vụ cốt truyện (`31-story.sql`, `routes/nutrition.ts`, `routes/workout.ts`, `seed/exercises.ts`)
+
+Hai nhiệm vụ `STORY` được hoàn thành thật: `NUTRITION_TARGET` bằng calo ghi tay, `WORKOUT_MAIN` bằng một buổi tập chọn từ thư viện bài tập. Hợp đồng nằm ở `docs/api/openapi.yaml` (`NutritionLogRequest`, `WorkoutCatalog`, `WorkoutDetail`, `WorkoutCompleteRequest`, `WorkoutResult`, `ActionResult`); mục này ghi cách server giữ nó.
+
+### Bảng
+
+| Bảng | Lớp | Ghi chú |
+|---|---|---|
+| `exercise_moves` | `content` | Khóa chính `code`. `name`, `demo_code` (`NULL` với động tác chỉ có chữ), `steps` (đúng 3 dòng, mảng một chiều), `caution`. |
+| `exercise_items` | `content` | Khóa chính `id`, duy nhất `code`. `modality` (5 loại), `duration_sec` ∈ {300, 900, 1800, 2700}, `space_needed` (4 loại), `equipment` (tập con của `tham`, `ta-tay`, `day-khang-luc`; rỗng = không cần gì), `met_value > 0`, `sets ≥ 1` (số lần lặp các bước `MAIN`), `archetypes`. |
+| `exercise_item_steps` | `content` | Khóa chính `(item_id, position)`, `position` từ 1 theo thứ tự trong file nội dung. `move_code` (khóa ngoại), `phase` (`WARMUP`, `MAIN`, `COOLDOWN`), `seconds > 0`, `reps_text`. |
+| `nutrition_logs` | `own_read` | **`id` là action id.** `kcal` 1–5000 (`numeric`, nhận số lẻ), `label` khác rỗng và tối đa 60 ký tự hoặc `NULL`, `occurred_at`. `meal_slot` và `meal_id` cùng `NULL` (ghi tay) hoặc cùng có (bữa trong thực đơn; nhiệm vụ thực đơn thêm khóa ngoại của `meal_id`). Khóa ngoại kép `(daily_log_id, user_id)` → `daily_logs (id, user_id)`. |
+| `workout_sessions` | `own_read` | **`id` là action id.** `exercise_item_id` (khóa ngoại), `modality` và `duration_sec` chép từ bài tập lúc tập, `elapsed_sec` từ 1 tới 2 × `duration_sec`, `completed` **bằng đúng** `elapsed_sec × 2 ≥ duration_sec` (ràng buộc), `xp_awarded`, `coin_awarded ≥ 0`, `occurred_at`. Cùng khóa ngoại kép. |
+
+Không bảng nào có hàng bị xóa, không có route hoàn tác: một lần ghi calo không lấy lại được (AR-12), và không có số calo âm.
+
+### Seeder
+
+`server/src/seed/exercises.ts`, từ `server/content/exercises.ts` (nội dung khép kín của nhiệm vụ thư viện bài tập; seeder không sửa nó): động tác và bài tập upsert theo `code` (bài tập giữ nguyên `id`, nên buổi tập không mất chỗ trỏ), bước upsert theo `(item_id, position)`. Bước mà một bài tập trong nội dung không còn có thì bị xóa (tổng giây các bước phải bằng thời lượng). Chạy lại không ghi lại dòng nào đang đúng. Có test: số dòng của ba bảng bằng độ dài trong file nội dung, nên thư viện lớn hơn sau này được kiểm ở lần `server:test` kế tiếp.
+
+### Dải calo của nhiệm vụ dinh dưỡng
+
+`app._calorie_band(p_target numeric) → numrange` là **dải duy nhất** mà chốt nhiệm vụ dùng: `[floor((9 × target + 5) / 10), floor((11 × target + 5) / 10)]`, hai đầu tính vào, số học `numeric` chính xác. Với mục tiêu nguyên đó là `Math.round(0,9 × target)` và `Math.round(1,1 × target)`, tức `calorieWindow` của `domain/energy.ts`, dải người dùng nhìn thấy. Test so cả 2801 mục tiêu nguyên từ 1200 tới 4000 (`generate_series` gọi chính hàm này) và in số mục tiêu đã so; thêm test qua HTTP ở `min − 1`, `min`, `max`, `max + 1` với mục tiêu 1235, 1245 (tích ×0,9 và ×1,1 tận cùng .5) và 2000.
+
+### Hàm
+
+| Hàm | Việc |
+|---|---|
+| `app._add_calories(p_log uuid, p_kcal numeric) → jsonb` (nội bộ) | Cộng `p_kcal` vào `calories_in` của dòng ngày (người gọi đã giữ khóa), rồi, nếu `NUTRITION_TARGET` của ngày đó chưa xong và tổng nằm trong dải, hoàn thành nó **một lần** và thưởng 50 XP / 20 xu (`QUEST_COMPLETE` / `NUTRITION_TARGET:<ngày logic>`). Tổng ra khỏi dải sau đó không đổi gì. Gọi `app._story_check`. Nhiệm vụ thực đơn (`nutrition_log_slot`) dùng lại chính hàm này. |
+| `nutrition_log_manual(p_action_id uuid, p_kcal numeric, p_label text, p_occurred_at timestamptz) → jsonb` | Một lần ghi tay. |
+| `workout_complete(p_action_id uuid, p_exercise_item_id uuid, p_elapsed_sec int, p_occurred_at timestamptz) → jsonb` | Một buổi tập, theo AR-11 (dưới). |
+
+Hai hàm gọi được là `SECURITY DEFINER`, chỉ `app_auth`, lấy người dùng từ `app.current_user_id()`, không nhận số thưởng nào. Mỗi hàm trả **kết quả của `app._grant`** cộng `reason`, `ref`, `logicalDate` và phần riêng:
+
+- `app._add_calories`, `nutrition_log_manual`: `completed` (lượt này hoàn thành nhiệm vụ), `storyAllDone` (lượt này làm đủ cốt truyện của ngày).
+- `workout_complete`: `completed` (buổi tập đạt nửa thời lượng, bất kể được gì), `questCompleted`, `storyAllDone`, `xpAwarded`, `coinAwarded`, `elapsedSec`, `durationSec`. `reason` / `ref` là `QUEST_COMPLETE` / `WORKOUT_MAIN:<ngày>` cho buổi hoàn thành, `WORKOUT_PARTIAL` / id buổi tập cho buổi khác.
+
+**XP của buổi tập (AR-11).** Gọi `given` là XP nhiệm vụ đã trả trong ngày đó, **đọc từ sổ cái** (các dòng `WORKOUT_PARTIAL` của các buổi tập của ngày, và dòng `QUEST_COMPLETE` của nhiệm vụ). Khi nhiệm vụ chưa xong: buổi ≥ nửa thời lượng được `xp_reward − given` và `coin_reward`, hoàn thành nhiệm vụ; buổi ngắn hơn được `least(floor(xp_reward × elapsed / duration), xp_reward − given)`, không xu. Khi đã xong: 0, buổi tập vẫn được ghi. Vì vậy một ngày không bao giờ trả quá 50 XP cho nhiệm vụ này, và xu chỉ một lần. `xp_awarded` và `coin_awarded` của buổi tập là số nó đã nhận.
+
+Lỗi (`HM000`), theo thứ tự:
+
+- `nutrition_log_manual`: (id đã có: dưới) → `VALIDATION_FAILED` (`kcal` / `required`, `min`, `max`; `label` / `max`; mọi trường sai một lượt) → `OCCURRED_AT_INVALID` → `DAY_CLOSED`.
+- `workout_complete`: (id đã có) → `NOT_FOUND` (không có bài tập đó, kể cả id của thứ khác) → `VALIDATION_FAILED` (`elapsedSec` / `required`, `min`, `max`: ngoài 1 … 2 × thời lượng) → `OCCURRED_AT_INVALID` → `DAY_CLOSED`.
+- Cả hai: `ONBOARDING_REQUIRED`. **Id đã có**: của chính người gọi là no-op (một lượt cộng 0; buổi tập trả lại đúng những gì nó đã nhận, không sự kiện nào); của người khác là `IDEMPOTENCY_KEY_REUSED`.
+
+**Khóa**: đúng thứ tự của "Khóa: một thứ tự, một chế độ" — dòng `users`, dòng ngày (`app._open_log`), dòng tiến độ của nhiệm vụ, `progression_state` (trong `app._grant`), ba khóa đầu `FOR NO KEY UPDATE` — và dòng `nutrition_logs` / `workout_sessions` được chèn **sau** các khóa đó. Hai test không cần may mắn của mục đó được lặp lại cho hai hàm này (`server/test/story.sql.test.ts`).
+
+### Bốn route
+
+Mọi từ chối đều được **ném**: lượt ghi bị từ chối không để lại dòng, calo, dòng sổ cái hay dòng `daily_logs` nào, và khóa idempotency được trả lại.
+
+| Route | Auth | Thành công | Lỗi riêng |
+|---|---|---|---|
+| `POST /nutrition/log` | `user`, có khóa | `200 ActionResult` | `422 VALIDATION_FAILED`, `409 PLAN_NOT_FOUND`, `409 DAY_CLOSED`, `422 OCCURRED_AT_INVALID`, `409 IDEMPOTENCY_KEY_REUSED` |
+| `GET /workout/catalog` | `user` | `200 WorkoutCatalog` | `422 VALIDATION_FAILED` (`duration`, `space`, `equipment` / `enum`) |
+| `GET /workout/items/{id}` | `user` | `200 WorkoutDetail` | `422 VALIDATION_FAILED` (`id` / `format`), `404 NOT_FOUND` |
+| `POST /workout/complete` | `user`, có khóa | `200 WorkoutResult` | `422 VALIDATION_FAILED`, `404 NOT_FOUND`, `409 DAY_CLOSED`, `422 OCCURRED_AT_INVALID`, `409 IDEMPOTENCY_KEY_REUSED` |
+
+- **Thân là một object JSON** và **`occurredAt` là một thời điểm có thật**, như ba route ghi của ngày (dùng chung `objectBody`, `occurredAtOf` của `routes/day.ts`). Thời điểm sau năm 9999 (một độ lệch đẩy `9999-12-31T23:59:59-23:59` sang năm 10000) PostgreSQL không đọc được: `422 VALIDATION_FAILED` (`occurredAt` / `format`) ở cả năm route ghi, không bao giờ `500`.
+- **`POST /nutrition/log`**: đúng một trong `kcal` / `mealSlot`. Không có cái nào: `kcal` / `required`; có cả hai: `mealSlot` / `format`. `mealSlot` hợp lệ là `409 PLAN_NOT_FOUND` cho tới khi có thực đơn (lạ thì `mealSlot` / `enum`). `kcal` là số hữu hạn bất kỳ từ 1 tới 5000 (chuỗi, `null`, `1e400` là `format`). `label` là chuỗi (khác thì `format`), được chuẩn hóa NFC và cắt khoảng trắng hai đầu, tối đa 60 code point (`max`), rỗng thì lưu `NULL`. Thuộc tính lạ bị bỏ qua. `delta.events`: `QUEST_COMPLETED` (`NUTRITION_TARGET`) ở lượt chốt, `STORY_ALL_DONE` ở lượt làm đủ cốt truyện.
+- **`GET /workout/catalog`**: `duration` là đúng `5`, `15`, `30` hoặc `45` (phút); `space` là một trong bốn giá trị, so bằng nhau với `space_needed`; `equipment` là danh sách những gì người dùng **có**, cách nhau bằng dấu phẩy, mỗi mã phải là `tham`, `ta-tay` hoặc `day-khang-luc`: bài tập khớp khi nó không cần gì ngoài danh sách đó (`equipment <@ có`). **Vắng tham số là không lọc thiết bị; có mà rỗng (`equipment=`) là không có gì**, chỉ bài không cần thiết bị (app luôn gửi tham số này). `recommended` khi hệ phái của người dùng nằm trong `archetypes`; thứ tự: được đề xuất trước, rồi theo tên (đối chiếu tiếng Việt của cơ sở dữ liệu), rồi theo `code`. `kcalEstimate` = MET × cân nặng của **snapshot mới nhất của chính người gọi** × giờ, làm tròn tới 10; cân nặng được đọc trong cùng câu lệnh và không bao giờ tới Node. Không khớp gì là `items: []`.
+- **`GET /workout/items/{id}`**: tóm tắt như trên cộng `sets` và các bước theo `position`, mỗi bước kèm động tác của nó (`demoCode`, ba dòng hướng dẫn, lưu ý).
+- **`POST /workout/complete`**: `exerciseItemId` là UUID (`required` / `format`), `elapsedSec` là số nguyên ≥ 1 (`format`, `min`; cận trên là của hàm). `WorkoutResult`: `completed`, `xpAwarded`, `coinAwarded` của buổi tập; `day` là hôm nay (`buildDay`); `delta` là thay đổi của chính request (`QUEST_COMPLETED` `WORKOUT_MAIN`, `STORY_ALL_DONE`, `LEVEL_UP`, `PET_STAGE_UP`). **Một buổi tập là một hành động**, gửi lại bao nhiêu lần cũng vậy: cùng khóa, cùng thân thì cùng câu trả lời đã lưu.
+- **`STORY_ALL_DONE`** được báo đúng ở lượt ghi làm `daily_logs.story_completed` chuyển thành `true` (kết quả của `app._story_check`). Lần gửi lại của chính lượt đó nhận câu trả lời đã lưu (một hành động, một sự kiện); khi câu trả lời đã lưu không còn, lượt gửi lại là no-op không báo gì; buổi tập thứ hai, bữa ăn sau đó không báo nữa.
+
+### Read model
+
+- `buildMe`: `resistanceMinutes7d` / `cardioMinutes7d` = tổng `elapsed_sec` / 60 của các buổi tập có ngày logic trong khoảng [hôm nay − 6, hôm nay], theo loại (CARDIO và HIIT gộp), trong cùng câu lệnh của `Me`.
+- `buildDaySummaries` / `buildDayDetail` (cùng câu lệnh `SUMMARIES`): `workoutMinutes` = tổng giây các buổi tập của ngày / 60. Hành động `NUTRITION`: `label` là nhãn ghi tay (`null` nếu không có), `value` là kcal, `mealSlot` `null` với ghi tay. `WORKOUT`: `label` là tên bài tập, `value` là số giây đã tập. `at` là `occurred_at`.
+
+### Mồi nhử, ca tấn công, test
+
+- `server/sql/82-decoy-story.sql`: `DECOY_1` có một lần ghi calo và một buổi tập của `DESK_STRETCH` (theo `code`), trên ngày của `81-decoy-day.sql`.
+- `server/checks/attacks/story.ts` (bốn ca): `nutrition_log_manual` và `workout_complete` dùng id dòng của mồi nhử làm action id (`IDEMPOTENCY_KEY_REUSED`, không gì đổi); `UPDATE daily_logs SET calories_in` trực tiếp (`permission denied for table daily_logs`); một lần ghi calo và một buổi tập của A ghi dòng của A, không dòng nào của mồi nhử.
+- `server/test/story.sql.test.ts`: seeder và số dòng, dải calo so với `calorieWindow` ở mọi mục tiêu 1200–4000, id lặp lại, thứ tự lỗi, ràng buộc, chế độ và thứ tự khóa.
+- `server/src/routes/nutrition.test.ts`, `workout.test.ts`: qua HTTP; AR-11 theo bảng nhiều chuỗi buổi tập (kể cả 1 giây, đúng nửa, thiếu một giây, gấp đôi, ba buổi dở cộng lại vượt phần thưởng); `STORY_ALL_DONE` theo hai thứ tự; cuộc đua trên pool đã mở sẵn (hai lần ghi calo, ba buổi tập, một tick, giờ ngủ cùng lúc, 12 vòng: không `5xx`, mỗi nhiệm vụ xong một lần, tổng đúng).
+
+### Phần ba cổng không nhìn thấy
+
+Từng ca dưới đây đã chạy thử (báo cáo Task 21): cổng 1 và cổng 3 im lặng, chỉ test bắt được.
+
+- thân hàm: dải calo lệch một đơn vị; thưởng hoàn thành lần thứ hai; XP buổi dở không bị chặn bởi phần còn lại; bộ lọc thiết bị bị đảo; `STORY_ALL_DONE` báo theo trạng thái thay vì theo lượt chuyển. Chưa chạy thử, chỉ test giữ: `given` đọc từ cột thay vì sổ cái; thứ tự và chế độ khóa;
+- `kcalEstimate`: bỏ điều kiện chủ sở hữu khi chọn snapshot không làm gì đỏ, vì RLS của `biometric_snapshots` là hàng rào thứ hai (câu lệnh chạy bằng `app_auth`); tắt cả RLS thì cổng 1 đỏ. Nếu sau này cân nặng được đọc trong một hàm `SECURITY DEFINER`, chỉ còn điều kiện tường minh và test giữ;
+- ràng buộc: `completed = (elapsed × 2 ≥ duration)`, `elapsed ≤ 2 × duration`, khoảng của `kcal` và `label`, `meal_slot` đi cùng `meal_id`, hai khóa ngoại kép — có test, cổng không đọc;
+- dữ liệu: một dòng nội dung bài tập bị sửa tay (seeder sửa lại ở lần migrate sau);
+- thứ tự theo tên của danh mục đi theo đối chiếu ICU `vi` của cơ sở dữ liệu; test so với `Intl.Collator('vi')` của Node trên nội dung hiện có, không chứng minh hai bên giống nhau với mọi tên;
+- chỉ số STR / SPD đếm **mọi** buổi tập, kể cả buổi sau khi nhiệm vụ đã xong: gửi nhiều buổi tập đẩy được chỉ số (tối đa ở 150 phút) mà không được thêm XP hay xu. Đó là chỉ số hiển thị, không phải tiền.
+
+Sửa `31-story.sql` thì chạy `npm run server:test`, không chỉ `npm run db:verify`.
