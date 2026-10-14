@@ -340,7 +340,7 @@ BEGIN
      AND p.proconfig IS DISTINCT FROM ARRAY['search_path=public, pg_temp']
      AND p.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, pg_temp'];
   IF found IS NOT NULL THEN
-    RAISE EXCEPTION 'function settings: a SECURITY DEFINER function must carry exactly SET search_path = public, pg_temp (or pg_catalog, pg_temp), any other function that or no setting at all; found: %', found;
+    RAISE EXCEPTION 'function settings: a SECURITY DEFINER function must carry exactly SET search_path = public, pg_temp (or pg_catalog, pg_temp); any other function carries exactly that or no setting at all; found: %', found;
   END IF;
   -- Whose rights a function runs with is what its file registered, compared by equality. It
   -- is not inferred: neither the name of a function nor its settings say which of the two its
@@ -372,7 +372,8 @@ BEGIN
   END IF;
 
   -- (2) (4) (7) (8) Ownership and grants of everything of ours, read from the ACL. Nothing is
-  -- owned by an app role (the owner needs no grant and is not subject to its policies), and
+  -- owned by an app role (the owner needs no grant and is not subject to its policies), every
+  -- table, view, sequence and function is owned by the one role that owns schema meta, and
   -- the grants to anyone but the owner are exactly the expected ones: only app_auth on
   -- registered tables, only the registered roles on functions, nothing on sequences, and
   -- nothing in the default privileges.
@@ -452,9 +453,12 @@ BEGIN
   LOOP
     IF r.kind NOT IN ('column', 'default privileges') AND r.owner LIKE 'app\_%' THEN
       RAISE EXCEPTION '% % is owned by app role %', r.kind, r.label, r.owner;
-    ELSIF r.kind = 'function' AND r.owner <> r.files_owner THEN
-      -- a SECURITY DEFINER function runs as its owner, and its owner may replace its body
-      RAISE EXCEPTION 'function % is owned by %: every function of ours belongs to %, the owner of schema meta, who runs the schema files', r.label, r.owner, r.files_owner;
+    ELSIF r.kind IN ('table', 'view', 'sequence', 'function') AND r.owner <> r.files_owner THEN
+      -- One role owns them all, the one that runs the schema files. The owner of a table is not
+      -- subject to its policies and may grant it on; a SECURITY DEFINER function runs as its
+      -- owner, and its owner may replace its body. (An app role is refused above, in the words
+      -- that say why that is the worst case.)
+      RAISE EXCEPTION '% % is owned by %: every table, view, sequence and function of ours belongs to %, the owner of schema meta, who runs the schema files', r.kind, r.label, r.owner, r.files_owner;
     ELSIF r.actual <> r.expected THEN
       RAISE EXCEPTION '% %: grants are %, expected %', r.kind, r.label, r.actual, r.expected;
     END IF;

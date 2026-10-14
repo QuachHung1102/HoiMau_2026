@@ -203,7 +203,8 @@ const FIXTURE = `
 const MEMBERSHIP =
   'role membership must be only app_conn in app_anon, app_auth, app_job WITH INHERIT FALSE, SET TRUE; found: ';
 const SEARCH_PATH =
-  'function settings: a SECURITY DEFINER function must carry exactly SET search_path = public, pg_temp (or pg_catalog, pg_temp), any other function that or no setting at all; found: ';
+  'function settings: a SECURITY DEFINER function must carry exactly SET search_path = public, pg_temp (or pg_catalog, pg_temp); any other function carries exactly that or no setting at all; found: ';
+const ONE_OWNER = `every table, view, sequence and function of ours belongs to ${SUPERUSER.user}, the owner of schema meta, who runs the schema files`;
 const SCHEMA_USAGE = '{app_anon:USAGE,app_auth:USAGE,app_job:USAGE}';
 const APP_HELPER = '{app_anon:EXECUTE,app_auth:EXECUTE,app_job:EXECUTE}';
 const FUNCTION_SECURITY =
@@ -290,7 +291,34 @@ const mutations = (database: string): [sql: string, raises: string][] => [
   // default privileges of that owner
   [
     'CREATE ROLE fx_fifth; ALTER FUNCTION app.week_start(date) OWNER TO fx_fifth',
-    `function app.week_start(date) is owned by fx_fifth: every function of ours belongs to ${SUPERUSER.user}`,
+    `function app.week_start(date) is owned by fx_fifth: ${ONE_OWNER}`,
+  ],
+  // and so is a table, a view or a sequence: any owner but the one that runs the schema files
+  // is exempt from the policies of what it owns. The table is named, not its column grants and
+  // not the sequence of its identity column, which changes owner with it.
+  [
+    'CREATE ROLE fx_fifth; ALTER TABLE fx_own_read OWNER TO fx_fifth',
+    `table fx_own_read is owned by fx_fifth: ${ONE_OWNER}`,
+  ],
+  [
+    'CREATE ROLE fx_fifth; ALTER TABLE fx_own_rw OWNER TO fx_fifth',
+    `table fx_own_rw is owned by fx_fifth: ${ONE_OWNER}`,
+  ],
+  [
+    'CREATE ROLE fx_fifth; ALTER TABLE fx_events OWNER TO fx_fifth',
+    `table fx_events is owned by fx_fifth: ${ONE_OWNER}`,
+  ],
+  [
+    'CREATE ROLE fx_fifth; ALTER VIEW fx_view OWNER TO fx_fifth',
+    `view fx_view is owned by fx_fifth: ${ONE_OWNER}`,
+  ],
+  [
+    'CREATE ROLE fx_fifth; ALTER SEQUENCE fx_seq OWNER TO fx_fifth',
+    `sequence fx_seq is owned by fx_fifth: ${ONE_OWNER}`,
+  ],
+  [
+    'CREATE ROLE fx_fifth; ALTER TABLE meta.test_clock OWNER TO fx_fifth',
+    `table meta.test_clock is owned by fx_fifth: ${ONE_OWNER}`,
   ],
   [
     'ALTER SCHEMA app OWNER TO app_auth',
@@ -660,8 +688,11 @@ const mutations = (database: string): [sql: string, raises: string][] => [
     "SELECT meta.expect_function('fx_trigger()', 'definer', '{}')",
     `${FUNCTION_SECURITY}fx_trigger() is SECURITY INVOKER, registered definer`,
   ],
+  // a word that is neither is refused where it is registered (see the test below); the registry
+  // is judged all the same, for the day the constraint is gone and a row was written directly
   [
-    "UPDATE meta.expected_functions SET security = 'owner' WHERE signature = 'fx_fn(text)'",
+    `ALTER TABLE meta.expected_functions DROP CONSTRAINT expected_functions_security_check;
+     UPDATE meta.expected_functions SET security = 'owner' WHERE signature = 'fx_fn(text)'`,
     'registry: function fx_fn(text): the security mode is definer or invoker, not owner',
   ],
   // (7) every function of ours is registered, and EXECUTE is granted to exactly the registered roles
@@ -905,6 +936,22 @@ test('a function is registered with its security mode: no default, no shorter fo
   await expectPgError(
     declare("meta.expect_function('fx_fn(text)', NULL, '{}')"),
     { code: '23502', messagePrefix: 'null value in column "security"' },
+  );
+  // a typo fails at the registration, not at the end of the migration; so does a direct write
+  const refused = {
+    code: '23514',
+    messagePrefix:
+      'new row for relation "expected_functions" violates check constraint "expected_functions_security_check"',
+  };
+  await expectPgError(
+    declare("meta.expect_function('fx_fn(text)', 'DEFINER', '{}')"),
+    refused,
+  );
+  await expectPgError(
+    fixture.admin.query(
+      "UPDATE meta.expected_functions SET security = 'owner' WHERE signature = 'fx_fn(text)'",
+    ),
+    refused,
   );
 });
 

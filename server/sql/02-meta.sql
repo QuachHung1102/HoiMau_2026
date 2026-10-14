@@ -60,6 +60,12 @@ DELETE FROM meta.expected_tables;
 DELETE FROM meta.expected_functions;
 -- A database migrated before the security mode was registered: the table is empty here.
 ALTER TABLE meta.expected_functions ADD COLUMN IF NOT EXISTS security text NOT NULL;
+-- A word that is neither fails at the line that registers it, not at the end of the migration.
+-- Dropped and added on every run, so a database that had the column before the constraint
+-- gets it too.
+ALTER TABLE meta.expected_functions DROP CONSTRAINT IF EXISTS expected_functions_security_check;
+ALTER TABLE meta.expected_functions ADD CONSTRAINT expected_functions_security_check
+  CHECK (security IN ('definer', 'invoker'));
 
 -- The three functions only record a declaration. 90-verify.sql judges every row of the registry
 -- (class, what the class allows, which roles and which security mode can be registered),
