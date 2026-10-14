@@ -157,6 +157,21 @@ BEGIN
     IF r.class IN ('own_read', 'own_rw', 'internal') AND NOT r.relrowsecurity THEN
       RAISE EXCEPTION 'table % (%): row level security is off', r.label, r.class;
     END IF;
+    -- The class is a claim of the file that registered the table. A content table has no policy
+    -- and every signed-in user reads all of it, so its rows may hang off content only: a
+    -- foreign key to a table of any other class makes them the rows of a user.
+    IF r.class = 'content' THEN
+      SELECT string_agg(format('%s (%s)', k.confrelid::regclass, coalesce(t.class, 'not registered')), ', '
+                        ORDER BY k.confrelid::regclass::text)
+        INTO found
+        FROM pg_constraint k
+        JOIN pg_class target ON target.oid = k.confrelid
+        LEFT JOIN meta.expected_tables t ON target.relnamespace = 'public'::regnamespace AND t.name = target.relname
+       WHERE k.conrelid = r.oid AND k.contype = 'f' AND t.class IS DISTINCT FROM 'content';
+      IF found IS NOT NULL THEN
+        RAISE EXCEPTION 'content table % has a foreign key to %: rows that hang off anything but content are not content', r.label, found;
+      END IF;
+    END IF;
     SELECT string_agg(x, ', ')
       INTO found
       FROM unnest(r.auth_update_columns || r.owner_column) x
@@ -167,6 +182,21 @@ BEGIN
       RAISE EXCEPTION 'table %: registered column does not exist: %', r.label, found;
     END IF;
   END LOOP;
+
+  -- A rule rewrites a statement on its table, and what it adds runs with the rights of the
+  -- owner of the table, past every grant and policy: privileged code that is no registered
+  -- function. None is allowed (a view has only the one that makes it a view).
+  SELECT string_agg(format('"%s" on %s', w.rulename, w.ev_class::regclass), ', '
+                    ORDER BY w.ev_class::regclass::text, w.rulename)
+    INTO found
+    FROM pg_rewrite w
+    JOIN pg_class c ON c.oid = w.ev_class
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+   WHERE n.nspname NOT LIKE 'pg\_%' AND n.nspname <> 'information_schema'
+     AND NOT (c.relkind = 'v' AND w.rulename = '_RETURN');
+  IF found IS NOT NULL THEN
+    RAISE EXCEPTION 'rule % is not allowed: what a rule does runs as the owner of the table', found;
+  END IF;
 
   -- (5) Policies in public are exactly the registered ones, text for text; all of them
   -- PERMISSIVE and TO app_auth, the only role that is granted anything on a table.
@@ -251,23 +281,44 @@ BEGIN
   -- lets the caller's temporary objects shadow the real ones. The settings of the function must
   -- be exactly one of the two allowed paths and nothing else: any further SET (for instance
   -- session_replication_role = replica, which switches triggers off) rides along unseen.
+  -- A SECURITY INVOKER function called by a SECURITY DEFINER one runs as the owner too, with
+  -- its own settings when it has any: it carries one of the two allowed paths, or nothing (and
+  -- then resolves names with the path of the function that called it).
   SELECT string_agg(format('%s %s', p.oid::regprocedure::text, coalesce(p.proconfig, '{}')), ', '
                     ORDER BY p.oid::regprocedure::text)
     INTO found
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
    WHERE n.nspname NOT LIKE 'pg\_%' AND n.nspname <> 'information_schema'
-     AND p.prosecdef
+     AND (p.prosecdef OR p.proconfig IS NOT NULL)
      AND p.proconfig IS DISTINCT FROM ARRAY['search_path=public, pg_temp']
      AND p.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, pg_temp'];
   IF found IS NOT NULL THEN
-    RAISE EXCEPTION 'SECURITY DEFINER function must carry exactly SET search_path = public, pg_temp (or pg_catalog, pg_temp) and no other setting: %', found;
+    RAISE EXCEPTION 'function settings: a SECURITY DEFINER function must carry exactly SET search_path = public, pg_temp (or pg_catalog, pg_temp), any other function that or no setting at all; found: %', found;
+  END IF;
+  -- Whether a function runs as its owner or as its caller is not in the registry, so the
+  -- function carries the rule itself. An internal one (in meta, or a name starting with "_") is
+  -- called only by a SECURITY DEFINER function or by the owner: it is SECURITY INVOKER, so that
+  -- a stray EXECUTE grant on it still stops at the tables. Any other function is SECURITY
+  -- DEFINER exactly when it carries a setting, the search_path asserted above: a definer made
+  -- invoker keeps its setting, an invoker made definer has none or is internal.
+  SELECT string_agg(format('%s is SECURITY %s', p.oid::regprocedure::text,
+                           CASE WHEN p.prosecdef THEN 'DEFINER' ELSE 'INVOKER' END), ', '
+                    ORDER BY p.oid::regprocedure::text)
+    INTO found
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname NOT LIKE 'pg\_%' AND n.nspname <> 'information_schema'
+     AND p.prosecdef <> (p.proconfig IS NOT NULL AND NOT (n.nspname = 'meta' OR left(p.proname, 1) = '_'));
+  IF found IS NOT NULL THEN
+    RAISE EXCEPTION 'function security: an internal function (in meta, or a name starting with "_") must be SECURITY INVOKER, any other must be SECURITY DEFINER exactly when it carries a setting; found: %', found;
   END IF;
 
   -- (2) (4) (7) (8) Ownership and grants of everything of ours, read from the ACL. Nothing is
   -- owned by an app role (the owner needs no grant and is not subject to its policies), and
   -- the grants to anyone but the owner are exactly the expected ones: only app_auth on
-  -- registered tables, only the registered roles on functions, nothing on sequences.
+  -- registered tables, only the registered roles on functions, nothing on sequences, and
+  -- nothing in the default privileges.
   FOR r IN
     WITH ours AS (
       SELECT oid, nspname, nspowner, nspacl FROM pg_namespace
@@ -305,6 +356,25 @@ BEGIN
         FROM pg_proc p
         JOIN ours n ON n.oid = p.pronamespace
         JOIN meta.expected_functions e ON e.signature = p.oid::regprocedure::text
+      UNION ALL
+      -- What the next object is born with. A row of pg_default_acl is the whole ACL of the next
+      -- table, sequence or function its role creates (in a schema: what is added to it), so it
+      -- names nobody but that role. No row at all is PostgreSQL's own default, which for a
+      -- function is EXECUTE to PUBLIC: 00-roles.sql revokes it, for whoever owns our functions.
+      SELECT 'default privileges',
+             format('for %s created by %s%s',
+                    CASE d.objtype WHEN 'r' THEN 'tables' WHEN 'S' THEN 'sequences' WHEN 'f' THEN 'functions'
+                                   WHEN 'T' THEN 'types' WHEN 'n' THEN 'schemas' ELSE d.objtype::text END,
+                    pg_get_userbyid(d.role), ' in schema ' || nullif(d.namespace, 0)::regnamespace::text),
+             d.role, d.acl, '{}'
+        FROM (SELECT defaclrole, defaclnamespace, defaclobjtype, defaclacl FROM pg_default_acl
+              UNION ALL
+              SELECT o.proowner, 0::oid, 'f', acldefault('f', o.proowner)
+                FROM (SELECT DISTINCT p.proowner FROM pg_proc p JOIN ours n ON n.oid = p.pronamespace) o
+               WHERE NOT EXISTS (SELECT 1 FROM pg_default_acl x
+                                  WHERE x.defaclrole = o.proowner AND x.defaclnamespace = 0
+                                    AND x.defaclobjtype = 'f')
+             ) d (role, namespace, objtype, acl)
     )
     SELECT o.kind, o.label, pg_get_userbyid(o.owner)::text AS owner,
            ARRAY(SELECT x FROM unnest(o.expected) x ORDER BY x COLLATE "C") AS expected,
@@ -316,9 +386,12 @@ BEGIN
                           WHERE g.grantee <> o.owner) s
                   ORDER BY s.x COLLATE "C") AS actual
       FROM objects o
-     ORDER BY o.kind, o.label
+     -- Who owns an object is judged before what follows from it: a table before the grants on
+     -- its columns (an owner needs none, so they no longer show), a function before the
+     -- default privileges of its owner.
+     ORDER BY o.kind IN ('column', 'default privileges'), o.kind, o.label
   LOOP
-    IF r.kind <> 'column' AND r.owner LIKE 'app\_%' THEN
+    IF r.kind NOT IN ('column', 'default privileges') AND r.owner LIKE 'app\_%' THEN
       RAISE EXCEPTION '% % is owned by app role %', r.kind, r.label, r.owner;
     ELSIF r.actual <> r.expected THEN
       RAISE EXCEPTION '% %: grants are %, expected %', r.kind, r.label, r.actual, r.expected;

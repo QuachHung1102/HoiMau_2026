@@ -16,12 +16,14 @@ npm run server:typecheck   # tsc --noEmit theo server/tsconfig.json
 npm run server:test        # test của server trên PostgreSQL thật
 npm run server:dev         # API trên cụm phát triển, http://127.0.0.1:8787/api/v1 (xem "Tầng HTTP")
 npm run db:verify          # cổng 1: lược đồ tự kiểm
+npm run db:api-check       # cổng 2: một request thật làm được gì
+npm run db:mutation-check  # cổng 3: cổng 1 có biết kêu không
 npm run db:cleanup         # dọn PostgreSQL của dự án bị bỏ lại (đọc mục "Khôi phục" trước khi chạy)
 ```
 
 Không cần cài PostgreSQL, không cần Docker. Lần chạy test đầu tiên tạo cụm cơ sở dữ liệu (`initdb`) trong `server/.pgdata/`; các lần sau dùng lại thư mục đó.
 
-Các lệnh `db:api-check` (từ Task 15), `db:mutation-check` (từ Task 16) và `server:perf` đã khai báo trong `server/package.json` nhưng **chưa tồn tại**: tệp của chúng đến ở các nhiệm vụ đó, trước lúc ấy lệnh báo lỗi không tìm thấy tệp.
+Lệnh `server:perf` đã khai báo trong `server/package.json` nhưng **chưa tồn tại**: tệp của nó đến ở một nhiệm vụ sau, trước lúc ấy lệnh báo lỗi không tìm thấy tệp.
 
 ## Hai cụm PostgreSQL của dự án
 
@@ -175,7 +177,7 @@ Mỗi cổng mù ở chỗ cổng khác nhìn thấy.
 |---|---|---|---|
 | 1. Lược đồ tự kiểm | `npm run db:verify` | superuser | Catalog đúng thiết kế: vai trò, quyền, RLS, policy, hàm. |
 | 2. API check | `npm run db:api-check` | đúng vai trò ứng dụng (`app_conn` rồi chuyển vai) | Một request thật làm được gì: đi đúng đường của kẻ tấn công, trên cơ sở dữ liệu có dòng của "người khác" để tìm. |
-| 3. Mutation check | `npm run db:mutation-check` (từ Task 16, chưa có) | superuser | Cổng 1 có *biết kêu* không: phá từng hàng rào một và đòi cổng 1 phải báo lỗi nêu đúng tên thứ bị phá. |
+| 3. Mutation check | `npm run db:mutation-check` | superuser | Cổng 1 có *biết kêu* không: phá từng hàng rào một và đòi cổng 1 phải báo lỗi nêu đúng tên thứ bị phá. |
 
 Cổng 1 không biết một request thật làm được gì; cổng 2 không biết thiết kế định nói gì; cả hai đều không biết phép kiểm của chính mình còn sống hay đã mục. Một file tự kiểm luôn xanh và một file tự kiểm đã mục trông giống hệt nhau, và cổng 3 là thứ phân biệt chúng.
 
@@ -187,22 +189,27 @@ Cổng 1 không biết một request thật làm được gì; cổng 2 không b
 2. **Thiết lập lưu sẵn và quyền trên tham số.** `pg_db_role_setting` không có dòng nào áp dụng cho một vai trò `app_*` trong cơ sở dữ liệu này (`ALTER ROLE … SET`, `ALTER DATABASE … SET`, `ALTER ROLE ALL SET`). `pg_parameter_acl` không cấp tham số cấu hình nào cho một vai trò `app_*` hay `PUBLIC` (`GRANT SET ON PARAMETER …`).
 3. **Sở hữu.** Không cơ sở dữ liệu, schema, bảng, view, sequence hay hàm nào thuộc sở hữu của một vai trò `app_*`: chủ sở hữu không cần GRANT và không chịu policy.
 4. **Sổ đăng ký tự nó hợp lệ, và khớp catalog.** Mỗi dòng đăng ký bảng có lớp thuộc bốn lớp và đúng những gì lớp cho phép (`own_read`, `content`: chỉ `{SELECT}`; `internal`: không gì; `own_rw`: chỉ trong `SELECT`, `INSERT`, `UPDATE`, `DELETE`; `owner_column` có với `own_*`, rỗng với hai lớp kia); mỗi dòng đăng ký hàm chỉ nêu `app_anon`, `app_auth`, `app_job`. Mọi bảng và view trong `public` đều đã đăng ký; mọi bảng đã đăng ký đều tồn tại; cột `owner_column` và các cột `UPDATE` đã đăng ký đều tồn tại. Mọi hàm trong `public`, `app`, `meta` đều đã đăng ký; mọi hàm đã đăng ký đều tồn tại; hàm nội bộ (tên bắt đầu bằng `_` ở bất kỳ schema nào, và `meta.*`) đăng ký với tập vai trò rỗng.
-5. **View.** View phải là `security_invoker`; không có materialized view, không có foreign table.
-6. **RLS** bật với các lớp `own_read`, `own_rw`, `internal`.
+5. **View và rule.** View phải là `security_invoker`; không có materialized view, không có foreign table. **Rule (`CREATE RULE`) bị cấm trên mọi bảng**: phần một rule thêm vào câu lệnh chạy bằng quyền của chủ bảng, vượt qua mọi GRANT và policy, mà không phải là một hàm đã đăng ký. (View chỉ có đúng rule `_RETURN` làm nên nó.)
+6. **RLS** bật với các lớp `own_read`, `own_rw`, `internal`. **Lớp là một lời khai**, nên bảng `content` còn bị xét theo khóa ngoại: nó chỉ được tham chiếu bảng `content` khác. Bảng `content` có khóa ngoại tới bảng thuộc lớp khác (hay tới bảng chưa đăng ký) là dữ liệu người dùng bị khai nhầm lớp, và mọi người đã đăng nhập sẽ đọc được toàn bộ.
 7. **Quyền, đọc từ ACL, bằng đúng tập mong đợi** (`WITH GRANT OPTION` cũng là sai lệch):
    - cơ sở dữ liệu: chỉ mặc định `CONNECT` và `TEMPORARY` cho `PUBLIC` (không ai có `CREATE`);
    - schema: chỉ `USAGE` trên `public` và `app` cho `app_anon`, `app_auth`, `app_job`; `meta` không cấp cho ai; không ai có `CREATE`;
    - bảng và view: chỉ `app_auth`, đúng tập quyền đã đăng ký; bảng ngoài `public` không cấp cho ai;
    - cột: chỉ `UPDATE` cho `app_auth` trên đúng các cột đã đăng ký; không có quyền theo cột nào khác;
    - sequence: không cấp cho ai;
-   - hàm: `EXECUTE` cho đúng tập vai trò đã đăng ký.
+   - hàm: `EXECUTE` cho đúng tập vai trò đã đăng ký;
+   - **quyền mặc định** (`pg_default_acl`: thứ mà bảng, sequence hay hàm *tạo sau này* sinh ra đã có): không dòng nào cấp gì cho ai ngoài chính vai trò của dòng đó, kể cả dòng theo schema (`ALTER DEFAULT PRIVILEGES IN SCHEMA …`); và mặc định `EXECUTE` cho `PUBLIC` trên hàm phải đang bị gỡ với vai trò sở hữu các hàm của dự án. `ALTER DEFAULT PRIVILEGES GRANT INSERT ON TABLES TO app_auth` vì thế đỏ ngay, không chờ tới khi có bảng mới.
+
+   Chủ sở hữu được xét trước những gì suy ra từ nó: một bảng thuộc về vai trò `app_*` được báo là "owned by app role", không phải là sai lệch quyền trên cột của nó (chủ sở hữu không cần GRANT nên các quyền đó biến khỏi ACL).
 8. **Policy** trên mỗi bảng là đúng các policy đã đăng ký: `PERMISSIVE`, `TO app_auth`, cùng lệnh, biểu thức `USING` và `WITH CHECK` bằng nguyên văn; bảng `internal` không có policy nào.
 9. **Thiết lập của hàm `SECURITY DEFINER`** phải là đúng một `SET search_path` với một trong hai giá trị `public, pg_temp` hoặc `pg_catalog, pg_temp`, **và không có `SET` nào khác** (một `SET session_replication_role = replica` đi kèm sẽ tắt trigger trong thân hàm). Không đặt, đặt `public` (thiếu `pg_temp` ở cuối), hay `pg_temp, public` đều bị từ chối: mọi vai trò đều tạo được bảng tạm, và bảng tạm trùng tên sẽ che bảng thật trong thân hàm đặc quyền.
-10. `meta.test_clock` rỗng.
+   **Hàm `SECURITY INVOKER` cũng vậy khi nó có `SET`**: hoặc không `SET` gì (khi đó nó dùng `search_path` của hàm gọi nó), hoặc đúng một trong hai giá trị trên và không gì khác. Hàm nội bộ được một hàm `SECURITY DEFINER` gọi thì chạy bằng quyền chủ sở hữu với thiết lập của chính nó. Đã chạy thử: `app._throttle_hit` với `search_path = pg_temp, public` ghi bộ đếm đăng nhập sai vào bảng tạm của người gọi, bảng thật không nhận dòng nào.
+10. **Chế độ của hàm** (chạy bằng quyền ai) không có trong sổ đăng ký, nên luật nằm ở chính hàm: hàm nội bộ (trong `meta`, hoặc tên bắt đầu bằng `_`) phải là `SECURITY INVOKER`; mọi hàm khác là `SECURITY DEFINER` **khi và chỉ khi** nó có `SET`. Nhờ vậy cả hai chiều đổi đều lộ: hàm `DEFINER` bị đổi thành `INVOKER` vẫn mang `SET`; hàm `INVOKER` bị đổi thành `DEFINER` thì hoặc không có `SET` (mục 9 báo), hoặc là hàm nội bộ. Hàm nội bộ chỉ được gọi từ hàm `SECURITY DEFINER` hoặc bởi chủ sở hữu nên không bao giờ cần `DEFINER`; để nó là `INVOKER` thì một `GRANT EXECUTE` lạc vào nó vẫn dừng ở quyền trên bảng.
+11. `meta.test_clock` rỗng.
 
 Giới hạn cần biết: phép so ACL coi mọi quyền ngoài mô tả là vi phạm, nên một vai trò vận hành (sao lưu, đọc báo cáo) được cấp quyền trực tiếp trên bảng sẽ làm cổng 1 đỏ; quyền `CONNECT` cấp riêng cho `app_conn` trên cơ sở dữ liệu cũng vậy, và một vai trò quản trị không phải superuser tạo ra các vai trò `app_*` sẽ tự có quan hệ thành viên `ADMIN` với chúng. Muốn có những thứ đó thì sửa mô tả trong `90-verify.sql` cùng một ca đột biến tương ứng, không nới phép so.
 
-`server/checks/verify.test.ts` chạy ba việc trên lược đồ thật (áp dụng lại toàn bộ file SQL trên một cơ sở dữ liệu đã có lược đồ và xác nhận catalog không đổi một dòng nào; chạy `90-verify.sql`; xác nhận nó báo lỗi khi `meta.test_clock` có dòng), rồi dựng một lược đồ mẫu có đủ bốn lớp và phá lần lượt từng hàng rào, mỗi lần đòi đúng SQLSTATE `P0001` và đúng phần đầu thông báo nêu tên thứ bị phá. **Thêm hay siết một phép kiểm trong `90-verify.sql` thì thêm ca đột biến của nó vào file test này trong cùng thay đổi.** Cổng 3 (từ Task 16) lặp lại phép chứng minh đó trên toàn bộ bảng và hàm thật.
+`server/checks/verify.test.ts` chạy ba việc trên lược đồ thật (áp dụng lại toàn bộ file SQL trên một cơ sở dữ liệu đã có lược đồ và xác nhận catalog không đổi một dòng nào; chạy `90-verify.sql`; xác nhận nó báo lỗi khi `meta.test_clock` có dòng), rồi dựng một lược đồ mẫu có đủ bốn lớp và phá lần lượt từng hàng rào, mỗi lần đòi đúng SQLSTATE `P0001` và đúng phần đầu thông báo nêu tên thứ bị phá. **Thêm hay siết một phép kiểm trong `90-verify.sql` thì thêm ca đột biến của nó vào file test này trong cùng thay đổi.** Cổng 3 lặp lại phép chứng minh đó trên toàn bộ bảng, policy và hàm thật (xem "Cổng 3: mutation check").
 
 ## Cổng 2: API check và dòng mồi nhử
 
@@ -314,7 +321,7 @@ export const attacks: Attack[] = [
 ### Thêm bảng mới: cổng 2 đòi gì
 
 - **Mọi bảng có khóa ngoại dẫn về `users`** (trực tiếp hay qua bảng khác), dù đăng ký lớp nào, mà `DECOY_1` chưa có dòng: phép kiểm 12 đỏ với `no decoy row in <bảng>` (bảng `own_*` còn làm đỏ phép kiểm 3, 5, 10). Thêm `server/sql/8N-decoy-<mảng>.sql` (số từ 81 tới 89, chạy sau seeder và trước `90-verify.sql`), viết theo các luật ở trên. Dòng của bảng con phải trỏ tới dòng của **mồi nhử** ở bảng cha.
-- Bảng có khóa ngoại dẫn về `users` mà đăng ký là `content`: phép kiểm 12 đỏ. Bảng `content` không có policy và mọi người đã đăng nhập đều đọc được; chép nhầm khối đăng ký của một bảng nội dung cho một bảng dữ liệu người dùng là lỗi mà cổng 1 không thấy (catalog khớp với lời khai).
+- Bảng có khóa ngoại dẫn về `users` mà đăng ký là `content`: phép kiểm 12 đỏ. Bảng `content` không có policy và mọi người đã đăng nhập đều đọc được; chép nhầm khối đăng ký của một bảng nội dung cho một bảng dữ liệu người dùng là lỗi mà catalog vẫn "khớp với lời khai". Cổng 1 cũng từ chối nó ngay cuối lần migrate (`content table … has a foreign key to …`): bảng `content` chỉ được tham chiếu bảng `content`.
 - Hàm mới được phép kiểm 7 và 8 phủ ngay khi đăng ký. Hai trường hợp phải sửa file cổng: tham số kiểu đa hình (`anyelement`…) không gọi được bằng `NULL` ép kiểu, phép kiểm 7 đỏ với lỗi khác `42501`; hàm `STRICT` có tham số thuộc kiểu chưa có trong `LITERAL`, phép kiểm 7 đỏ và nêu tên hàm cùng kiểu.
 - Bảng, view hay hàm chưa đăng ký: phép kiểm 11 đỏ và nêu tên. Bảng không được đặt ngoài `public`.
 - Schema mới: thêm vào `SCHEMA_USERS` trong file cổng ai được `USAGE` trên nó.
@@ -332,8 +339,115 @@ Chạy trên một cơ sở dữ liệu thứ hai, mỗi ca: phép kiểm đang 
 - Phép kiểm 5 ghi **một** giá trị cho mọi dòng của A: bảng `own_rw` mà A có nhiều dòng và cột được cấp lại là cột duy nhất sẽ cần một câu lệnh cho mỗi dòng. `DELETE` không `WHERE` của A cũng sẽ vấp một khóa ngoại `RESTRICT` trỏ vào dòng của A. Chưa bảng nào như vậy; khi có thì sửa phép kiểm, đừng nới nó.
 - View đăng ký là `content` mà hiện dữ liệu người dùng: view không có khóa ngoại nên phép kiểm 12 không thấy.
 - Job: cổng chạy trên bản sao mới, chưa job nào chạy. Job xóa nhầm dòng mồi nhử không làm cổng đỏ nếu job đó không có ca tấn công riêng.
-- `ALTER DEFAULT PRIVILEGES … TO app_auth` chỉ có hiệu lực với bảng tạo sau đó: cả hai cổng đều không thấy cho tới khi một bảng mới xuất hiện.
+- `ALTER DEFAULT PRIVILEGES … TO app_auth` chỉ có hiệu lực với bảng tạo sau đó: cổng này không thấy cho tới khi một bảng mới xuất hiện. Cổng 1 đọc `pg_default_acl` và thấy ngay.
 - HTTP: route quên kiểm tra phiên, thân response lộ dữ liệu. Đó là test của từng route.
+
+## Cổng 3: mutation check
+
+`npm run db:mutation-check` chạy `server/checks/mutation-check.test.ts`. Cổng 1 xanh trên một lược đồ đúng, và một cổng 1 đã mục cũng xanh y như vậy. Cổng 3 phân biệt hai thứ đó: nó **phá từng hàng rào một lần, có chủ ý**, chạy lại nguyên văn `90-verify.sql`, và đòi cổng 1 phải báo lỗi **nêu đúng thứ vừa bị phá**. `verify.test.ts` làm việc đó trên một lược đồ mẫu viết tay, từng câu một; cổng 3 làm trên lược đồ thật, với đột biến được **liệt kê từ catalog và sổ đăng ký**, nên bảng, policy hay hàm của một file SQL sau này được phủ mà không ai phải sửa file cổng.
+
+### Cách chạy
+
+- Một bản sao của cơ sở dữ liệu mẫu, một kết nối superuser. Mỗi đột biến: `BEGIN` → câu lệnh phá hàng rào → toàn bộ `90-verify.sql` → đòi exception → `ROLLBACK`. Không tạo lại bản sao cho từng đột biến; cả cổng chạy trong khoảng 20 giây.
+- Trước đột biến đầu tiên `90-verify.sql` phải đạt trên bản sao còn nguyên; sau đột biến cuối cùng nó phải đạt lần nữa, qua một **kết nối mới**.
+- In một dòng `PASS <đột biến> -> "<thông báo của cổng 1>"` cho từng đột biến, rồi số đột biến của từng lớp và dòng tổng `mutation-check: N of N detected, … classes`.
+
+### Một đột biến, một câu trả lời
+
+Đạt ⟺ SQLSTATE `P0001` (exception do chính `90-verify.sql` ném) **và** thông báo chứa mọi mảnh đã ghi cho đột biến đó. Mọi kết cục khác là hỏng, mỗi kết cục một tên:
+
+| Cổng 3 in ra | Nghĩa |
+|---|---|
+| `verify did not raise` | Cổng 1 mù với hàng rào đó, hoặc đột biến không đổi gì cả. |
+| `raised for the wrong reason: "…" does not name "…"` | Cổng 1 có kêu, nhưng vì một thứ khác: phép khẳng định đang thử có thể đã chết. |
+| `the mutation did not apply: <SQLSTATE> "…"` | Câu lệnh phá không chạy được. Không bao giờ được tính là đạt hay bỏ qua. |
+| `verify crashed instead of refusing: …` | Cổng 1 vỡ với một lỗi không phải của nó. |
+| `class "…": covered 0` | Một lớp không liệt kê được đối tượng nào. |
+
+- **Mảnh được viết theo đúng câu của phép khẳng định đang thử**, không chỉ là tên đối tượng: `table users: grants are` cùng `app_job:TRUNCATE`, chứ không phải `users`. Lý do có thật: sau `ALTER TABLE users OWNER TO app_auth`, phép so quyền cũng lệch, và câu của nó cũng chứa cả `users` lẫn `app_auth`. Chính ca này đã lộ ra khi cổng 3 chạy lần đầu: cổng 1 trả lời bằng sai lệch quyền trên cột thay vì "owned by app role".
+- Tên được so **nguyên từ**: `users` không nằm trong `user_settings` hay `app.users`.
+- Chỉ liệt kê thứ lược đồ còn nguyên **chưa có** (quyền chưa được cấp, quan hệ thành viên chưa tồn tại). Một đột biến cấp lại thứ đã có sẽ không đổi gì và bị báo `verify did not raise`.
+- Cổng tự thử mình bằng sáu cái bẫy, mỗi cái phải bị báo đúng tên: `SELECT 1` (không phá gì), một đột biến thật khai tên bảng khác, một đột biến thật khai một tên chỉ là một phần của tên trong thông báo, một câu lệnh không chạy được, một đột biến không khai mảnh nào, một lớp rỗng.
+
+### Các lớp đột biến
+
+Số trong ngoặc là của lược đồ lúc viết mục này (19 bảng trong `public`, 4 bảng trong `meta`, 11 policy, 29 hàm): 1404 đột biến trong 43 lớp.
+
+| Liệt kê theo | Đột biến | Cổng 1 phải nói |
+|---|---|---|
+| mỗi bảng có RLS (15) | `DISABLE ROW LEVEL SECURITY` | `table … (lớp): row level security is off` |
+| mỗi bảng của dự án, kể cả `meta` (23) | `OWNER TO app_auth` | `table … is owned by app role app_auth` |
+| mỗi bảng (23) | `CREATE RULE … DO ALSO NOTHING` | `rule "…" on … is not allowed` |
+| mỗi bảng × `PUBLIC` và từng vai trò `app_*` × **mọi loại quyền trên bảng mà PostgreSQL có** (đọc từ `acldefault`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER`, `MAINTAIN`) mà bên đó chưa có (907) | `GRANT … ON … TO …` | `table …: grants are` kèm `<vai trò>:<quyền>` |
+| mỗi bảng: cột đầu tiên chưa đăng ký `UPDATE` (23) | `GRANT UPDATE (cột) … TO app_auth` | `column bảng.cột: grants are` kèm `app_auth:UPDATE` |
+| mỗi bảng không phải `content` có khóa chính (15) | tạo bảng có khóa ngoại tới nó, cấp `SELECT`, đăng ký là `content` | `content table … has a foreign key to … (lớp)` |
+| mỗi bảng × mỗi lệnh bảng cấp cho `app_auth`; `FOR ALL` với bảng không cấp gì (21) | thêm policy thứ hai `… TO app_auth USING (true)` | `policy "…" on table … is not registered`, hoặc `internal table … has policy "…"` |
+| mỗi policy, mỗi biểu thức `USING` / `WITH CHECK` (13) | tạo lại với `(<nguyên bản>) OR true` | `policy "…" on table …: USING is` / `WITH CHECK is` |
+| như trên (13) | tạo lại với cột đầu tiên nó đọc bị thay bằng cột khác | như trên |
+| mỗi policy (11 mỗi loại) | xóa; tạo lại `AS RESTRICTIVE`; `ALTER POLICY … TO PUBLIC` | `registered policy … does not exist`; `is RESTRICTIVE`; `applies to {PUBLIC}` |
+| mỗi hàm × `PUBLIC` và từng vai trò `app_*` chưa có `EXECUTE` (119) | `GRANT EXECUTE` | `function …: grants are` kèm `<vai trò>:EXECUTE` |
+| mỗi hàm (29) | `OWNER TO app_auth` | `function … is owned by app role app_auth` |
+| mỗi hàm `SECURITY DEFINER` (14) | `RESET search_path` | `<chữ ký> {}` trong câu về thiết lập của hàm |
+| mỗi hàm, kể cả `SECURITY INVOKER` (29) | `SET search_path = pg_temp, public` | `<chữ ký> {"search_path=pg_temp, public"}` |
+| mỗi hàm `SECURITY DEFINER` (14) | `SECURITY INVOKER` | `<chữ ký> is SECURITY INVOKER` |
+| mỗi hàm `SECURITY INVOKER` (15) | `SECURITY DEFINER` | `<chữ ký> is SECURITY DEFINER` nếu hàm có `SET` hợp lệ, ngược lại `<chữ ký> {}` (câu về thiết lập) |
+| mỗi schema của dự án × `PUBLIC` và từng vai trò × `USAGE`, `CREATE` chưa có (24) | `GRANT … ON SCHEMA` | `schema …: grants are` kèm `<vai trò>:<quyền>` |
+| `PUBLIC` và từng vai trò × bảng, hàm, sequence × toàn cục và `IN SCHEMA public` (30) | `ALTER DEFAULT PRIVILEGES … GRANT …` | `default privileges for … created by …: grants are` |
+| mỗi vai trò `app_*` × năm thuộc tính (20) | `ALTER ROLE … SUPERUSER` / `BYPASSRLS` / `CREATEROLE` / `CREATEDB` / `REPLICATION` | `role … is SUPERUSER, BYPASSRLS, …` |
+| mỗi vai trò request (3); vai trò đăng nhập (1) | `ALTER ROLE … LOGIN`; `ALTER ROLE app_conn INHERIT` | `role … can log in`; `role app_conn must be LOGIN NOINHERIT` |
+| mỗi cặp vai trò `app_*` chưa có quan hệ thành viên ở cả hai chiều (6); mỗi quan hệ đang có (3) | `GRANT a TO b`; `GRANT … WITH INHERIT TRUE` | `b in a`; `… (inherit t, set t, admin f)` |
+| mỗi vai trò `app_*` × `role`, `app.user_id` (8) | `ALTER ROLE … IN DATABASE <bản sao> SET …` | `role …, database …: {…}` |
+| mỗi thứ một lần (3) | bảng chưa đăng ký trong `public`; hàm chưa đăng ký trong `public`; một dòng trong `meta.test_clock` | `table … is not registered`; `function is not registered`; `meta.test_clock is not empty` |
+
+`GRANT USAGE ON SCHEMA app TO app_auth` **không** có trong danh sách: `app_auth` vốn có quyền đó theo thiết kế (policy gọi `app.current_user_id()`), nên câu lệnh không đổi gì. Thay cho nó là `GRANT CREATE ON SCHEMA app TO app_auth` và `GRANT USAGE ON SCHEMA app` cho `PUBLIC`, `app_conn`.
+
+### Vai trò là của cả cụm
+
+`ALTER ROLE`, quan hệ thành viên và thiết lập lưu cho vai trò là các dòng trong catalog **dùng chung cho mọi cơ sở dữ liệu của cụm**, kể cả cơ sở dữ liệu mẫu. Chúng an toàn ở đây vì hai lý do: cổng 3 chạy một mình trên cụm test (xem "Một cụm test, mỗi lúc một lượt chạy"), và nó không bao giờ `COMMIT`: mọi đột biến được hoàn lại cùng transaction của nó. Test cuối cùng chứng minh điều đó qua một kết nối mới: chỉ `app_conn` đăng nhập được và nó là `NOINHERIT`; không vai trò `app_*` nào là superuser hay `BYPASSRLS`; và toàn bộ thuộc tính vai trò, quan hệ thành viên, thiết lập lưu sẵn và quyền mặc định giống từng dòng với ảnh chụp trước đột biến đầu tiên. Cổng không bao giờ chạm vào cơ sở dữ liệu mẫu.
+
+### Không cần `FORCE ROW LEVEL SECURITY`
+
+RLS không áp dụng cho chủ sở hữu bảng trừ khi bảng có `FORCE ROW LEVEL SECURITY`. Dự án **không** dùng `FORCE`, vì tiền đề của nó luôn đúng: mọi bảng thuộc về superuser chạy migration, và không vai trò ứng dụng nào sở hữu bảng nào. Tiền đề đó không phải là lời hứa mà là hàng rào được canh: lớp đột biến `ALTER TABLE … OWNER TO app_auth` ở trên phá nó trên **từng** bảng và đòi cổng 1 báo `table … is owned by app role app_auth`. (Bật `FORCE` trên một bảng không làm cổng 1 đỏ; nó chỉ thừa.)
+
+### Bảng, policy, hàm mới: cổng 3 cho gì và đòi gì
+
+Cho không, không cần sửa gì ở file cổng:
+
+- **Bảng mới** (đã đăng ký bằng `meta.expect_table`): tắt RLS (nếu bảng có RLS), đổi chủ sở hữu, rule, mọi loại quyền cho `PUBLIC` và từng vai trò `app_*`, `UPDATE` trên một cột chưa đăng ký, policy thứ hai cho mỗi lệnh bảng cấp, và bảng "content" bám vào nó (nếu nó không phải `content`).
+- **Policy mới** (đã đăng ký bằng `meta.expect_policy`): `OR true` và đổi cột trên từng biểu thức, xóa, `RESTRICTIVE`, `TO PUBLIC`.
+- **Hàm mới** (đã đăng ký bằng `meta.expect_function`): `EXECUTE` cho `PUBLIC` và cho từng vai trò `app_*` chưa đăng ký, đổi chủ sở hữu, `search_path` hỏng, đổi chế độ `DEFINER` / `INVOKER`, và gỡ `search_path` nếu là `DEFINER`.
+
+Đòi lại: lược đồ phải **đạt cổng 1 trước đã** (test đầu tiên của cổng 3). Mọi thứ còn lại là hệ quả của các luật đăng ký ở mục dưới. Những trường hợp một nhiệm vụ sau có thể thấy cổng 3 đỏ, và việc cần làm:
+
+- `verify did not raise` trên một đối tượng mới: cổng 1 mù với hàng rào đó. Sửa `90-verify.sql` bằng điều kiện nhỏ nhất, thêm ca viết tay vào `verify.test.ts`; **không** gỡ đột biến.
+- `the mutation did not apply` ở lớp "đổi cột": cột có tên phải đặt trong dấu nháy kép (cổng thay tên cột trần trong biểu thức). Đặt tên cột bằng chữ thường và gạch dưới, hoặc sửa hàm `onAnotherColumn` trong file cổng.
+- Policy không đọc cột nào (ví dụ chỉ gọi hàm) không có đột biến "đổi cột"; văn bản của nó vẫn được canh bằng `OR true`.
+- Đối tượng thuộc loại **chưa có** trong lược đồ (sequence, view, trigger): hiện không có lớp đột biến nào cho chúng, vì một lớp rỗng là một lớp hỏng. Nhiệm vụ đầu tiên thêm một view hay một sequence thì thêm lớp của nó vào `CLASSES` (ca viết tay tương ứng đã có trong `verify.test.ts`).
+
+### Phần cổng 3 không phá
+
+Những hàng rào không gắn với từng bảng hay từng hàm chỉ có ca viết tay trong `verify.test.ts`, trên lược đồ mẫu: quyền và chủ sở hữu của cơ sở dữ liệu, chủ sở hữu schema, quyền trên tham số cấu hình (`GRANT SET ON PARAMETER`), `ALTER DATABASE … SET` và `ALTER ROLE ALL SET`, vai trò ngoài bộ `app_*` (thành viên của `pg_read_all_data`, vai trò lạ được cấp quyền), view không `security_invoker`, materialized view, foreign table, sequence, sổ đăng ký tự mâu thuẫn. Cổng 3 cũng chỉ phá theo chiều **mở rộng** quyền; chiều thu hẹp (`REVOKE` một quyền đã đăng ký) có ca viết tay và làm test của từng mảng đỏ.
+
+### Những gì cổng 1 không nhìn thấy, và cái gì giữ thay
+
+Cổng 1 đọc catalog về **ai được làm gì trên đối tượng nào**. Nó không đọc thân hàm, ràng buộc hay dữ liệu, theo thiết kế. Từng dòng dưới đây đã được chạy thử trên một bản sao (đổi, rồi chạy `90-verify.sql`): cổng 1 im lặng.
+
+| Thay đổi | Cổng 1 | Cái gì giữ thay |
+|---|---|---|
+| Thân hàm bị thay (ví dụ `auth_session` trả `NULL` ngay) | im lặng | Test SQL của từng mảng (`server/test/*.sql.test.ts`) và test route; ca tấn công của cổng 2 cho các hàm chạm tới dòng của người khác. Xem các mục "Phần cổng 1 không nhìn thấy" của từng mảng. |
+| Ràng buộc bị gỡ: khóa duy nhất của sổ cái, một `CHECK`, một khóa ngoại, `NOT NULL`, một chỉ mục | im lặng | Test SQL của từng mảng, cho những ràng buộc mà mảng đó nêu ở mục "Phần cổng 1 không nhìn thấy" của nó. Ràng buộc không được nêu ở đó thì không gì canh. |
+| Giá trị mặc định của cột bị đổi (`now()` thay cho `app.now()`) | im lặng | Chưa có phép kiểm chung nào: chỉ test nào đọc đúng cột đó dưới đồng hồ test mới thấy. |
+| Dữ liệu: một dòng nội dung bị sửa, dòng pepper bị xóa | im lặng | Seeder chạy lại ở mỗi lần migrate; test của từng mảng. Giữa hai lần migrate không gì báo. |
+| Dòng mồi nhử bị xóa | im lặng | Cổng 2: `no decoy row in <bảng>`. |
+| Catalog **và** sổ đăng ký bị sửa cùng lúc (mở policy rồi sửa `meta.expected_policies` cho khớp) | im lặng | Sổ được dựng lại từ các file SQL ở mỗi lần migrate, nên thay đổi như vậy chỉ tồn tại lâu dài nếu nằm trong file SQL: diff của file đó, và cổng 2 (phép kiểm 3, 5, 10 thấy policy mở bất kể sổ nói gì). |
+| Cột chứa id người dùng, **không** có khóa ngoại, trong một bảng `content` | im lặng | Không gì cả. Cổng 1 và phép kiểm 12 của cổng 2 đều nhận ra dữ liệu người dùng qua khóa ngoại: mọi cột trỏ tới người dùng phải có khóa ngoại. |
+| View `security_invoker` trên bảng dữ liệu người dùng, đăng ký là `content` | im lặng | Không cần: view đó đọc bằng quyền của người gọi, RLS của bảng gốc vẫn lọc. |
+| `FORCE ROW LEVEL SECURITY`; bật RLS trên bảng `content`; policy trên bảng của `meta`; domain, schema rỗng, bảng trong schema khác không cấp cho ai | im lặng | Không phải hàng rào bị phá: chặt hơn thiết kế, hoặc không vai trò nào chạm tới. |
+| `ALTER ROLE app_anon INHERIT` | im lặng | Không cần: vai trò request không là thành viên của vai trò nào (cổng 1 kiểm quan hệ thành viên). |
+| Mật khẩu, giới hạn kết nối của `app_conn` | im lặng | Không gì cả: việc của vận hành (xem "`app_conn` trần vẫn làm được gì"). |
+| Hàm bị đổi thành `STRICT` | im lặng | Không phải hàng rào (hàm trả `NULL` sớm hơn); test của từng mảng. |
+
+Hai thứ từng nằm trong danh sách này và nay cổng 1 đã thấy: hàm nội bộ bị đổi thành `SECURITY DEFINER`, và `ALTER DEFAULT PRIVILEGES`.
 
 ## Cách đăng ký bảng, policy, hàm
 
@@ -365,9 +479,9 @@ SELECT meta.expect_policy('profiles', 'own_select', 'SELECT', '(app.current_user
 SELECT meta.expect_policy('profiles', 'own_update', 'UPDATE',
   '(app.current_user_id() = user_id)', '(app.current_user_id() = user_id)');
 
--- Hàm nội bộ nhận user id tường minh: không ai được gọi.
+-- Hàm nội bộ nhận user id tường minh: không ai được gọi, và nó chạy bằng quyền của hàm gọi nó.
 CREATE OR REPLACE FUNCTION app._mark_level_seen(p_user uuid, p_level int) RETURNS void
-LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp
+LANGUAGE sql SET search_path = public, pg_temp
 AS $$ UPDATE profiles SET level_seen = p_level WHERE user_id = p_user $$;
 REVOKE ALL ON FUNCTION app._mark_level_seen(uuid, int) FROM PUBLIC, app_anon, app_auth, app_job;
 SELECT meta.expect_function('app._mark_level_seen(uuid, int)', '{}');
@@ -386,7 +500,10 @@ Quy tắc dùng, mỗi dòng là một điều cổng 1 sẽ bắt:
 - **`own_rw` cho sửa một phần**: `GRANT SELECT` ở mức bảng, `GRANT UPDATE (cột…)` theo cột, và **không** `GRANT UPDATE` ở mức bảng. Đăng ký quyền mức bảng (`'{SELECT}'`) và danh sách cột (`'{display_name,timezone}'`) riêng nhau.
 - **Policy** viết `… TO app_auth` (bỏ `TO` là `PUBLIC`, bị từ chối), để mặc định `PERMISSIVE`, và đăng ký biểu thức bằng **đúng nguyên văn** `pg_get_expr` in ra: có ngoặc ngoài, tên hàm kèm schema, ví dụ `(app.current_user_id() = user_id)`. Lấy nguyên văn bằng `SELECT pg_get_expr(polqual, polrelid), pg_get_expr(polwithcheck, polrelid) FROM pg_policy WHERE polname = '…'`. Làm cho chạy lại được bằng `DROP POLICY IF EXISTS` rồi `CREATE POLICY`.
 - **Hàm `SECURITY DEFINER`**: đúng `SET search_path = public, pg_temp` và không `SET` nào khác; `REVOKE ALL … FROM PUBLIC` (cùng các vai trò `app_*`, để file tự đủ khi chạy lại); rồi `GRANT EXECUTE` cho **đúng** các vai trò sẽ đăng ký.
-- **Hàm nội bộ và hàm trigger**: tên bắt đầu bằng `_` (hàm nhận user id tường minh luôn thuộc loại này), không `GRANT EXECUTE` cho ai, đăng ký với `'{}'`.
+- **Hàm nội bộ và hàm trigger**: tên bắt đầu bằng `_` (hàm nhận user id tường minh luôn thuộc loại này), không `GRANT EXECUTE` cho ai, đăng ký với `'{}'`. Hàm nội bộ **không** viết `SECURITY DEFINER`: nó được hàm `SECURITY DEFINER` gọi nên đã chạy bằng quyền chủ sở hữu. `SET search_path = public, pg_temp` trên nó là tùy chọn (không có thì nó dùng của hàm gọi), nhưng đã viết thì phải đúng giá trị đó.
+- **Hàm không nội bộ** (hàm gọi được, hoặc hàm trigger không mang tên `_…`): `SECURITY DEFINER` kèm đúng `SET search_path` ở trên, hoặc `SECURITY INVOKER` **không** kèm `SET` nào. Hàm `INVOKER` không nội bộ mà có `SET search_path` bị từ chối với `function security: … is SECURITY INVOKER`: cổng 1 dựa vào cặp này để biết hàm định chạy bằng quyền ai.
+- **Không `CREATE RULE`.** Việc đặc quyền là hàm đã đăng ký; trigger thì gọi một hàm đã đăng ký.
+- **Bảng `content`** chỉ có khóa ngoại tới bảng `content`. Bảng có khóa ngoại tới `users` hay tới bất kỳ bảng `own_*`, `internal` nào là dữ liệu người dùng: đăng ký nó theo đúng lớp.
 - **View**: `CREATE VIEW … WITH (security_invoker = true)`, đăng ký như bảng lớp `content`. Không materialized view, không foreign table.
 - **Khóa chính**: `uuid` (`gen_random_uuid()`) hoặc cột `GENERATED … AS IDENTITY`. Không dùng `serial`: nó đòi `GRANT USAGE` trên sequence, mà sequence không được cấp cho ai.
 - **`app_anon` và `app_job` không bao giờ được cấp quyền trên bảng.** Việc của request chưa đăng nhập và của job đi qua hàm `SECURITY DEFINER` cấp `EXECUTE` cho đúng vai trò đó.
@@ -396,12 +513,12 @@ Quy tắc dùng, mỗi dòng là một điều cổng 1 sẽ bắt:
 
 1. Tạo `server/sql/NN-<mảng>.sql` với số nhỏ hơn 80, viết sao cho chạy lặp lại được. Mỗi file thuộc về một nhiệm vụ.
 2. Bảng do superuser sở hữu. Bật RLS theo lớp, tạo policy `… TO app_auth`, rồi `GRANT` cho `app_auth` đúng những gì lớp cho phép, và không cấp gì cho vai trò khác. Dùng GRANT theo cột khi client chỉ được sửa một phần (`GRANT UPDATE (cột) …`).
-3. Việc đặc quyền là hàm `SECURITY DEFINER` có đúng `SET search_path = public, pg_temp` (`pg_temp` luôn đứng cuối; gọi hàm trong `app` thì ghi rõ `app.`), nhận *ý định* của người dùng chứ không nhận số tiền hay user id; id lấy từ `app.current_user_id()`. Hàm nhận user id tường minh đặt trong `app` với tên bắt đầu bằng `_` và không cấp `EXECUTE` cho ai (quy tắc "tên bắt đầu bằng `_` = không ai được gọi" áp dụng ở mọi schema). `SECURITY DEFINER` không chịu RLS: điều kiện policy đang lọc hộ phải viết lại trong thân hàm. Đọc thời gian bằng `app.now()`.
+3. Việc đặc quyền là hàm `SECURITY DEFINER` có đúng `SET search_path = public, pg_temp` (`pg_temp` luôn đứng cuối; gọi hàm trong `app` thì ghi rõ `app.`), nhận *ý định* của người dùng chứ không nhận số tiền hay user id; id lấy từ `app.current_user_id()`. Hàm nhận user id tường minh đặt trong `app` với tên bắt đầu bằng `_`, không cấp `EXECUTE` cho ai và không viết `SECURITY DEFINER` (quy tắc "tên bắt đầu bằng `_` = không ai được gọi, chạy bằng quyền của hàm gọi nó" áp dụng ở mọi schema). `SECURITY DEFINER` không chịu RLS: điều kiện policy đang lọc hộ phải viết lại trong thân hàm. Đọc thời gian bằng `app.now()`.
 4. **Đăng ký** mọi bảng, policy và hàm bằng `meta.expect_*` ngay trong file đó, kể cả hàm trong `app`. Hàm không vai trò nào được gọi (hàm `app._*`, hàm trigger) vẫn phải đăng ký, với tập vai trò rỗng `'{}'`.
 5. **Mồi nhử**: thêm `8N-decoy-<mảng>.sql` cho người dùng mồi nhử `DECOY_1` ít nhất một dòng trong mỗi bảng dữ liệu người dùng mới. Phép kiểm "A không đọc được dữ liệu của B" luôn đạt nếu B không có dòng nào để tìm. Dòng mồi nhử là vĩnh viễn và **không bao giờ được dọn**. File mồi nhử chạy sau seeder nên tham chiếu được nội dung đã seed. Luật viết và các id cố định: xem "Cổng 2: API check và dòng mồi nhử". Thiếu dòng cho một bảng `own_*` là cổng 2 đỏ với `no decoy row in <bảng>`.
 6. **Ca tấn công**: thêm `server/checks/attacks/<mảng>.ts` cho cổng 2, export `attacks: Attack[]` (hợp đồng ở `attacks/base.ts`).
 7. Test đi qua `app_conn` với chuyển vai thật (`asUser`, `asAnon`, `asJob`), không bao giờ qua kết nối của chủ sở hữu; kết nối đó chỉ để dựng dữ liệu và đọc lại kết quả.
-8. Bổ sung một mục vào tài liệu này, và để `npm run db:verify` (cùng hai cổng còn lại khi đã có) xanh.
+8. Bổ sung một mục vào tài liệu này, và để cả ba cổng xanh: `npm run db:verify`, `npm run db:api-check`, `npm run db:mutation-check`. Cổng 3 tự phủ bảng, policy và hàm mới (xem "Bảng, policy, hàm mới: cổng 3 cho gì và đòi gì").
 
 ## Viết test cho server
 
