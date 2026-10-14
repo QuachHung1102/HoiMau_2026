@@ -2,14 +2,16 @@
 // real jobs, the test clock) and its outcome is read back through the API. Dates are
 // Asia/Ho_Chi_Minh (UTC+7): the scenarios start at 2027-03-01 09:00 local.
 import assert from 'node:assert/strict';
-import { after, before, test } from 'node:test';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { after, before, mock, test } from 'node:test';
 import { setTestClock } from '../test/helpers.ts';
-import { startTestApp } from '../test/http.ts';
+import { newOnboardedUser, startTestApp } from '../test/http.ts';
 import type { TestApp } from '../test/http.ts';
 import { createTestDb } from '../test/testdb.ts';
 import type { TestDb } from '../test/testdb.ts';
-import { assertDevDatabase, loadScenarios, makeCtx } from './scenario.ts';
-import { PASSWORD, START, closeDay, completeStory, getDay } from './scenarioKit.ts';
+import { assertDevDatabase, assertNoRealUsers, loadScenarios, makeCtx } from './scenario.ts';
+import { PASSWORD, START, closeDay, completeStory, getDay, goTo } from './scenarioKit.ts';
 import type { ScenarioCtx } from './scenarioKit.ts';
 
 let db: TestDb;
@@ -176,24 +178,108 @@ test('reset deletes demo users only', async () => {
     'demo-@hoimau.test',
     "demo-x'@hoimau.test",
     'a@example.com',
+    'DEMO-X@hoimau.test',
+    'demo-X@hoimau.test',
+    'demo-%@hoimau.test',
+    'demo-_@hoimau.test',
+    '%@hoimau.test',
+    'demo-x@hoimau.test' + String.fromCharCode(10),
+    'demo-x@hoimau.test ',
   ]) {
     await assert.rejects(ctx.reset(email), /reset refuses/, email);
   }
   await ctx.reset('demo-nobody@hoimau.test'); // nothing to delete is not an error
 });
 
-test('a scenario can read through admin but cannot write business rows with it', async () => {
-  assert.equal((await ctx.admin.query('SELECT 1 AS one')).rows[0].one, 1);
-  await assert.rejects(
-    async () => ctx.admin.query("DELETE FROM users WHERE email LIKE 'demo-%'"),
-    /read-only/,
-  );
-  await assert.rejects(
-    async () => ctx.admin.query('INSERT INTO daily_logs (user_id) VALUES (gen_random_uuid())'),
-    /read-only/,
-  );
+test('admin is one SELECT in a read-only transaction that is rolled back', async () => {
+  assert.equal((await ctx.admin.query('SELECT $1::int AS one', [1])).rows[0].one, 1);
+  const users = () => db.admin.query('SELECT count(*)::int AS n FROM users').then(r => r.rows[0].n);
+  const usersBefore = await users();
+  const clockRows = () => db.admin.query('SELECT count(*)::int AS n FROM meta.test_clock').then(r => r.rows[0].n);
+  const clockBefore = await clockRows();
+  await assert.rejects(async () => ctx.admin.query("DELETE FROM users WHERE email LIKE 'demo-%'"), /read-only/);
+  await assert.rejects(async () => ctx.admin.query('INSERT INTO daily_logs (user_id) VALUES (gen_random_uuid())'), /read-only/);
+  // two statements in one text
+  await assert.rejects(async () => ctx.admin.query('SELECT 1; DELETE FROM users'), /no ";"/);
+  assert.equal(await users(), usersBefore);
+  // a function that writes
+  await db.admin.query(`CREATE FUNCTION scenario_writes() RETURNS int LANGUAGE sql AS
+    $$ INSERT INTO meta.test_clock (now) VALUES ('2030-01-01T00:00:00Z') RETURNING 1 $$`);
+  await assert.rejects(ctx.admin.query('SELECT scenario_writes()'), /read-only transaction/);
+  assert.equal(await clockRows(), clockBefore);
+  // SELECT ... INTO makes a table
+  await assert.rejects(ctx.admin.query('SELECT 1 AS one INTO scenario_leak'), /read-only transaction/);
+  assert.equal((await db.admin.query("SELECT to_regclass('scenario_leak') AS t")).rows[0].t, null);
+  // a session setting does not outlive the query, whichever pooled client carries it
+  const timeout = () => ctx.admin.query("SELECT current_setting('statement_timeout') AS v").then(r => r.rows[0].v);
+  const normal = await timeout();
+  await ctx.admin.query("SELECT set_config('statement_timeout', '1ms', false)");
+  await ctx.admin.query("SELECT set_config('statement_timeout', '1ms', false)");
+  assert.equal(await timeout(), normal);
+  assert.equal(await timeout(), normal);
   assert.throws(() => ctx.admin.connect(), /read-only/);
   assert.throws(() => ctx.admin.end(), /read-only/);
+});
+
+test('call checks the status before it reads the body: an error page that is not JSON', async () => {
+  const stub = createServer((_, res) => {
+    res.writeHead(502, { 'content-type': 'text/html' });
+    res.end('<html>Bad Gateway</html>');
+  });
+  await new Promise<void>(resolve => stub.listen(0, '127.0.0.1', resolve));
+  try {
+    const behind = makeCtx({
+      baseUrl: `http://127.0.0.1:${(stub.address() as AddressInfo).port}`,
+      admin: db.admin,
+      app: db.app,
+    });
+    await assert.rejects(behind.call('GET', '/x'), (e: Error) => {
+      assert.equal(e.name, 'Error');
+      assert.equal(e.message, 'GET /x answered 502 <html>Bad Gateway</html>');
+      return true;
+    });
+  } finally {
+    stub.closeAllConnections();
+    await new Promise(resolve => stub.close(resolve));
+  }
+  await assert.rejects(ctx.call('GET', '/day'), /^Error: GET .day answered 401 SESSION_INVALID$/);
+});
+
+test('the kit fails loudly: a skipped user, a day that is not closed, a clock that did not move', async () => {
+  // run() starts the account over, so each case signs in again
+  await assert.rejects(closeDay({ ...ctx, runJob: async () => ({ failed: 0, skipped: 1 }) }, (await run('day1')).token), /1 skipped/);
+  await assert.rejects(closeDay({ ...ctx, runJob: async () => ({ failed: 0, skipped: 0 }) }, (await run('day1')).token), /2027-03-01 is not closed/);
+  await assert.rejects(goTo({ ...ctx, setClock: async () => {} }, (await run('day1')).token, 28), /the server says 2027-03-01, not 2027-03-02/);
+  await assert.rejects(goTo(ctx, (await run('day1')).token, 29), /outside 3 to 28/);
+});
+
+test('the clock does not move while a non-demo onboarded user is there, unless told so', async () => {
+  const real = await newOnboardedUser(db);
+  const own = { baseUrl: app.baseUrl, admin: db.admin, app: db.app };
+  const clockRows = () => db.admin.query('SELECT count(*)::int AS n FROM meta.test_clock').then(r => r.rows[0].n);
+  const warning = mock.method(console, 'error', () => {});
+  try {
+    await setTestClock(db.admin, null);
+    const strict = makeCtx(own);
+    await assert.rejects(strict.setClock(START), /refusing to move the clock: 1 onboarded user.s. here are not demo/);
+    const day1 = (await loadScenarios()).find(scenario => scenario.name === 'day1')!;
+    await assert.rejects(day1.run(strict), /refusing to move the clock/);
+    assert.equal(await clockRows(), 0);
+
+    const told = makeCtx({ ...own, includeRealUsers: true });
+    await told.setClock(START);
+    assert.equal(await clock(), START);
+    assert.match(String(warning.mock.calls[0].arguments[0]), /^warning: 1 onboarded user.s..*--include-real-users given/);
+    await assert.doesNotReject(assertNoRealUsers(db.admin, true));
+
+    await strict.setClock(null); // turning the clock off is never refused
+    assert.equal(await clockRows(), 0);
+  } finally {
+    warning.mock.restore();
+    await db.admin.query('DELETE FROM users WHERE id = $1', [real.userId]);
+    await setTestClock(db.admin, null);
+  }
+  await assert.doesNotReject(assertNoRealUsers(db.admin, false)); // demo accounts and decoys do not count
 });
 
 test('the database guard answers from the connection: the test database is refused', async () => {
