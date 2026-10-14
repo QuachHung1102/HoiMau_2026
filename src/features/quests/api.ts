@@ -20,8 +20,14 @@ export const tickPath = (questCode: string) => `/day/quests/${questCode}/progres
 /**
  * Takes a `DayState` that came back with a write (`ActionResult.day`) as the current day: query cache and the
  * per-user disk cache. Call it only after checking that `userId` is still the signed-in user.
+ * An answer the server replays (the retry of a write whose first answer was lost) is the stored answer of the first
+ * execution, so its day can be older than the one already held, across the 03:00 rollover or just by minutes. A day
+ * with an earlier logical date, or with the same date and an earlier `serverTime`, never replaces the held one; the
+ * caller still has the rest of the answer (the reward, the events).
  */
 export function acceptDay(queryClient: QueryClient, userId: string, day: DayState) {
+  const held = queryClient.getQueryData<DayState>(dayKey);
+  if (held && (day.logicalDate < held.logicalDate || (day.logicalDate === held.logicalDate && Date.parse(day.serverTime) < Date.parse(held.serverTime)))) return;
   queryClient.setQueryData(dayKey, day);
   writeCache(userId, 'day', day);
 }

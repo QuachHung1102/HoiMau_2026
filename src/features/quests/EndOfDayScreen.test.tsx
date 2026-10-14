@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen } from '@testing-library/react-native';
+import type { GameEvent } from '../../../domain/contract/common.ts';
 import type { DayState, QuestState } from '../../../domain/contract/core.ts';
 import { clearUserCache } from '../../shared/storage/cache';
 import { BEDTIME, dayOf, hold, HIDDEN, installTodayTestEnv, meOf, openToday, app, queryClient, refuse, respond, settle, USER, world, writes } from '../dashboard/todayTestKit';
@@ -90,7 +91,7 @@ describe('the mark is confirmed', () => {
 
   test('without the QUEST_COMPLETED event (after 23:00): good night, and the other sentence; no reward is claimed', async () => {
     world.day = evening();
-    world.bedtimeReward = false;
+    world.hour = 23; // from 23:00 the mark is made, and the hidden quest is not completed
     const view = await openEndOfDay();
     fireEvent.press(markButton());
     expect(await screen.findByText('Chúc bạn nghỉ ngon')).toBeTruthy();
@@ -116,14 +117,14 @@ describe('the mark is confirmed', () => {
 
   test('the events of the answer go to the celebrations once', async () => {
     world.day = evening();
-    world.events = [{ type: 'LEVEL_UP', level: 6, titleKey: 'NGUOI_KIEN_TRI', perkPointsGained: 1 }];
+    const levelUp: GameEvent = { type: 'LEVEL_UP', level: 6, titleKey: 'NGUOI_KIEN_TRI', perkPointsGained: 1 };
     world.answer = (request, init) => {
       if (request !== BEDTIME) return undefined;
       world.day = quests({ ...world.day, bedtimeMarkedAt: new Date().toISOString() }, { [HIDDEN]: { completed: true, progress: 1 } });
       return respond(200, {
         actionId: init.headers['Idempotency-Key'],
         day: world.day,
-        delta: { xp: 30, coin: 15, events: [{ type: 'QUEST_COMPLETED', questCode: HIDDEN }, ...world.events] },
+        delta: { xp: 30, coin: 15, events: [{ type: 'QUEST_COMPLETED', questCode: HIDDEN }, levelUp] },
       });
     };
     let queue: ReturnType<typeof useCelebrationQueue> = [];
@@ -134,7 +135,7 @@ describe('the mark is confirmed', () => {
     const view = await openEndOfDay({ extra: <Watch /> });
     fireEvent.press(markButton());
     expect(await screen.findByText('Chúc bạn nghỉ ngon')).toBeTruthy();
-    expect(queue).toEqual([world.events[0]]);
+    expect(queue).toEqual([levelUp]);
     view.unmount();
   });
 

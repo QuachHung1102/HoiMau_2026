@@ -10,18 +10,22 @@ import {
   hold,
   idsOnDisk,
   installTodayTestEnv,
+  nearLevelUp,
   openToday,
   refuse,
   requested,
   respond,
   serverAnswer,
+  queryClient,
   settle,
   TICK,
   tickIds,
   UNDO,
   undos,
+  USER,
   world,
 } from '../dashboard/todayTestKit';
+import type { DayState } from '../../../domain/contract/core.ts';
 import { useCelebrationQueue } from '../progression/celebrations';
 
 // The water tracker of the home tab is the first user of `useTick`: these tests press it inside the whole app.
@@ -110,15 +114,43 @@ describe('a tick the server confirms (S57)', () => {
       return <Text testID="celebrations">{JSON.stringify(useCelebrationQueue())}</Text>;
     }
     const queue = () => JSON.parse(screen.getByTestId('celebrations').props.children);
+    // the 8th part completes the quest (QUEST_COMPLETED) and takes the profile over the level: the server's own events
     const levelUp: GameEvent = { type: 'LEVEL_UP', level: 6, titleKey: 'NGUOI_KIEN_TRI', perkPointsGained: 1 };
+    world.day = dayOf({}, { progress: 7 });
+    nearLevelUp();
     const view = await openToday({ extra: <Queue /> });
-    world.events = [{ type: 'QUEST_COMPLETED', questCode: 'WATER_8' }, levelUp];
     record();
     await screen.findByText('Đã ghi nhận · +10 XP');
     expect(queue()).toEqual([levelUp]);
     // the refreshed day and profile do not push it again
     await settle();
     expect(queue()).toEqual([levelUp]);
+    view.unmount();
+  });
+});
+
+describe('an answer that carries an older day', () => {
+  test("the answer to a tick comes back with yesterday's day (the day rolled over while it was out): its reward is shown, today's day stays", async () => {
+    const view = await openToday();
+    const answer = hold(TICK);
+    record();
+    await settle();
+    const yesterday = dayOf({}, { progress: 4 });
+    world.day = dayOf({ logicalDate: '2026-10-15' }, { progress: 0, lastTick: null });
+    await act(async () => queryClient().invalidateQueries({ queryKey: ['day'] }));
+    await settle();
+    const result: ActionResult = { actionId: tickIds()[0], day: yesterday, delta: { xp: 10, coin: 5, events: [] } };
+    // the read that follows a delivered record stays out, so that only the answer's day could be on screen
+    const reread = hold('GET /day');
+    await act(async () => answer.release(respond(200, result)));
+    // the reward is the answer's own
+    expect(await screen.findByText('Đã ghi nhận · +10 XP')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Hoàn tác' })).toBeTruthy();
+    // the day is today's: yesterday's 4 / 8 is on neither the screen, the cache nor the disk
+    expect(queryClient().getQueryData<DayState>(['day'])?.logicalDate).toBe('2026-10-15');
+    expect(JSON.parse((await AsyncStorage.getItem(`cache:v1:${USER}:day`)) ?? '{}').logicalDate).toBe('2026-10-15');
+    expect(screen.queryByText(/^4 \/ 8 phần/)).toBeNull();
+    await act(async () => reread.release());
     view.unmount();
   });
 });
@@ -144,6 +176,39 @@ describe('a tick the server refuses (S58)', () => {
     expect(await screen.findByText('Đã ghi nhận · +10 XP')).toBeTruthy();
     expect(screen.queryByText(/Chưa lưu được/)).toBeNull();
     expect(new Set(tickIds()).size).toBe(2);
+    view.unmount();
+  });
+
+  test('409 QUEST_NOT_TICKABLE (the stand-in server answers it): the cell empties, the generic reason stands beside the tracker, no reward, nothing is kept', async () => {
+    const view = await openToday();
+    // the server's picture of the day changed after the app read it: the water quest is not a daily one
+    world.day = { ...world.day, quests: world.day.quests.map(item => (item.code === 'WATER_8' ? { ...item, category: 'STORY' } : item)) };
+    record();
+    expect(screen.getByText('4 / 8 phần · đang lưu')).toBeTruthy();
+    expect(await screen.findByText('Chưa lưu được phần nước vừa ghi. Có lỗi xảy ra. Bạn thử lại nhé.')).toBeTruthy();
+    expect(screen.getByText('3 / 8 phần')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Thử lại' })).toHaveLength(1);
+    expect(screen.queryByText('Ghi nhận không được tính')).toBeNull();
+    expect(await idsOnDisk()).toEqual([]);
+    await settle();
+    expectNoReward();
+    view.unmount();
+  });
+
+  test('404 QUEST_NOT_FOUND (the stand-in server answers it): the quest has left the day, so the tracker goes with it; no reward, nothing is kept, no spinner', async () => {
+    const view = await openToday();
+    world.day = { ...world.day, quests: world.day.quests.filter(item => item.code !== 'WATER_8') };
+    const reads = requested('/day');
+    record();
+    await waitFor(() => expect(requested('/day')).toBe(reads + 1));
+    await settle();
+    expect(screen.queryByLabelText(/^Nước hôm nay/)).toBeNull();
+    expect(screen.queryByLabelText('Đang tải')).toBeNull();
+    expect(screen.queryByText('Ghi nhận không được tính')).toBeNull();
+    expect(await idsOnDisk()).toEqual([]);
+    expect(screen.queryByText(/Đã ghi nhận/)).toBeNull();
+    expect(screen.queryByText('Hoàn tác')).toBeNull();
+    expect(screen.getByLabelText('250 xu')).toBeTruthy();
     view.unmount();
   });
 
@@ -358,6 +423,51 @@ describe('undo', () => {
     // the picture of the day was old: it is read again
     await settle();
     expect(requested('/day')).toBe(dayRequests + 1);
+    view.unmount();
+  });
+
+  test.each([
+    [404, 'TICK_NOT_FOUND', undefined],
+    [422, 'VALIDATION_FAILED', { fields: [{ field: 'tickId', rule: 'format' }] }],
+  ])('%i %s (the real answers of the route): the record is kept and the message says so, with nothing to retry', async (status, code, details) => {
+    const { view } = await recorded();
+    world.answer = request => (request === UNDO ? refuse(status, code, details) : undefined);
+    const dayRequests = requested('/day');
+    fireEvent.press(screen.getByRole('button', { name: 'Hoàn tác' }));
+    expect(await screen.findByText(UNDO_GONE)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Thử lại' })).toBeNull();
+    expect(screen.getByText('4 / 8 phần')).toBeTruthy();
+    expect(screen.getByLabelText('255 xu')).toBeTruthy();
+    expect(screen.queryByText('Đã hoàn tác')).toBeNull();
+    await settle();
+    expect(requested('/day')).toBe(dayRequests + 1);
+    view.unmount();
+  });
+
+  test("the server undid it and only its answer was lost; the retry gets the stored answer, which is yesterday's day: today stays on screen and on disk", async () => {
+    const { view } = await recorded();
+    let lost = true;
+    world.answer = (request, init) => {
+      if (request !== UNDO || !lost) return undefined;
+      lost = false;
+      serverAnswer(request, init); // the undo is done, and its answer (the day as it was then) is stored under the key
+      throw new TypeError('Network request failed');
+    };
+    fireEvent.press(screen.getByRole('button', { name: 'Hoàn tác' }));
+    expect(await screen.findByText(UNDO_NOT_SENT)).toBeTruthy();
+    // the day rolls over meanwhile, and today's day is read
+    world.day = dayOf({ logicalDate: '2026-10-15' }, { progress: 0, lastTick: null });
+    await act(async () => queryClient().invalidateQueries({ queryKey: ['day'] }));
+    expect(await screen.findByText('0 / 8 phần')).toBeTruthy();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Thử lại' }));
+    expect(await screen.findByText('Đã hoàn tác')).toBeTruthy();
+    await settle();
+    expect(undos()).toHaveLength(2);
+    expect(undos()[0].id).toBe(undos()[1].id);
+    expect(screen.getByText('0 / 8 phần')).toBeTruthy();
+    expect(queryClient().getQueryData<DayState>(['day'])?.logicalDate).toBe('2026-10-15');
+    expect(JSON.parse((await AsyncStorage.getItem(`cache:v1:${USER}:day`)) ?? '{}').logicalDate).toBe('2026-10-15');
     view.unmount();
   });
 
