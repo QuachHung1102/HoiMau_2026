@@ -230,7 +230,7 @@ Nó gồm ba phần, trong cùng một file:
 | `DECOY_1` | `00000000-0000-4000-8000-0000000000d1` | `decoy-1@decoy.invalid` |
 | `DECOY_2` | `00000000-0000-4000-8000-0000000000d2` | `decoy-2@decoy.invalid` |
 
-`DECOY_1` có ít nhất một dòng trong mọi bảng chứa dữ liệu người dùng đang có: `users`, `credentials`, `sessions` (một phiên đã thu hồi nhưng chưa hết hạn), `reset_codes` (đã dùng, đã hết hạn), `idempotency_keys` (một câu trả lời `200` đã lưu), `progression_state`, `xp_ledger`, `coin_ledger`, `inventory` và `perk_unlocks` (trỏ tới vật phẩm đã seed `THEME_FOREST` theo `code`), `biometric_snapshots`, `prescriptions`, `user_settings`; và, từ `81-decoy-day.sql`, `daily_logs`, `quest_completions`, `quest_ticks` (một ngày có một lượt tick của nhiệm vụ đã seed `WATER_8`); và, từ `82-decoy-story.sql`, `nutrition_logs`, `workout_sessions` (một lần ghi calo và một buổi tập của bài tập đã seed `DESK_STRETCH`, trên ngày đó). `DECOY_2` chỉ có dòng `users`; các mảng cần hai người (bang hội, nudge) dùng nó.
+`DECOY_1` có ít nhất một dòng trong mọi bảng chứa dữ liệu người dùng đang có: `users`, `credentials`, `sessions` (một phiên đã thu hồi nhưng chưa hết hạn), `reset_codes` (đã dùng, đã hết hạn), `idempotency_keys` (một câu trả lời `200` đã lưu), `progression_state`, `xp_ledger`, `coin_ledger`, `inventory` và `perk_unlocks` (trỏ tới vật phẩm đã seed `THEME_FOREST` theo `code`), `biometric_snapshots`, `prescriptions`, `user_settings`; và, từ `81-decoy-day.sql`, `daily_logs`, `quest_completions`, `quest_ticks` (một ngày có một lượt tick của nhiệm vụ đã seed `WATER_8`); và, từ `82-decoy-story.sql`, `nutrition_logs`, `workout_sessions` (một lần ghi calo và một buổi tập của bài tập đã seed `DESK_STRETCH`, trên ngày đó); và, từ `83-decoy-dayclose.sql`, `freeze_tickets`, `ticket_grant_weeks`, `notifications` (một vé đã dùng cho ngày đó, tuần của vé, một thông báo chưa đọc). `DECOY_2` chỉ có dòng `users`; các mảng cần hai người (bang hội, nudge) dùng nó.
 
 - **Không bao giờ xóa hay "dọn" dòng mồi nhử**, bằng tay hay bằng job. Job xóa dữ liệu cũ (phiên hết hạn, mã đã dùng, khóa idempotency quá 7 ngày, tài khoản quá hạn xóa) phải bỏ qua người dùng có email kết thúc bằng `@decoy.invalid`. Mất một dòng mồi nhử là cổng 2 đỏ với `no decoy row in <bảng>` (phép kiểm 12, cho mọi bảng có khóa ngoại dẫn về `users`). Lưu ý: cổng chạy trên bản sao mới của cơ sở dữ liệu mẫu, nơi chưa job nào chạy, nên nó **không** bắt được một job xóa nhầm; job nào xóa dữ liệu thì tự mang ca tấn công của mình (chạy job với đồng hồ đẩy xa về sau, rồi đòi dòng mồi nhử còn nguyên).
 - File chạy lặp lại được: id cố định và `ON CONFLICT DO NOTHING`. Chạy lại migrate đưa về những dòng đã mất, không sửa dòng đang có.
@@ -656,6 +656,7 @@ Server là `node:http` trần: không framework, không middleware. Mọi route 
 | `routes/me.ts`, `routes/settings.ts`, `routes/progression.ts` | Onboarding, hồ sơ, số đo, hệ phái, đơn kê, cài đặt, tiến trình, thú (xem "Hồ sơ và tiến trình"). |
 | `routes/day.ts` | Ngày hiện tại, tick, hoàn tác, giờ ngủ, lịch sử (xem "Ngày và nhiệm vụ"). |
 | `routes/nutrition.ts`, `routes/workout.ts` | Ghi calo, danh mục bài tập, một bài tập, ghi buổi tập (xem "Hai nhiệm vụ cốt truyện"). |
+| `routes/inbox.ts`, `jobs/*.ts` | Hộp thư; bộ lập lịch, job đóng ngày, lệnh chạy một job (xem "Đóng ngày, bộ lập lịch và hộp thư"). |
 | `readModels/me.ts` | `buildMe`, `buildProgression`, `buildPet`, `buildPrescription`: những gì người dùng đọc lại về chính mình. |
 | `readModels/day.ts`, `readModels/delta.ts` | `buildDay`, `buildDaySummaries`, `buildDayDetail`; `buildDelta`, `logGrants`: ngày của người dùng, và phần "vừa thay đổi gì" của một request ghi. |
 | `seed/*.ts` | Seeder nội dung, chạy trong `migrate`. |
@@ -815,7 +816,7 @@ Khối header (gồm cả URL) quá 16 KiB, giới hạn mặc định của Nod
 
 ### `GET /healthz` và `GET /meta/timezones`
 
-- `healthz` luôn trả `200`, trong 2 giây: `{ ok, db, jobs }`, `ok` sai đúng khi `db` sai. `db` là kết quả của một transaction thật bằng `app_anon`, nên nó cũng sai khi chuyển vai hỏng, khi pool hết kết nối rảnh và khi cơ sở dữ liệu không trả lời kịp. `jobs` rỗng cho tới khi có bộ lập lịch.
+- `healthz` luôn trả `200`, trong 2 giây: `{ ok, db, jobs }`, `ok` sai đúng khi `db` sai. `db` là kết quả của một transaction thật bằng `app_anon`, nên nó cũng sai khi chuyển vai hỏng, khi pool hết kết nối rảnh và khi cơ sở dữ liệu không trả lời kịp. `jobs` là lần chạy cuối của mỗi job trong tiến trình này, lấy từ bộ nhớ của bộ lập lịch (không đọc `job_runs`: bảng đó `internal`, route thì ẩn danh); job chưa chạy lần nào thì không được liệt kê.
 - `meta/timezones` trả các tên có trong bảng `timezones` **mà** `Intl.DateTimeFormat` của Node nhận, đã sắp xếp: đúng những tên `users.timezone` chứa được và hai bên đọc giống nhau. Bảng là lớp `content`, chỉ `app_auth` đọc được, và route thì ẩn danh, nên danh sách được đọc **một lần mỗi tiến trình** bằng một transaction `app_auth` không có người dùng rồi giữ trong bộ nhớ. Sau một lần migrate thêm tên mới, khởi động lại server.
 
 ### Test cho route
@@ -1183,15 +1184,15 @@ Mọi từ chối đều được **ném** (`AppError`, hoặc `HM000` từ hàm
 - **Cùng khóa, thân khác là `409 IDEMPOTENCY_KEY_REUSED`** (tầng HTTP), và chỉ khi request đầu tiên của khóa đó **đã commit**: lúc ấy tick đã có trên server, không gì bị mất. App chỉ thêm `occurredAt` khi gửi sau hơn 60 giây, nên một bản ghi đã gửi không kèm `occurredAt` rồi gửi lại **có** kèm nhận `409` đúng trong trường hợp đó (có test). Khóa mà server chưa từng thấy, hoặc khóa của một request đã bị từ chối hay kết thúc bằng `500`, thì tự do: lần gửi sau, kèm `occurredAt` hay không, chạy bình thường.
 - **Thân của ba route ghi là một object JSON.** Không có thân là `422 VALIDATION_FAILED` (`body` / `required`: hợp đồng ghi thân là bắt buộc; app luôn gửi ít nhất `{}`); `null`, mảng, số, chuỗi hay boolean là `422` (`body` / `format`). Thuộc tính lạ trong object bị bỏ qua. (Các route hồ sơ coi thân không phải object là "không có thành viên nào" và trả lời bằng các trường `required` của chúng; ba route này không có trường bắt buộc nào ngoài `tickId`, nên tự nêu tên `body`.)
 - **`occurredAt` phải là một thời điểm có thật**, viết theo RFC 3339 kèm múi giờ (`…Z` hoặc `…+07:00`): ngày có trên lịch (`2027-02-30` không có; JavaScript tự nó sẽ đọc thành 2 tháng 3), giờ 00–23 (`T24:00:00` bị từ chối), phút và giây 00–59, độ lệch tới `23:59`. Sai là `422 VALIDATION_FAILED` (`occurredAt` / `format`), như nhau ở tick và giờ ngủ. Route chuyển nó về một cách viết duy nhất trước khi đưa vào SQL. `tickId` phải là UUID. Mã nhiệm vụ trong đường dẫn là bất cứ chuỗi nào: chuỗi lạ là `404`, không bao giờ `500`.
-- **`GET /day`** không tạo dòng nào. `locked` chỉ đúng với nhiệm vụ `HIDDEN` khi giờ địa phương là 03:00–17:59 (đúng những giờ `day_bedtime` từ chối). `lastTick` là tick sống mới nhất của một nhiệm vụ `DAILY` (để hoàn tác sau khi mở lại app); sau một lượt hoàn tác nó trỏ về tick sống đứng trước, không về `null`. `unreadCount` là 0 và `celebrations` rỗng cho tới khi có hộp thư.
+- **`GET /day`** không tạo dòng nào. `locked` chỉ đúng với nhiệm vụ `HIDDEN` khi giờ địa phương là 03:00–17:59 (đúng những giờ `day_bedtime` từ chối). `lastTick` là tick sống mới nhất của một nhiệm vụ `DAILY` (để hoàn tác sau khi mở lại app); sau một lượt hoàn tác nó trỏ về tick sống đứng trước, không về `null`. `unreadCount` đếm thông báo chưa đọc của chính người gọi; `celebrations` là các thông báo `STREAK_MILESTONE` chưa đọc, cũ nhất trước (xem "Đóng ngày, bộ lập lịch và hộp thư").
 - **`closesAt` là thời điểm sớm nhất sau "bây giờ" mà nhãn ngày logic đổi**, do SQL tính bằng `app.logical_day_end` trong cùng câu lệnh đọc ngày: cùng hàm, cùng cơ sở dữ liệu múi giờ với nhãn của `GET /day` và với ngày một lượt ghi rơi vào. Có test qua HTTP: tick gửi một mili giây trước `closesAt` rơi vào ngày `GET /day` đang hiện, tick gửi đúng `closesAt` rơi vào ngày sau, ở tám ranh giới (hai ngày đổi giờ 2026 của New York, Kolkata, Kathmandu, Lord Howe, Athens, Kiritimati, Pago Pago) và ở bốn múi giờ mà Node đọc khác PostgreSQL; cùng một test cho `Pacific/Chatham`, nơi nhãn đi lùi.
-- **`GET /day/history`**: `from`, `to` là nhãn ngày có thật (`2027-02-30` và năm `0000` là `format`), `to ≥ from` (`to` / `min`), nhiều nhất 92 ngày (`to` / `max`). `outcome`: trước `onboard_date` là `NONE`; sau `last_closed_date` là `OPEN` (kể cả ngày chưa tới); đã đóng và `story_completed` là `COMPLETED`; đã đóng còn lại là `MISSED` (ngày bỏ lỡ không cần dòng `daily_logs`). `FROZEN` đến cùng job đóng ngày. `workoutMinutes` là tổng giây của các buổi tập của ngày đó / 60.
+- **`GET /day/history`**: `from`, `to` là nhãn ngày có thật (`2027-02-30` và năm `0000` là `format`), `to ≥ from` (`to` / `min`), nhiều nhất 92 ngày (`to` / `max`). `outcome`: trước `onboard_date` là `NONE`; sau `last_closed_date` là `OPEN` (kể cả ngày chưa tới); đã đóng và `story_completed` là `COMPLETED`; đã đóng, chưa xong mà có vé dùng cho ngày đó là `FROZEN`; đã đóng còn lại là `MISSED` (ngày bỏ lỡ không cần dòng `daily_logs`). Thứ tự đó là thứ tự `closeDays` xét (AR-10: vé cộng nhiệm vụ đã xong là `COMPLETED`). `workoutMinutes` là tổng giây của các buổi tập của ngày đó / 60.
 - **`GET /day/history/{date}`**: tóm tắt của ngày đó và các hành động, mới nhất trước (theo `occurred_at`), đọc bằng **một** câu lệnh: một tick commit trong lúc đó có mặt ở cả hai phần hoặc không ở phần nào. `TICK`: `label` là mã nhiệm vụ, `undone` đúng với tick đã hoàn tác (tick đó vẫn được liệt kê). `BEDTIME`: `id` là id của dòng `daily_logs`. `mealSlot` và `value` là `null` với cả hai loại. `NUTRITION` và `WORKOUT`: xem "Hai nhiệm vụ cốt truyện".
 
 ### Read model
 
 - `buildDay(ctx, logicalDate?)`: một câu lệnh, một thời điểm của cơ sở dữ liệu cho cả ngày, kể cả `closesAt`. Không truyền ngày thì là hôm nay; truyền ngày thì là ngày đó (`closesAt` khi ấy tính từ 12:00 trưa của ngày đó theo đồng hồ múi giờ; nhiệm vụ ẩn chỉ `locked` khi ngày đó là hôm nay). File này không import gì về múi giờ từ `domain/`.
-- `buildDaySummaries(ctx, from, to)`, `buildDayDetail(ctx, date)`: cùng một câu lệnh (`SUMMARIES`), `buildDayDetail` bật thêm cột hành động. Phút tập và hành động `NUTRITION` / `WORKOUT` đã nằm trong chính câu lệnh đó (`UNION` bên trong); job đóng ngày thêm `FROZEN` vào đó, không thêm câu lệnh thứ hai.
+- `buildDaySummaries(ctx, from, to)`, `buildDayDetail(ctx, date)`: cùng một câu lệnh (`SUMMARIES`), `buildDayDetail` bật thêm cột hành động. Phút tập và hành động `NUTRITION` / `WORKOUT` đã nằm trong chính câu lệnh đó (`UNION` bên trong); `FROZEN` cũng vậy (một `EXISTS` trên `freeze_tickets`), không thêm câu lệnh thứ hai.
 - `buildDelta(grants, events)` và `logGrants(ctx, grants)` (`readModels/delta.ts`): `grants` là các kết quả `app._grant` kèm `reason`, `ref` mà hàm SQL trả về; `events` là những gì route tự biết (`QUEST_COMPLETED`, `STORY_ALL_DONE`). Mọi route ghi có thưởng dùng lại cặp này.
 - Tất cả chạy bằng `app_auth` trong transaction của request, điều kiện người dùng viết tường minh, RLS lọc bên dưới. Không hàm nào ghi.
 
@@ -1214,7 +1215,7 @@ Cổng 1 và cổng 3 đọc catalog; cổng 2 gọi hàm để hỏi quyền v�
 - thân response: route trả ngày của người khác hay một ngày khác với hôm nay. Đó là test của route;
 - múi giờ: hai bản sao của cơ sở dữ liệu múi giờ (PostgreSQL, Node) lệch nhau thì không cổng nào báo. Test đối chiếu mọi múi giờ báo, nhưng chỉ trên lưới của nó (quanh 03:00 địa phương, các ngày đổi giờ và sáu ngày khác của năm 2026) và chỉ với Node của máy chạy test; app trên điện thoại mang bản sao thứ ba mà không test nào ở đây thấy. Hệ quả đã biết: ở bốn múi giờ trong danh sách ghim, app tự tính ngày bằng `logicalDateOf` sẽ lệch với server một giờ quanh 03:00; `logicalDate` và `closesAt` trong câu trả lời của server mới là thứ đúng;
 - **`occurredAt` lùi về trước được tin, trong 48 giờ**: đó là thiết kế (bản ghi làm lúc không có mạng), và không cổng hay test nào coi nó là lỗi. Một client vì thế tự đặt được thời điểm tới 48 giờ trước: dấu giờ ngủ bấm lúc 23:30 có thể khai là 22:55 và nhận phần thưởng của nhiệm vụ ẩn. Giới hạn của nó là ngày còn mở: job đóng ngày đóng ngày lại thì thời điểm thuộc ngày đó không còn được nhận;
-- job đóng ngày chưa tồn tại: chưa gì chứng minh nó lấy khóa dòng `users` trước khi dời `last_closed_date`. Nhiệm vụ viết job đó phải mang test cuộc đua "tick với đóng ngày" của mình.
+- job đóng ngày lấy khóa dòng `users` trước khi dời `last_closed_date`: điều đó do test thứ tự khóa và các cuộc đua của `server/src/jobs/dayClose.race.test.ts` giữ, không cổng nào thấy (xem "Đóng ngày, bộ lập lịch và hộp thư").
 
 Sửa `30-day.sql` thì chạy `npm run server:test`, không chỉ `npm run db:verify`.
 
@@ -1307,3 +1308,84 @@ Từng ca dưới đây đã chạy thử (báo cáo Task 21): cổng 1 và cổ
 - chỉ số STR / SPD đếm **mọi** buổi tập, kể cả buổi sau khi nhiệm vụ đã xong: gửi nhiều buổi tập đẩy được chỉ số (tối đa ở 150 phút) mà không được thêm XP hay xu. Đó là chỉ số hiển thị, không phải tiền.
 
 Sửa `31-story.sql` thì chạy `npm run server:test`, không chỉ `npm run db:verify`.
+
+## Đóng ngày, bộ lập lịch và hộp thư (`32-dayclose.sql`, `33-inbox.sql`, `jobs/*.ts`, `routes/inbox.ts`)
+
+Code đầu tiên đổi dữ liệu của người dùng mà không có request nào của người đó: đóng các ngày logic ở mọi múi giờ, dời chuỗi ngày và tâm trạng của thú, trả thưởng mốc chuỗi đúng một lần trong đời, và đưa kết quả vào hộp thư. Hợp đồng nằm ở `docs/api/openapi.yaml` (`Inbox`, `InboxItem`, `InboxReadRequest`, `InboxReadResult`, `DayState.unreadCount`, `DayState.celebrations`, `Health`); mục này ghi cách server giữ nó.
+
+### Bảng
+
+| Bảng | Lớp | Ghi chú |
+|---|---|---|
+| `freeze_tickets` | `own_read` | Một dòng mỗi vé. `grant_week` là thứ Hai của tuần được cấp (**duy nhất theo `(user_id, grant_week)`**), `used_at` và `used_for_date` cùng có hoặc cùng không (`CHECK`), **duy nhất theo `(user_id, used_for_date)`** (một vé mỗi ngày; vé chưa dùng không có ngày nên không vướng). Hàm cấp và dùng vé đến ở nhiệm vụ nhật ký và vé; bảng có từ bây giờ vì job đóng ngày đọc nó. |
+| `ticket_grant_weeks` | `own_read` | Khóa chính `(user_id, week_start)`, `week_start` là thứ Hai, `granted`: tuần đó đã được quyết (cấp, hay bỏ vì kho đã đầy). |
+| `job_runs` | `internal` | Khóa chính `(job, run_key)`: `run_key` là thời điểm ISO mà lần chạy chạy cho, `ran_at`, `ok`, `detail` (chỉ có số đếm). Không có dữ liệu người dùng. |
+| `notifications` | `own_rw`: đọc dòng của mình, sửa **đúng cột `read_at`** | `kind` là một trong năm loại của union `InboxItem` (`NUDGE`, `STREAK_MILESTONE`, `PET_TIRED`, `GUILD_WEEKLY_RESULT`, `QUEST_REMINDER`, giữ bằng `CHECK`), `payload` là một object JSON (`CHECK`), `dedupe_key`, `read_at`. **Duy nhất theo `(user_id, kind, dedupe_key)`** (khóa `NULL` không bao giờ trùng). Chỉ mục `(user_id, created_at DESC)`. |
+
+### Job đóng ngày
+
+Mỗi giờ từ phút 15, `server/src/jobs/dayClose.ts` (tên `day-close`):
+
+1. Lấy từng lô 200 người bằng `job_day_close_candidates(p_now, p_limit, p_after)` (chạy bằng `app_job`): người dùng **đã onboarding, chưa xóa**, có ngày logic hôm qua (theo `app.logical_date(p_now, users.timezone)`) sau ngày đã đóng cuối cùng (`last_closed_date`, hay ngày trước `onboard_date` khi chưa đóng ngày nào), theo thứ tự id, sau `p_after`. Mỗi người kèm `last_closed`, sáu trường chuỗi ngày (đúng hình dạng `StreakState` của `domain/streak.ts`) và `days`: mỗi ngày từ hôm sau ngày đã đóng tới hôm qua một phần tử `{date, storyCompleted, ticketApplied}` (`app._close_days`: không có dòng `daily_logs` là chưa xong; vé là một dòng `freeze_tickets` có `used_for_date` bằng ngày đó).
+2. Tính bằng `closeDays` của `domain/` (AR-03): trạng thái mới và sự kiện. `STREAK_MILESTONE` thành `{type, days, coins, badgeCode}` theo `STREAK_MILESTONES`; `PET_TIRED` giữ ngày của nó; **chuỗi bị đứt không thành gì cả**: không thông báo, không ai bị trách (S67 nằm ở màn hành trình).
+3. Gọi `job_apply_day_close(p_user_id, p_expected_last_closed, p_through, p_days, p_state, p_events)`, **mỗi người một transaction**. `p_through` là ngày cuối cùng SQL đã đưa: không ngày nào được tính ở Node.
+4. Một người hỏng (lỗi bất kỳ) được đếm và ghi một dòng log `{evt:'job_user_failed', job, userId, error, code, …}` không có thông báo lỗi, và không dừng những người khác. Gặp lô rỗng thì dừng; kết quả `{users, applied, skipped, failed, dates}` được ghi vào `job_runs` và một dòng log.
+
+**Ngày nào cần đóng chỉ đến từ SQL.** Node và PostgreSQL mang hai bản sao cơ sở dữ liệu múi giờ, và hôm nay chúng lệch nhau ở bốn múi giờ (xem "Ngày và nhiệm vụ"); job dùng đúng hàm đã gắn nhãn `daily_logs` và đã quyết lượt ghi rơi vào ngày nào. Test ranh giới chạy một phút trước và một phút sau 03:00 của từng múi giờ (Hồ Chí Minh; New York 08/03 và 01/11/2026; Berlin 29/03 và 25/10/2026; Lord Howe 05/04 và 04/10/2026; Apia), và ở `America/Vancouver` sau 01/11/2026, nơi ngày mong đợi lấy từ SQL vì Node đọc khác.
+
+### `job_apply_day_close`: một người, một transaction
+
+Theo đúng thứ tự:
+
+1. **Khóa dòng `users` của người đó `FOR NO KEY UPDATE`**, trước mọi thứ: mutex của ngày người đó (xem "Khóa: một thứ tự, một chế độ"). Lượt ghi của người đó đang chạy thì job chờ; job đang giữ thì lượt ghi chờ, rồi đọc `last_closed_date` mới và nhận `DAY_CLOSED`. Người không còn là người dùng đã onboarding và chưa xóa: không làm gì.
+2. **So rồi mới ghi** (compare-and-set): `last_closed_date` vẫn bằng `p_expected_last_closed`, và `app._close_days` đọc lại bây giờ vẫn bằng đúng `p_days`. Không bằng thì trả `{applied: false, grants: []}` và không làm gì. Vế đầu là tính lặp lại được: hai lượt chạy cùng đọc một người thì lượt sau không áp dụng gì. Vế sau giữ đúng kết quả: một lượt ghi trễ (có `occurredAt`) rơi vào hôm qua giữa lúc job đọc và lúc job ghi, hay một vé vừa được dùng, làm dữ liệu khác với thứ job đã tính; người đó được bỏ qua lần này và được đưa lại ở lượt sau với sự thật mới.
+3. Đóng dấu `closed_at` cho các dòng `daily_logs` có ngày ≤ `p_through`.
+4. Ghi sáu trường từ `p_state` và `last_closed_date = p_through` (`UPDATE … WHERE last_closed_date IS NOT DISTINCT FROM p_expected_last_closed`). **`streak_best` không bao giờ bị ghi thấp hơn giá trị đang có** (`greatest`).
+5. Mỗi `STREAK_MILESTONE`: `days` phải là 7, 30 hoặc 100, `coins` dương, `badgeCode` là một vật phẩm `BADGE`; xu qua `app._grant(…, 'STREAK_MILESTONE', '<days>')` (AR-34: **một lần trong đời**, khóa duy nhất của sổ cái giữ), huy hiệu vào `inventory` (`ON CONFLICT DO NOTHING`), thông báo `STREAK_MILESTONE` với `{days, coins, badgeCode}`, khóa chống trùng là số ngày. Mỗi `PET_TIRED`: thông báo `PET_TIRED` với `{}`, khóa chống trùng là ngày. Sự kiện khác: lỗi, không gì được ghi.
+6. Trả `{applied: true, grants}`: các kết quả `app._grant` đã ghi dòng sổ cái, kèm `reason` và `ref`; job gọi `log.ledger` cho từng dòng (`logGrants`).
+
+Đứt chuỗi rồi đạt lại 7 ngày: sự kiện mốc lại tới, nhưng không có xu, huy hiệu hay thông báo mới (khóa sổ cái, khóa của `inventory`, khóa chống trùng). Khóa lấy theo đúng thứ tự `users` → `daily_logs` → `progression_state` (rồi `app._grant` lấy `FOR UPDATE` trên `progression_state`, bảng không ai tham chiếu); hai test không cần may mắn (`server/test/dayclose.sql.test.ts`) giữ chế độ và thứ tự đó như với các hàm ghi của ngày.
+
+Một ngày đã đóng không mở lại: đổi múi giờ giữa hai lượt chạy không đóng lại ngày nào và không bỏ ngày nào (ngày cần đóng luôn bắt đầu từ hôm sau `last_closed_date`); dời sang múi giờ chậm hơn có thể làm "hôm nay" là ngày đã đóng, và mọi lượt ghi nhận `DAY_CLOSED` cho tới ngày mới của múi giờ mới.
+
+### `app._notify` và hộp thư
+
+`app._notify(p_user uuid, p_kind text, p_payload jsonb, p_dedupe_key text) → boolean` là cách duy nhất ghi một thông báo: nội bộ, không vai trò nào gọi được, `invoker`. `true` khi lượt gọi tạo ra dòng; trùng `(user, kind, dedupe_key)` thì không làm gì. Loại ngoài năm loại của hợp đồng bị `CHECK` từ chối (`23514`): loại mới là một thay đổi hợp đồng trước đã. `created_at` tăng nghiêm ngặt theo từng người (`app.now()`, hay thông báo mới nhất cộng một micro giây), nên trang của hộp thư không bao giờ cắt ngang hai thông báo cùng thời điểm. Các nhiệm vụ sau tạo `NUDGE`, `GUILD_WEEKLY_RESULT`, `QUEST_REMINDER` qua chính hàm này.
+
+| Route | Auth | Thành công | Lỗi riêng |
+|---|---|---|---|
+| `GET /inbox?limit=&before=` | `user` | `200 Inbox` | `422 VALIDATION_FAILED` (`limit` / `format`, `min`, `max`; `before` / `format`) |
+| `POST /inbox/read` | `user`, có khóa | `200 InboxReadResult` | `422 VALIDATION_FAILED` (`body` / `required`, `format`; `ids` / `format`), `409 IDEMPOTENCY_KEY_REUSED` |
+
+- **`GET /inbox`**: mới nhất trước (`created_at`, rồi `id`), `limit` là số nguyên 1–50, mặc định 20. `before` là một thời điểm có thật, theo đúng luật `occurredAt` của `routes/day.ts` (RFC 3339 có múi giờ, ngày có trên lịch…; năm sau 9999 là `format`, trước 1970 thì không có gì). `nextBefore` là `created_at` của mục cuối trang, viết theo UTC **tới micro giây**, để gửi lại nguyên văn; `null` ở trang cuối. Trang và `unreadCount` đọc trong một câu lệnh.
+- **`POST /inbox/read`** là một `UPDATE` thường bằng `app_auth`, dưới RLS, trên cột duy nhất người dùng được ghi (`read_at = app.now()`, chỉ cho dòng chưa đọc: lần đọc đầu được giữ). Có `ids` (mảng UUID) thì chỉ các mục đó; không có thì mọi mục chưa đọc. Id của người khác hay id không tồn tại **không được cập nhật và không được nói ra**: câu trả lời chỉ là `unreadCount` của chính người gọi. Thân phải là object JSON, như các route ghi của ngày.
+- **`GET /day`**: `unreadCount` đếm thông báo chưa đọc của người gọi; `celebrations` là các mục `STREAK_MILESTONE` chưa đọc, cũ nhất trước, cho tới khi chúng được đánh dấu đã đọc.
+
+### Bộ lập lịch (`jobs/scheduler.ts`)
+
+- Mỗi file `server/src/jobs/<tên>.ts` (trừ `scheduler.ts`, `run.ts` và test) export mặc định một `Job`: `{ name, due(now, lastRunAt), run(pool, now, log) }`. Thêm job là thêm file, không sửa danh sách nào. `run` trả về số đếm (được ghi vào `job_runs` và log, nên không bao giờ có dữ liệu cá nhân) và gọi `log.ledger` cho mọi dòng sổ cái nó ghi.
+- `serve` của `main.ts` khởi động bộ lập lịch: **một** `setInterval` 60 giây. Mỗi nhịp đọc `SELECT app.now()` (đồng hồ test của kịch bản áp dụng cho job như cho SQL); nếu lần chạy `day-close` thành công cuối cùng đã cũ hơn 90 phút (tính từ nhịp đầu khi chưa có lần nào) thì ghi một dòng `{level:'alert', evt:'job_late', job:'day-close'}`; rồi khởi chạy mọi job tới hạn mà **không đang chạy**: không bao giờ có hai lượt của cùng một job cùng lúc. Lỗi của một lượt được ghi log (không có thông báo lỗi) và ghi vào `job_runs` với `ok = false`; bộ lập lịch chạy tiếp.
+- `day-close` tới hạn mỗi giờ một lần từ phút 15: khi lần chạy cuối trong tiến trình này trước mốc hh:15 gần nhất. Tiến trình vừa khởi động thì chạy ngay ở nhịp đầu (bù lần đã lỡ; job lặp lại được).
+- `stop()` (gọi từ cơ chế dừng sẵn có của `main.ts`) gỡ bộ hẹn giờ, rồi chờ các lượt đang chạy kết thúc trước khi pool đóng. Bộ hẹn giờ không `unref`: bộ lập lịch quên dừng sẽ giữ tiến trình sống, và lộ ra ngay.
+- `runJob(name, pool, now, log?)` chạy một job một lần (test, kịch bản, lệnh dưới). `npm --prefix server run jobs -- <tên> [--now <ISO>]` chạy một job vào cơ sở dữ liệu phát triển đang chạy (`npm run server:dev`), in kết quả là một dòng JSON ra stdout, log ra stderr; không có `--now` thì dùng `SELECT app.now()`.
+
+### Mồi nhử, ca tấn công, test
+
+- `server/sql/83-decoy-dayclose.sql`: `DECOY_1` có một vé đã dùng cho ngày `2026-01-01`, tuần `2025-12-29` của vé, và một thông báo `PET_TIRED` chưa đọc.
+- `server/checks/attacks/dayclose.ts` (năm ca): `app_auth` gọi từng hàm `job_*` (`permission denied for function`); `app_job` đọc thẳng `daily_logs`, `notifications`, `freeze_tickets` (`permission denied for table`); `app_auth` chèn dòng `notifications`, `freeze_tickets` (`permission denied for table`); A đánh dấu đã đọc thông báo của mồi nhử, theo id và không `WHERE` (0 dòng, mồi nhử nguyên vẹn); một lượt `day-close` thật và danh sách ứng viên với đồng hồ đẩy xa về sau không bao giờ có mồi nhử, và lời gọi apply nêu tên mồi nhử không làm gì.
+- `server/test/dayclose.sql.test.ts`: ứng viên (mồi nhử, chưa onboarding, đã xóa không bao giờ có mặt; `p_limit`, `p_after`), compare-and-set, dữ liệu đã đổi, `streak_best`, mốc một lần trong đời, `PET_TIRED`, `app._notify`, quyền thực thi, chế độ và thứ tự khóa.
+- `server/src/jobs/dayClose.test.ts`: tiêu chí ra mắt (hai nhiệm vụ cốt truyện ba ngày liền, lúc 23:50 và 00:30, đóng ngay sau 03:00: chuỗi 1, 2, 3); tính lặp lại được (cùng thời điểm hai lần; hai lượt cùng lúc); ranh giới từng múi giờ; nghỉ năm ngày; đứt chuỗi và dữ liệu cứu; vé (`FROZEN`, và vé cộng nhiệm vụ xong là `COMPLETED`); mốc 7; đổi múi giờ giữa hai lượt; `DAY_CLOSED` sau khi đóng; một người hỏng không dừng người khác; log; mồi nhử.
+- `server/src/jobs/dayClose.race.test.ts`: `day-close` đóng hôm qua của người dùng U đúng lúc U tick, ghi calo, ghi buổi tập, đánh dấu giờ ngủ (cả bốn nêu thời điểm 20:00 hôm qua) và đổi múi giờ, mỗi loại 25 vòng trên pool đã mở sẵn, đồng hồ thật: không `5xx`; lượt ghi hoặc được nhận (trước lúc đóng, và ngày của nó rồi được đóng dấu) hoặc nhận `DAY_CLOSED`; không dòng `daily_logs` nào của ngày đã đóng thiếu `closed_at`; lượt chạy thứ hai không mở lại gì; sổ cái lành.
+- `server/src/jobs/scheduler.test.ts`, `server/src/routes/inbox.test.ts`.
+
+### Phần ba cổng không nhìn thấy
+
+Cổng 1 và cổng 3 đọc catalog; cổng 2 hỏi quyền và chạy năm ca tấn công ở trên. Những thay đổi sau không làm cổng nào đỏ (trừ chỗ ghi rõ); chỉ test bắt được (đã chạy thử, báo cáo Task 22):
+
+- thân hàm: bỏ compare-and-set; đổi khóa sổ cái của mốc (trả hai lần); bỏ `greatest` của `streak_best`; lấy khóa `users` sau `progression_state`; bỏ điều kiện `onboarded_at` (cổng 2 thấy: ca tấn công về mồi nhử đỏ);
+- code Node: job tự tính ngày cần đóng bằng `logicalDateOf`; bộ lập lịch chạy hai lượt một job cùng lúc; bỏ dòng cảnh báo trễ;
+- ràng buộc: `CHECK` loại của `notifications`, khóa chống trùng, các khóa duy nhất của `freeze_tickets`; `created_at` tăng nghiêm ngặt của `app._notify` không phải ràng buộc mà do hàm giữ;
+- dữ liệu: cổng 2 chạy trên bản sao mới, nơi chưa job nào chạy; ca tấn công về mồi nhử chạy job thật một lần, nhưng không thấy một job **khác** xóa hay sửa nhầm dòng mồi nhử;
+- thời gian: job chạy theo giờ của bộ lập lịch, mỗi giờ phút 15; múi giờ lệch nửa giờ (Ấn Độ: 03:00 là hh:30 UTC) được đóng trễ tới 45 phút, theo thiết kế: ngày vẫn mở cho tới khi job xử lý nó (AR-09).
+
+Sửa `32-dayclose.sql` hay `33-inbox.sql` thì chạy `npm run server:test`, không chỉ `npm run db:verify`.
