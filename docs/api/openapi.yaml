@@ -920,7 +920,7 @@ paths:
         - name: equipment
           in: query
           required: false
-          description: 'Comma-separated equipment codes the user owns; a workout matches when it needs nothing outside this list. Omit for no equipment filter.'
+          description: 'Comma-separated equipment codes the user owns; a workout matches when it needs nothing outside this list. Omit for no equipment filter. An empty value (`equipment=`) is the empty list: the user owns nothing, so only workouts that need no equipment match.'
           style: form
           explode: false
           schema: { type: array, items: { type: string } }

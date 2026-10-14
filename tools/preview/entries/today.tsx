@@ -117,6 +117,10 @@ function PressTracker() {
 
 type Options = {
   route?: RouteName;
+  /** The params of `route`. */
+  params?: object;
+  /** More of the query cache: [queryKey, data]. */
+  queries?: [readonly unknown[], unknown][];
   /** null: nothing in the query cache (the day comes from what the storage holds, as on a cold start). */
   day?: DayState | null;
   me?: Me;
@@ -132,19 +136,19 @@ const nothingStored = {};
  * settings already in the query cache. Reduced motion: the screenshot is taken at once, not in the middle of an
  * animation, so the undo countdown is the text "Còn 5 giây" instead of the shrinking bar.
  */
-export const app = ({ route = 'Today', day = dayOf(), me = meOf(), settings = settingsOf(), storage = nothingStored, fetchStub, extra }: Options = {}) =>
+export const app = ({ route = 'Today', params, queries = [], day = dayOf(), me = meOf(), settings = settingsOf(), storage = nothingStored, fetchStub, extra }: Options = {}) =>
   withApp(
     <Seeded storage={storage}>
       <View style={styles.fill}>
         <PendingBanner />
-        <AppNavigation initialState={stateForRoute(route)} />
+        <AppNavigation initialState={stateForRoute(route, params)} />
       </View>
       {extra}
     </Seeded>,
     {
       session: { userId: USER },
       motion: 'REDUCED',
-      queries: [[meKey, me], ...(day ? [[dayKey, day] as [readonly unknown[], unknown]] : []), [settingsKey, settings]],
+      queries: [[meKey, me], ...(day ? [[dayKey, day] as [readonly unknown[], unknown]] : []), [settingsKey, settings], ...queries],
       fetchStub,
     },
   );

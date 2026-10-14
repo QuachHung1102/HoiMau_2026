@@ -120,7 +120,10 @@ describe('S10: the quests of the day', () => {
     const view = await openBoard();
     fireEvent.press(rowOf(/^Buổi tập chính/));
     expect(mockNavigate.mock.calls).toEqual([['WorkoutCatalog']]);
-    fireEvent.press(rowOf(/^Bữa ăn theo mục tiêu/));
+    // the catalog opens; back on the board for the next row
+    expect(await screen.findByRole('header', { name: 'Chọn buổi tập' })).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Quay lại' }));
+    fireEvent.press(await screen.findByRole('button', { name: /^Bữa ăn theo mục tiêu/ }));
     expect(mockNavigate.mock.calls).toEqual([['WorkoutCatalog'], ['ManualKcal']]);
     expect(await screen.findByRole('header', { name: 'Ghi bữa ăn' })).toBeTruthy();
     await settle();
