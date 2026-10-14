@@ -9,6 +9,7 @@ import { newOnboardedUser, startTestApp } from '../../test/http.ts';
 import type { CallResult, TestApp } from '../../test/http.ts';
 import { createTestDb } from '../../test/testdb.ts';
 import type { TestDb } from '../../test/testdb.ts';
+import { instantText } from './day.ts';
 
 let db: TestDb;
 let app: TestApp;
@@ -124,6 +125,40 @@ test('GET /inbox: limit is 1 to 50, before an instant that exists; anything else
       refused(result, 'before', 'format');
     }
   }
+});
+
+test('instantText: one UTC spelling with the fraction as written up to microseconds; offsets PostgreSQL cannot read are converted, not passed on', () => {
+  const cases: [string, string | null][] = [
+    ['2027-03-10T05:00:00Z', '2027-03-10T05:00:00.000000Z'],
+    ['2027-03-10T12:00:00.000002+07:00', '2027-03-10T05:00:00.000002Z'],
+    ['2027-03-10T05:00:00.1234567890123Z', '2027-03-10T05:00:00.123456Z'],
+    ['2027-03-10T05:00:00.5-00:30', '2027-03-10T05:30:00.500000Z'],
+    ['2027-03-10T05:00:00+16:00', '2027-03-09T13:00:00.000000Z'],
+    ['2027-03-10T05:00:00+23:59', '2027-03-09T05:01:00.000000Z'],
+    ['9999-12-31T23:59:59+23:59', '9999-12-31T00:00:59.000000Z'],
+    ['9999-12-31T23:59:59-00:01', null],
+    ['1969-12-31T23:59:59.999999Z', '1970-01-01T00:00:00.000000Z'],
+    ['2027-02-30T05:00:00Z', null],
+    ['2027-03-10 05:00:00Z', null],
+    ['2027-03-10T05:00:00+24:00', null],
+  ];
+  assert.deepEqual(
+    cases.map(([input]) => [input, instantText(input)]),
+    cases,
+  );
+});
+
+test('GET /inbox: `before` with an offset beyond ±15:59 (which PostgreSQL does not read) is a page, never a 500; its microseconds are kept', async () => {
+  const user = await newOnboardedUser(db);
+  const ids = await notify(user, 3); // at NOW, NOW + 1 µs, NOW + 2 µs
+  for (const value of ['2027-03-10T05:00:00+16:00', '2027-03-10T05:00:00+23:59', '9999-12-31T23:59:59+23:59']) {
+    const page = ok(await get(user, `/inbox?before=${encodeURIComponent(value)}`));
+    // the first two name instants before NOW, the last one long after
+    assert.deepEqual(page.items.map((item: { id: string }) => item.id), value.startsWith('9999') ? ids : [], value);
+  }
+  // NOW + 2 µs, written in another zone: the two older items, not none and not three
+  const page = ok(await get(user, `/inbox?before=${encodeURIComponent('2027-03-10T12:00:00.000002+07:00')}`));
+  assert.deepEqual(page.items.map((item: { id: string }) => item.id), ids.slice(1));
 });
 
 test('POST /inbox/read: with ids marks those, without marks every unread item; the answer is the unread count; GET /day counts the caller\'s unread items', async () => {

@@ -10,7 +10,7 @@ import type {
 } from '../../../domain/contract/core.ts';
 import type { Ctx, Route, RouteResponse } from '../app.ts';
 import { idempotencyKey } from '../idempotency.ts';
-import { LAST_INSTANT, instantOf, objectBody, refuse } from './day.ts';
+import { instantText, objectBody, refuse } from './day.ts';
 
 const LIMIT_DEFAULT = 20;
 const LIMIT_MAX = 50;
@@ -34,19 +34,19 @@ function limitOf(value: string | null): number {
 }
 
 /**
- * `before`: absent, or an instant that exists (the house rule of routes/day.ts), handed to SQL as
- * written so that its microseconds survive: `nextBefore` carries them, and two items a
- * microsecond apart must not fall on the same side of a page. Before 1970 nothing exists.
+ * `before`: absent, or an instant that exists, in the one spelling SQL is given (instantText of
+ * routes/day.ts): UTC, with the microseconds `nextBefore` carries, so that two items a microsecond
+ * apart never fall on the same side of a page. Before 1970 nothing exists.
  */
 function beforeOf(value: string | null): string | null {
   if (value === null) {
     return null;
   }
-  const ms = instantOf(value);
-  if (Number.isNaN(ms) || ms > LAST_INSTANT) {
+  const text = instantText(value);
+  if (text === null) {
     throw refuse('before', 'format');
   }
-  return ms < 0 ? new Date(0).toISOString() : value;
+  return text;
 }
 
 type Row = {
@@ -60,7 +60,8 @@ type Row = {
 
 // One statement: the page and the unread count are one snapshot. $1: before (null: from the
 // newest), $2: the page size; one row more is read to know whether a next page exists. cursor:
-// created_at in UTC to the microsecond, the value `nextBefore` hands back.
+// created_at in UTC to the microsecond, the value `nextBefore` hands back. created_at is unique per
+// user (notifications_user_created_key), so it alone orders the inbox and cuts it into pages.
 const PAGE = `
   SELECT (SELECT count(*)::int FROM notifications n
            WHERE n.user_id = app.current_user_id() AND n.read_at IS NULL) AS unread,
@@ -68,11 +69,11 @@ const PAGE = `
                    'id', p.id, 'kind', p.kind, 'payload', p.payload,
                    'createdAt', p.created_at, 'readAt', p.read_at,
                    'cursor', to_char(p.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))
-                   ORDER BY p.created_at DESC, p.id DESC), '[]'::jsonb)
+                   ORDER BY p.created_at DESC), '[]'::jsonb)
             FROM (SELECT n.* FROM notifications n
                    WHERE n.user_id = app.current_user_id()
                      AND ($1::timestamptz IS NULL OR n.created_at < $1::timestamptz)
-                   ORDER BY n.created_at DESC, n.id DESC
+                   ORDER BY n.created_at DESC
                    LIMIT $2::int + 1) p) AS items`;
 
 const iso = (value: string | null) =>
