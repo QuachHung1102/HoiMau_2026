@@ -3,6 +3,11 @@
 // as app_auth inside the request transaction: the caller is named explicitly in every statement
 // and row level security is the second filter under it. Nothing here writes: a day without any
 // action has no daily_logs row and is shown as a day with nothing done.
+//
+// Every date label and every instant of a day (`logicalDate`, `closesAt`, `locked`) comes from
+// SQL: app.logical_date and app.logical_day_end over the caller's stored zone, the functions
+// that decide where a write lands. Nothing here asks JavaScript about a time zone: Node and
+// PostgreSQL carry two copies of the zone database, and they do not always agree.
 import type {
   DayDetail,
   DayState,
@@ -10,40 +15,15 @@ import type {
   QuestState,
 } from '../../../domain/contract/core.ts';
 import { calorieWindow } from '../../../domain/energy.ts';
-import { logicalDateOf } from '../../../domain/logicalDate.ts';
 import type { DateLabel } from '../../../domain/types.ts';
 import type { Ctx } from '../app.ts';
 
 type Reader = Pick<Ctx, 'db'>;
 
-/**
- * The instant at which logical day `date` ends in `timeZone`: the first instant whose logical
- * date is a later one. Found with `logicalDateOf` itself, so it is the domain's answer
- * on every day, also where 03:00 local does not exist or comes twice.
- */
-export function logicalDayEnd(date: DateLabel, timeZone: string): number {
-  // In every zone (UTC-12 to UTC+14) the label at `date` 00:00 UTC is at most `date`, and 48
-  // hours later it is past it; in between it only moves forward. Searched in whole seconds: no
-  // zone changes its label inside one.
-  // ponytail: 18 steps, each one Intl.DateTimeFormat (about a millisecond together, measured);
-  // compute it from the zone's offset at 03:00 with one check if this ever shows in a profile.
-  let last = Date.parse(`${date}T00:00:00Z`) / 1000;
-  let end = last + 48 * 3600;
-  while (end - last > 1) {
-    const middle = last + Math.floor((end - last) / 2);
-    if (logicalDateOf(middle * 1000, timeZone) > date) {
-      end = middle;
-    } else {
-      last = middle;
-    }
-  }
-  return end * 1000;
-}
-
 type DayRow = {
   now: Date;
   day: DateLabel;
-  timezone: string;
+  closes_at: Date;
   calories_in: string;
   water_ml: number;
   bedtime_marked_at: Date | null;
@@ -57,6 +37,8 @@ type DayRow = {
 // One statement: one snapshot of the database for everything the day shows. $1: the date, or
 // null for the logical date of app.now() in the caller's zone. The hidden quest is locked while
 // that day is today and the wall clock is before 18:00 (the hours day_bedtime refuses).
+// closes_at: the instant the label of today changes, counted from now; for another date, from
+// noon of that date on the zone's wall clock (an instant that carries that label).
 const DAY = `
   WITH me AS (
     SELECT u.id, u.timezone, u.archetype, app.now() AS now,
@@ -65,7 +47,11 @@ const DAY = `
            extract(hour FROM app.now() AT TIME ZONE u.timezone)::int AS hour
       FROM users u WHERE u.id = app.current_user_id()
   )
-  SELECT me.now, to_char(me.day, 'YYYY-MM-DD') AS day, me.timezone,
+  SELECT me.now, to_char(me.day, 'YYYY-MM-DD') AS day,
+         app.logical_day_end(
+           CASE WHEN me.day = me.today THEN me.now
+                ELSE (me.day + time '12:00') AT TIME ZONE me.timezone END,
+           me.timezone) AS closes_at,
          coalesce(d.calories_in, 0) AS calories_in, coalesce(d.water_ml, 0) AS water_ml,
          d.bedtime_marked_at, p.calorie_target, p.water_ml AS water_target,
          g.streak_current, g.streak_best,
@@ -94,6 +80,8 @@ const DAY = `
  * `logicalDate` names another one. A write route answers with today, whatever day the write
  * landed on: the app takes `ActionResult.day` as the current day. For an onboarded caller.
  *
+ * `closesAt` is the earliest instant after now at which the label of today changes
+ * (app.logical_day_end): a write sent before it lands on this day, one sent at it on the next.
  * `lastTick.at` is the instant the server recorded the tick: the undo window counts from it.
  * `unreadCount` and `celebrations` are empty until the inbox exists (Task 22).
  */
@@ -117,7 +105,7 @@ export async function buildDay(
   return {
     logicalDate: row.day,
     serverTime: row.now.toISOString(),
-    closesAt: new Date(logicalDayEnd(row.day, row.timezone)).toISOString(),
+    closesAt: row.closes_at.toISOString(),
     caloriesIn: Number(row.calories_in),
     waterMl: row.water_ml,
     waterTargetMl: row.water_target,
@@ -141,11 +129,26 @@ type SummaryRow = {
   story_total: number;
   water_ml: number;
   calories_in: string;
+  /** Null unless asked for ($3). */
+  actions:
+    | {
+        id: string;
+        kind: DayDetail['actions'][number]['kind'];
+        at: string;
+        label: string | null;
+        undone: boolean;
+      }[]
+    | null;
 };
 
-// A date before the user's first day is NONE; one the day-close job has not processed is OPEN;
-// a closed one is COMPLETED when its log says the story was done, else MISSED (a missed day
-// needs no log). Task 22 adds FROZEN, Task 21 the workout minutes.
+// One row per date from $1 to $2. A date before the user's first day is NONE; one the day-close
+// job has not processed is OPEN; a closed one is COMPLETED when its log says the story was
+// done, else MISSED (a missed day needs no log). Task 22 adds FROZEN, Task 21 the workout
+// minutes.
+// With $3 the row also carries the recorded actions of its date, newest first, read in this
+// same statement: the summary and the list are one snapshot. TICK: every tick, the undone ones
+// marked. BEDTIME: the mark is a column of the log, so the log's id stands for it. Task 21 adds
+// NUTRITION and WORKOUT to the union.
 const SUMMARIES = `
   SELECT to_char(g.day, 'YYYY-MM-DD') AS logical_date,
          CASE WHEN g.day < s.onboard_date THEN 'NONE'
@@ -153,7 +156,18 @@ const SUMMARIES = `
               WHEN d.story_completed THEN 'COMPLETED'
               ELSE 'MISSED' END AS outcome,
          k.story_done, k.story_total,
-         coalesce(d.water_ml, 0) AS water_ml, coalesce(d.calories_in, 0) AS calories_in
+         coalesce(d.water_ml, 0) AS water_ml, coalesce(d.calories_in, 0) AS calories_in,
+         CASE WHEN $3::boolean THEN (
+           SELECT coalesce(jsonb_agg(jsonb_build_object(
+                    'id', a.id, 'kind', a.kind, 'at', a.happened, 'label', a.label, 'undone', a.undone)
+                    ORDER BY a.happened DESC, a.recorded DESC, a.id), '[]'::jsonb)
+             FROM (SELECT t.id, 'TICK' AS kind, t.occurred_at AS happened, q.code AS label,
+                          t.undone_at IS NOT NULL AS undone, t.created_at AS recorded
+                     FROM quest_ticks t JOIN quests q ON q.id = t.quest_id
+                    WHERE t.daily_log_id = d.id
+                   UNION ALL
+                   SELECT d.id, 'BEDTIME', d.bedtime_marked_at, NULL, false, d.bedtime_marked_at
+                    WHERE d.bedtime_marked_at IS NOT NULL) a) END AS actions
     FROM users u
     JOIN progression_state s ON s.user_id = u.id
    CROSS JOIN LATERAL (SELECT $1::date + n AS day FROM generate_series(0, $2::date - $1::date) n) g
@@ -166,68 +180,48 @@ const SUMMARIES = `
    WHERE u.id = app.current_user_id()
    ORDER BY g.day`;
 
+const summaryOf = (row: SummaryRow): DaySummary => ({
+  logicalDate: row.logical_date,
+  outcome: row.outcome,
+  storyDone: row.story_done,
+  storyTotal: row.story_total,
+  waterMl: row.water_ml,
+  caloriesIn: Number(row.calories_in),
+  workoutMinutes: 0,
+});
+
 /** One summary per date from `from` to `to`, both included, oldest first. For an onboarded caller. */
 export async function buildDaySummaries(
   { db }: Reader,
   from: DateLabel,
   to: DateLabel,
 ): Promise<DaySummary[]> {
-  const { rows } = await db.query<SummaryRow>(SUMMARIES, [from, to]);
-  return rows.map(row => ({
-    logicalDate: row.logical_date,
-    outcome: row.outcome,
-    storyDone: row.story_done,
-    storyTotal: row.story_total,
-    waterMl: row.water_ml,
-    caloriesIn: Number(row.calories_in),
-    workoutMinutes: 0,
-  }));
+  const { rows } = await db.query<SummaryRow>(SUMMARIES, [from, to, false]);
+  return rows.map(summaryOf);
 }
 
-type ActionRow = {
-  id: string;
-  kind: DayDetail['actions'][number]['kind'];
-  happened: Date;
-  label: string | null;
-  undone: boolean;
-};
-
-// TICK: every tick of the day, the undone ones marked. BEDTIME: the mark is a column of the log,
-// so the log's id stands for it. Task 21 adds NUTRITION and WORKOUT.
-const ACTIONS = `
-  SELECT t.id, 'TICK' AS kind, t.occurred_at AS happened, q.code AS label, t.undone_at IS NOT NULL AS undone,
-         t.created_at AS recorded
-    FROM daily_logs d
-    JOIN quest_ticks t ON t.daily_log_id = d.id
-    JOIN quests q ON q.id = t.quest_id
-   WHERE d.user_id = app.current_user_id() AND d.logical_date = $1::date
-  UNION ALL
-  SELECT d.id, 'BEDTIME', d.bedtime_marked_at, NULL, false, d.bedtime_marked_at
-    FROM daily_logs d
-   WHERE d.user_id = app.current_user_id() AND d.logical_date = $1::date
-     AND d.bedtime_marked_at IS NOT NULL
-   ORDER BY happened DESC, recorded DESC, id`;
-
-/** The summary of `date` and what was recorded on it, newest first. For an onboarded caller. */
+/**
+ * The summary of `date` and what was recorded on it, newest first, from ONE statement: a tick
+ * committed while this runs is in both or in neither. For an onboarded caller.
+ */
 export async function buildDayDetail(
-  ctx: Reader,
+  { db }: Reader,
   date: DateLabel,
 ): Promise<DayDetail> {
-  const [summary] = await buildDaySummaries(ctx, date, date);
-  if (summary === undefined) {
+  const { rows } = await db.query<SummaryRow>(SUMMARIES, [date, date, true]);
+  if (rows.length !== 1 || rows[0].actions === null) {
     throw new Error('this read model is for an onboarded user');
   }
-  const { rows } = await ctx.db.query<ActionRow>(ACTIONS, [date]);
   return {
-    summary,
-    actions: rows.map(row => ({
-      id: row.id,
-      kind: row.kind,
-      at: row.happened.toISOString(),
+    summary: summaryOf(rows[0]),
+    actions: rows[0].actions.map(action => ({
+      id: action.id,
+      kind: action.kind,
+      at: new Date(action.at).toISOString(),
       mealSlot: null,
-      label: row.label,
+      label: action.label,
       value: null,
-      undone: row.undone,
+      undone: action.undone,
     })),
   };
 }
