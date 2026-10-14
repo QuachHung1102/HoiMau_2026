@@ -114,6 +114,14 @@ BEGIN
   IF found IS NOT NULL THEN
     RAISE EXCEPTION 'registry: %', found;
   END IF;
+  SELECT string_agg(format('function %s: the security mode is definer or invoker, not %s', e.signature, e.security),
+                    '; ' ORDER BY e.signature)
+    INTO found
+    FROM meta.expected_functions e
+   WHERE e.security NOT IN ('definer', 'invoker');
+  IF found IS NOT NULL THEN
+    RAISE EXCEPTION 'registry: %', found;
+  END IF;
 
   -- (3) Every registered table exists ...
   SELECT string_agg(e.name, ', ' ORDER BY e.name)
@@ -282,8 +290,9 @@ BEGIN
   -- be exactly one of the two allowed paths and nothing else: any further SET (for instance
   -- session_replication_role = replica, which switches triggers off) rides along unseen.
   -- A SECURITY INVOKER function called by a SECURITY DEFINER one runs as the owner too, with
-  -- its own settings when it has any: it carries one of the two allowed paths, or nothing (and
-  -- then resolves names with the path of the function that called it).
+  -- its own settings when it has any. So: every SECURITY DEFINER function carries exactly one
+  -- of the two allowed paths; a SECURITY INVOKER function, callable or internal, may carry
+  -- exactly that as well, or nothing (it then resolves names with the path of its caller).
   SELECT string_agg(format('%s %s', p.oid::regprocedure::text, coalesce(p.proconfig, '{}')), ', '
                     ORDER BY p.oid::regprocedure::text)
     INTO found
@@ -296,22 +305,21 @@ BEGIN
   IF found IS NOT NULL THEN
     RAISE EXCEPTION 'function settings: a SECURITY DEFINER function must carry exactly SET search_path = public, pg_temp (or pg_catalog, pg_temp), any other function that or no setting at all; found: %', found;
   END IF;
-  -- Whether a function runs as its owner or as its caller is not in the registry, so the
-  -- function carries the rule itself. An internal one (in meta, or a name starting with "_") is
-  -- called only by a SECURITY DEFINER function or by the owner: it is SECURITY INVOKER, so that
-  -- a stray EXECUTE grant on it still stops at the tables. Any other function is SECURITY
-  -- DEFINER exactly when it carries a setting, the search_path asserted above: a definer made
-  -- invoker keeps its setting, an invoker made definer has none or is internal.
-  SELECT string_agg(format('%s is SECURITY %s', p.oid::regprocedure::text,
-                           CASE WHEN p.prosecdef THEN 'DEFINER' ELSE 'INVOKER' END), ', '
-                    ORDER BY p.oid::regprocedure::text)
+  -- Whose rights a function runs with is what its file registered, compared by equality. It
+  -- is not inferred: neither the name of a function nor its settings say which of the two its
+  -- author meant, and a change of both at once (SECURITY DEFINER together with the allowed
+  -- search_path) would satisfy any rule built on them.
+  SELECT string_agg(format('%s is SECURITY %s, registered %s', e.signature,
+                           CASE WHEN p.prosecdef THEN 'DEFINER' ELSE 'INVOKER' END, e.security), ', '
+                    ORDER BY e.signature)
     INTO found
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
+    JOIN meta.expected_functions e ON e.signature = p.oid::regprocedure::text
    WHERE n.nspname NOT LIKE 'pg\_%' AND n.nspname <> 'information_schema'
-     AND p.prosecdef <> (p.proconfig IS NOT NULL AND NOT (n.nspname = 'meta' OR left(p.proname, 1) = '_'));
+     AND p.prosecdef <> (e.security = 'definer');
   IF found IS NOT NULL THEN
-    RAISE EXCEPTION 'function security: an internal function (in meta, or a name starting with "_") must be SECURITY INVOKER, any other must be SECURITY DEFINER exactly when it carries a setting; found: %', found;
+    RAISE EXCEPTION 'function security: the mode of a function is the one registered for it (meta.expect_function); found: %', found;
   END IF;
 
   -- (2) (4) (7) (8) Ownership and grants of everything of ours, read from the ACL. Nothing is

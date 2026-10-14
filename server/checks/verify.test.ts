@@ -171,17 +171,28 @@ const FIXTURE = `
   CREATE FUNCTION fx_fn(p text) RETURNS text
     LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp AS 'SELECT p';
   GRANT EXECUTE ON FUNCTION fx_fn(text) TO app_auth, app_anon;
-  SELECT meta.expect_function('fx_fn(text)', '{app_auth,app_anon}');
+  SELECT meta.expect_function('fx_fn(text)', 'definer', '{app_auth,app_anon}');
 
   CREATE FUNCTION fx_trigger() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RETURN NEW; END';
-  SELECT meta.expect_function('fx_trigger()', '{}');
+  SELECT meta.expect_function('fx_trigger()', 'invoker', '{}');
 
   CREATE FUNCTION app._fx_helper(p_user uuid) RETURNS int LANGUAGE sql AS 'SELECT 1';
-  SELECT meta.expect_function('app._fx_helper(uuid)', '{}');
+  SELECT meta.expect_function('app._fx_helper(uuid)', 'invoker', '{}');
 
   CREATE FUNCTION app._fx_pinned(p_user uuid) RETURNS int
     LANGUAGE sql SET search_path = public, pg_temp AS 'SELECT 1';
-  SELECT meta.expect_function('app._fx_pinned(uuid)', '{}');
+  SELECT meta.expect_function('app._fx_pinned(uuid)', 'invoker', '{}');
+
+  -- a callable function that runs as its caller, under row level security, and pins its path
+  CREATE FUNCTION fx_count() RETURNS bigint
+    LANGUAGE sql STABLE SET search_path = public, pg_temp AS 'SELECT count(*) FROM fx_own_read';
+  GRANT EXECUTE ON FUNCTION fx_count() TO app_auth;
+  SELECT meta.expect_function('fx_count()', 'invoker', '{app_auth}');
+
+  -- an internal function that has to run as the owner: a trigger function writing an internal table
+  CREATE FUNCTION app._fx_audit() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS 'BEGIN RETURN NEW; END';
+  SELECT meta.expect_function('app._fx_audit()', 'definer', '{}');
 `;
 
 const MEMBERSHIP =
@@ -191,7 +202,7 @@ const SEARCH_PATH =
 const SCHEMA_USAGE = '{app_anon:USAGE,app_auth:USAGE,app_job:USAGE}';
 const APP_HELPER = '{app_anon:EXECUTE,app_auth:EXECUTE,app_job:EXECUTE}';
 const FUNCTION_SECURITY =
-  'function security: an internal function (in meta, or a name starting with "_") must be SECURITY INVOKER, any other must be SECURITY DEFINER exactly when it carries a setting; found: ';
+  'function security: the mode of a function is the one registered for it (meta.expect_function); found: ';
 /** A table registered as content whose rows hang off `parent`. */
 const claimedContent = (parent: string) =>
   `CREATE TABLE fx_diary (id int PRIMARY KEY, parent ${parent});
@@ -558,27 +569,48 @@ const mutations = (database: string): [sql: string, raises: string][] => [
     'ALTER FUNCTION app._fx_helper(uuid) SET session_replication_role = replica',
     `${SEARCH_PATH}app._fx_helper(uuid) {session_replication_role=replica}`,
   ],
-  // security of a function: internal ones run as the caller, the others as the owner exactly
-  // when they carry a setting
+  // security of a function: the registered mode, by equality. The mode alone, and the mode
+  // together with the setting that would make the function look well-formed in its new mode.
   [
     'ALTER FUNCTION fx_fn(text) SECURITY INVOKER',
-    `${FUNCTION_SECURITY}fx_fn(text) is SECURITY INVOKER`,
+    `${FUNCTION_SECURITY}fx_fn(text) is SECURITY INVOKER, registered definer`,
+  ],
+  [
+    'ALTER FUNCTION fx_fn(text) SECURITY INVOKER RESET search_path',
+    `${FUNCTION_SECURITY}fx_fn(text) is SECURITY INVOKER, registered definer`,
   ],
   [
     'ALTER FUNCTION app.now() SECURITY INVOKER',
-    `${FUNCTION_SECURITY}app.now() is SECURITY INVOKER`,
+    `${FUNCTION_SECURITY}app.now() is SECURITY INVOKER, registered definer`,
+  ],
+  [
+    'ALTER FUNCTION app.current_user_id() SECURITY DEFINER SET search_path = public, pg_temp',
+    `${FUNCTION_SECURITY}app.current_user_id() is SECURITY DEFINER, registered invoker`,
+  ],
+  [
+    'ALTER FUNCTION fx_count() SECURITY DEFINER',
+    `${FUNCTION_SECURITY}fx_count() is SECURITY DEFINER, registered invoker`,
   ],
   [
     'ALTER FUNCTION app._fx_helper(uuid) SECURITY DEFINER SET search_path = public, pg_temp',
-    `${FUNCTION_SECURITY}app._fx_helper(uuid) is SECURITY DEFINER`,
+    `${FUNCTION_SECURITY}app._fx_helper(uuid) is SECURITY DEFINER, registered invoker`,
   ],
   [
-    'ALTER FUNCTION meta.expect_function(text, text[]) SECURITY DEFINER',
-    `${FUNCTION_SECURITY}meta.expect_function(text,text[]) is SECURITY DEFINER`,
+    'ALTER FUNCTION app._fx_audit() SECURITY INVOKER',
+    `${FUNCTION_SECURITY}app._fx_audit() is SECURITY INVOKER, registered definer`,
   ],
   [
-    'ALTER FUNCTION fx_trigger() SET search_path = public, pg_temp',
-    `${FUNCTION_SECURITY}fx_trigger() is SECURITY INVOKER`,
+    'ALTER FUNCTION meta.expect_function(text, text, text[]) SECURITY DEFINER',
+    `${FUNCTION_SECURITY}meta.expect_function(text,text,text[]) is SECURITY DEFINER, registered invoker`,
+  ],
+  // the file states one mode and creates the other
+  [
+    "SELECT meta.expect_function('fx_trigger()', 'definer', '{}')",
+    `${FUNCTION_SECURITY}fx_trigger() is SECURITY INVOKER, registered definer`,
+  ],
+  [
+    "UPDATE meta.expected_functions SET security = 'owner' WHERE signature = 'fx_fn(text)'",
+    'registry: function fx_fn(text): the security mode is definer or invoker, not owner',
   ],
   // (7) every function of ours is registered, and EXECUTE is granted to exactly the registered roles
   [
@@ -645,7 +677,7 @@ const mutations = (database: string): [sql: string, raises: string][] => [
     'function app._fx_helper(uuid): grants are {PUBLIC:EXECUTE}, expected {}',
   ],
   [
-    `SELECT meta.expect_function('app._fx_helper(uuid)', '{app_job}');
+    `SELECT meta.expect_function('app._fx_helper(uuid)', 'invoker', '{app_job}');
      GRANT EXECUTE ON FUNCTION app._fx_helper(uuid) TO app_job`,
     'internal function must be registered with no role: app._fx_helper(uuid) {app_job}',
   ],
@@ -654,14 +686,14 @@ const mutations = (database: string): [sql: string, raises: string][] => [
     'function meta.expect_table(text,text,text[],text[],text): grants are {app_auth:EXECUTE}, expected {}',
   ],
   [
-    `SELECT meta.expect_function('meta.expect_function(text, text[])', '{app_auth}');
-     GRANT EXECUTE ON FUNCTION meta.expect_function(text, text[]) TO app_auth`,
-    'internal function must be registered with no role: meta.expect_function(text,text[]) {app_auth}',
+    `SELECT meta.expect_function('meta.expect_function(text, text, text[])', 'invoker', '{app_auth}');
+     GRANT EXECUTE ON FUNCTION meta.expect_function(text, text, text[]) TO app_auth`,
+    'internal function must be registered with no role: meta.expect_function(text,text,text[]) {app_auth}',
   ],
   [
     `CREATE FUNCTION public._fx_h(p_user uuid) RETURNS int LANGUAGE sql AS 'SELECT 1';
      GRANT EXECUTE ON FUNCTION _fx_h(uuid) TO app_auth;
-     SELECT meta.expect_function('_fx_h(uuid)', '{app_auth}')`,
+     SELECT meta.expect_function('_fx_h(uuid)', 'invoker', '{app_auth}')`,
     'internal function must be registered with no role: _fx_h(uuid) {app_auth}',
   ],
   // a function born while the default was open keeps no ACL of its own (proacl is null), which
@@ -670,7 +702,7 @@ const mutations = (database: string): [sql: string, raises: string][] => [
     `ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO PUBLIC;
      CREATE FUNCTION fx_open() RETURNS int LANGUAGE sql AS 'SELECT 1';
      ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
-     SELECT meta.expect_function('fx_open()', '{}')`,
+     SELECT meta.expect_function('fx_open()', 'invoker', '{}')`,
     'function fx_open(): grants are {PUBLIC:EXECUTE}, expected {}',
   ],
   // default privileges: what the next table, sequence or function is born with
@@ -738,12 +770,12 @@ const mutations = (database: string): [sql: string, raises: string][] => [
   ],
   [
     `GRANT EXECUTE ON FUNCTION fx_fn(text) TO PUBLIC;
-     SELECT meta.expect_function('fx_fn(text)', '{app_auth,app_anon,PUBLIC}')`,
+     SELECT meta.expect_function('fx_fn(text)', 'definer', '{app_auth,app_anon,PUBLIC}')`,
     'registry: function fx_fn(text): only app_anon, app_auth, app_job can be registered, not {app_auth,app_anon,PUBLIC}',
   ],
   [
     `GRANT EXECUTE ON FUNCTION fx_fn(text) TO app_conn;
-     SELECT meta.expect_function('fx_fn(text)', '{app_auth,app_anon,app_conn}')`,
+     SELECT meta.expect_function('fx_fn(text)', 'definer', '{app_auth,app_anon,app_conn}')`,
     'registry: function fx_fn(text): only app_anon, app_auth, app_job can be registered, not {app_auth,app_anon,app_conn}',
   ],
   // privileges on configuration parameters
@@ -801,10 +833,27 @@ test('the registry refuses a declaration for something that does not exist', asy
     declare("meta.expect_policy('fx_absent', 'p', 'SELECT', 'true', NULL)"),
     { code: '23503', messagePrefix: 'insert or update on table' },
   );
-  await expectPgError(declare("meta.expect_function('fx_absent()', '{}')"), {
+  await expectPgError(
+    declare("meta.expect_function('fx_absent()', 'invoker', '{}')"),
+    {
+      code: '42883',
+      messagePrefix: 'function "fx_absent()" does not exist',
+    },
+  );
+});
+
+test('a function is registered with its security mode: no default, no shorter form', async () => {
+  const declare = (sql: string) => fixture.admin.query(`SELECT ${sql}`);
+  // the form that registered roles only is gone: a file that was not converted fails right there
+  await expectPgError(declare("meta.expect_function('fx_fn(text)', '{}')"), {
     code: '42883',
-    messagePrefix: 'function "fx_absent()" does not exist',
+    messagePrefix:
+      'function meta.expect_function(unknown, unknown) does not exist',
   });
+  await expectPgError(
+    declare("meta.expect_function('fx_fn(text)', NULL, '{}')"),
+    { code: '23502', messagePrefix: 'null value in column "security"' },
+  );
 });
 
 test('a migration rebuilds the registry from the SQL files and ends with the self-check', async () => {

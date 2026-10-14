@@ -85,6 +85,6 @@ GRANT EXECUTE ON FUNCTION
   idempotency_begin(uuid, bytea), idempotency_store(uuid, int, jsonb), idempotency_release(uuid)
   TO app_auth;
 
-SELECT meta.expect_function('idempotency_begin(uuid, bytea)', '{app_auth}');
-SELECT meta.expect_function('idempotency_store(uuid, int, jsonb)', '{app_auth}');
-SELECT meta.expect_function('idempotency_release(uuid)', '{app_auth}');
+SELECT meta.expect_function('idempotency_begin(uuid, bytea)', 'definer', '{app_auth}');
+SELECT meta.expect_function('idempotency_store(uuid, int, jsonb)', 'definer', '{app_auth}');
+SELECT meta.expect_function('idempotency_release(uuid)', 'definer', '{app_auth}');
