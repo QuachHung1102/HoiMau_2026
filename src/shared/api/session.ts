@@ -4,6 +4,7 @@ import * as Keychain from 'react-native-keychain';
 import * as syncVi from '../i18n/vi/sync';
 import { clearUserCache } from '../storage/cache';
 import { clearPendingFor, flushPending, unsentCount } from '../storage/pendingActions';
+import { clearStandUp } from '../storage/standUp';
 import { Dialog } from '../ui/Dialog';
 import { api, bindApiSession, stopRecording } from './client';
 
@@ -99,6 +100,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // What was still waiting to be sent goes only when the user asked to leave (and was warned by `signOut`).
         // A session the server ended keeps its queue: it is sent when that user signs in again, never under another.
         if (userId && !expired) await bestEffort(clearPendingFor(userId));
+        // The stand-up countdown (timing only) goes with the person who leaves, whichever way the session ended.
+        if (userId) await bestEffort(clearStandUp(userId));
         setState({ status: 'signedOut', userId: null, expired });
         reply(false); // a question still open belongs to a session that is gone
       })().finally(() => {

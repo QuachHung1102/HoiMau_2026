@@ -20,6 +20,10 @@ const HOUR = 60 * 60 * 1000;
 const LEVEL = 5;
 export const TICK = `POST ${tickPath(WATER)}`;
 export const UNDO = `POST /day/quests/${WATER}/undo`;
+export const STAND_UP = 'STAND_UP';
+export const BEDTIME = 'POST /day/bedtime';
+export const NUTRITION = 'POST /nutrition/log';
+export const HIDDEN = 'BEDTIME_BEFORE_23';
 
 const quest = (code: string, category: QuestState['category'], xpReward: number, coinReward: number, more: Partial<QuestState> = {}): QuestState => ({
   code,
@@ -113,6 +117,10 @@ export const world = {} as {
   settings: Settings;
   down: boolean;
   events: GameEvent[];
+  /** Whether a first bedtime mark inside the window completes the hidden quest (a mark after 23:00 does not). */
+  bedtimeReward: boolean;
+  /** The logicalDate the server calls closed: a nutrition log meets `409 DAY_CLOSED`. */
+  closedDate?: string;
   answer?: (request: string, init: Init) => unknown;
 };
 
@@ -145,10 +153,15 @@ export function serverAnswer(request: string, init: Init): unknown {
   if (request === 'GET /day') return respond(200, world.day);
   if (request === 'GET /settings') return respond(200, world.settings);
   if (request === 'POST /auth/logout') return respond(204);
-  if (request !== TICK && request !== UNDO) return respond(404);
-  // An Idempotency-Key that was answered before gets the same answer again.
+  if (request === BEDTIME) return keyed(init, id => bedtime(id));
+  if (request === NUTRITION) return keyed(init, id => nutritionLog(id, JSON.parse(init.body ?? '{}')));
+  if (request !== TICK && request !== UNDO && request !== STAND_UP_TICK) return respond(404);
+  return keyed(init, key => (request === TICK ? tick(key) : request === STAND_UP_TICK ? standUpTick(key) : undo(key, JSON.parse(init.body ?? '{}').tickId)));
+}
+/** An Idempotency-Key that was answered before gets the same answer again. */
+function keyed(init: Init, answer: (key: string) => unknown) {
   const key = init.headers['Idempotency-Key'];
-  if (!replies.has(key)) replies.set(key, request === TICK ? tick(key) : undo(key, JSON.parse(init.body ?? '{}').tickId));
+  if (!replies.has(key)) replies.set(key, answer(key));
   return replies.get(key);
 }
 function tick(id: string) {
@@ -159,6 +172,51 @@ function tick(id: string) {
 function undo(id: string, tickId: string) {
   if (water().lastTick?.id !== tickId) return refuse(409, 'UNDO_NOT_LATEST');
   const delta = shift(-1, null);
+  return respond(200, { actionId: id, day: world.day, delta } satisfies ActionResult);
+}
+
+const STAND_UP_TICK = `POST /day/quests/${STAND_UP}/progress`;
+function standUpTick(id: string) {
+  const part = world.day.quests.find(item => item.code === STAND_UP) as QuestState;
+  if (part.progress >= part.targetCount) return refuse(409, 'QUEST_ALREADY_COMPLETE');
+  const progress = part.progress + 1;
+  world.day = { ...world.day, quests: world.day.quests.map(item => (item.code === STAND_UP ? { ...item, progress, completed: progress >= item.targetCount, lastTick: { id, at: new Date().toISOString() } } : item)) };
+  grant(part.xpReward, part.coinReward);
+  return respond(200, { actionId: id, day: world.day, delta: { xp: part.xpReward, coin: part.coinReward, events: world.events } } satisfies ActionResult);
+}
+
+/** What the server adds to the profile for a grant: its own numbers, not the app's. */
+function grant(xp: number, coin: number) {
+  const { progression } = world.me;
+  if (progression) world.me = { ...world.me, progression: { ...progression, xp: progression.xp + xp, xpIntoLevel: progression.xpIntoLevel + xp, coin: progression.coin + coin } };
+}
+
+function bedtime(id: string) {
+  const hidden = world.day.quests.find(item => item.code === HIDDEN);
+  if (hidden?.locked) return refuse(409, 'BEDTIME_TOO_EARLY');
+  const reward = world.day.bedtimeMarkedAt === null && world.bedtimeReward && hidden !== undefined && !hidden.completed;
+  world.day = {
+    ...world.day,
+    bedtimeMarkedAt: world.day.bedtimeMarkedAt ?? new Date().toISOString(),
+    quests: reward ? world.day.quests.map(item => (item.code === HIDDEN ? { ...item, progress: 1, completed: true } : item)) : world.day.quests,
+  };
+  if (reward) grant(hidden.xpReward, hidden.coinReward);
+  const delta: ActionResult['delta'] = reward ? { xp: hidden.xpReward, coin: hidden.coinReward, events: [{ type: 'QUEST_COMPLETED', questCode: HIDDEN }] } : { xp: 0, coin: 0, events: [] };
+  return respond(200, { actionId: id, day: world.day, delta } satisfies ActionResult);
+}
+
+/** The manual calorie log: 1 to 5000, the total is the sum, the nutrition quest latches inside the window. */
+function nutritionLog(id: string, body: { kcal?: unknown }) {
+  const { kcal } = body;
+  if (typeof kcal !== 'number' || !Number.isInteger(kcal) || kcal < 1 || kcal > 5000) return refuse(422, 'VALIDATION_FAILED', { fields: [{ field: 'kcal', rule: 'min' }] });
+  if (world.day.logicalDate === world.closedDate) return refuse(409, 'DAY_CLOSED');
+  const caloriesIn = world.day.caloriesIn + kcal;
+  const { min, max } = world.day.calorieWindow;
+  const meal = world.day.quests.find(item => item.code === 'NUTRITION_TARGET');
+  const reward = meal !== undefined && !meal.completed && caloriesIn >= min && caloriesIn <= max;
+  world.day = { ...world.day, caloriesIn, quests: reward ? world.day.quests.map(item => (item.code === 'NUTRITION_TARGET' ? { ...item, progress: 1, completed: true } : item)) : world.day.quests };
+  if (reward) grant(meal.xpReward, meal.coinReward);
+  const delta: ActionResult['delta'] = reward ? { xp: meal.xpReward, coin: meal.coinReward, events: [{ type: 'QUEST_COMPLETED', questCode: 'NUTRITION_TARGET' }] } : { xp: 0, coin: 0, events: [] };
   return respond(200, { actionId: id, day: world.day, delta } satisfies ActionResult);
 }
 
@@ -194,7 +252,7 @@ export function installTodayTestEnv() {
   installSyncTestEnv();
   beforeEach(() => {
     replies.clear();
-    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, events: [], answer: undefined });
+    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, events: [], bedtimeReward: true, closedDate: undefined, answer: undefined });
     fetchMock.mockImplementation(async (url, init) => {
       const request = `${init.method} ${url.replace(BASE, '')}`;
       const taken = await world.answer?.(request, init);

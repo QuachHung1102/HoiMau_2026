@@ -526,3 +526,42 @@ describe('signing out while records are still waiting to be sent', () => {
     expect(await idsOnDisk()).toEqual(['a1', 'a2']);
   });
 });
+
+describe('the stand-up countdown (timing only, standup:v1:<userId>)', () => {
+  const key = (user: string) => `standup:v1:${user}`;
+  const kept = JSON.stringify({ remainingMs: 1_800_000, at: 1, running: false });
+
+  test('signing out removes this user\'s countdown and nobody else\'s, after the queue', async () => {
+    mount();
+    await screen.findByText('signedOut|-|ok');
+    await act(() => session.signIn(TOKEN, USER));
+    await AsyncStorage.setItem(key(USER), kept);
+    await AsyncStorage.setItem(key('someone-else'), kept);
+    const order: string[] = [];
+    const removeItem = AsyncStorage.removeItem.bind(AsyncStorage);
+    jest.spyOn(AsyncStorage, 'removeItem').mockImplementation(async stored => {
+      order.push(stored);
+      return removeItem(stored);
+    });
+    const removeMany = AsyncStorage.removeMany.bind(AsyncStorage);
+    jest.spyOn(AsyncStorage, 'removeMany').mockImplementation(async keys => {
+      order.push(keys[0].split(':')[0]);
+      return removeMany(keys);
+    });
+    await act(() => session.signOut());
+    expect(order).toEqual(['cache', 'pending', key(USER)]);
+    expect(await AsyncStorage.getItem(key(USER))).toBeNull();
+    expect(await AsyncStorage.getItem(key('someone-else'))).toBe(kept);
+  });
+
+  test('a session the server ended removes it too (the countdown is not data worth keeping for the next sign-in)', async () => {
+    mount();
+    await screen.findByText('signedOut|-|ok');
+    await act(() => session.signIn(TOKEN, USER));
+    await AsyncStorage.setItem(key(USER), kept);
+    fetchMock.mockResolvedValue(sessionInvalid());
+    await act(() => api.get('/me').catch(() => undefined));
+    expect(await screen.findByText('signedOut|-|expired')).toBeTruthy();
+    expect(await AsyncStorage.getItem(key(USER))).toBeNull();
+  });
+});

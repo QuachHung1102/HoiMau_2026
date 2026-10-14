@@ -6,17 +6,18 @@ import type { DayState, Me, QuestState, Settings } from '../../../domain/contrac
 import { calorieWindow } from '../../../domain/energy.ts';
 import { cumulativeXpForLevel, titleKeyForLevel, xpRequiredForLevel } from '../../../domain/progression.ts';
 import { AppNavigation, stateForRoute } from '../../../src/app/navigation';
+import type { RouteName } from '../../../src/app/routes';
 import { meKey } from '../../../src/features/auth/api';
 import { dayKey, settingsKey, tickPath, WATER } from '../../../src/features/quests/api';
 import { PendingBanner } from '../../../src/features/sync/PendingBanner';
 import { waterTitle } from '../../../src/shared/i18n/vi/quests';
 import { withApp, type Entries } from '../harness';
 
-const USER = '5f0c2a8e-1d37-4a55-9c1b-0c8a4d2e7b10';
+export const USER = '5f0c2a8e-1d37-4a55-9c1b-0c8a4d2e7b10';
 const HOUR = 60 * 60 * 1000;
 const LEVEL = 5;
 
-const quest = (code: string, category: QuestState['category'], xpReward: number, coinReward: number, more: Partial<QuestState> = {}): QuestState => ({
+export const quest = (code: string, category: QuestState['category'], xpReward: number, coinReward: number, more: Partial<QuestState> = {}): QuestState => ({
   code,
   category,
   titleKey: code,
@@ -30,7 +31,7 @@ const quest = (code: string, category: QuestState['category'], xpReward: number,
   ...more,
 });
 // Illustrative values, as in frame S09: 3 of 8 parts, 1.650 of 2.394 kcal, a streak of 4 days, one unread letter.
-const dayOf = (parts = 3, more: Partial<DayState> = {}): DayState => ({
+export const dayOf = (parts = 3, more: Partial<DayState> = {}): DayState => ({
   logicalDate: '2026-10-14',
   serverTime: new Date().toISOString(),
   closesAt: new Date(Date.now() + 6 * HOUR).toISOString(),
@@ -53,7 +54,7 @@ const dayOf = (parts = 3, more: Partial<DayState> = {}): DayState => ({
   ...more,
 });
 // Level 5 with 340 XP into it, 250 coins, the four stats of the frame.
-const meOf = (xpIntoLevel = 340, coin = 250, hp = 26, more: Partial<Me> = {}): Me => ({
+export const meOf = (xpIntoLevel = 340, coin = 250, hp = 26, more: Partial<Me> = {}): Me => ({
   user: { id: USER, email: 'an@example.vn', displayName: 'An', timezone: 'Asia/Ho_Chi_Minh', archetype: 'TANKER', archetypeChangeAvailableAt: null, onboarded: true },
   progression: {
     xp: cumulativeXpForLevel(LEVEL) + xpIntoLevel,
@@ -78,7 +79,7 @@ const meOf = (xpIntoLevel = 340, coin = 250, hp = 26, more: Partial<Me> = {}): M
   appearance: { themeCode: 'default', petSkinCode: 'SKIN_DEFAULT', badgeCode: null },
   ...more,
 });
-const settingsOf = (hideStreak = false): Settings => ({
+export const settingsOf = (hideStreak = false): Settings => ({
   nudgesEnabled: true,
   reminderEnabled: false,
   reminderWindow: 'EVENING',
@@ -88,8 +89,8 @@ const settingsOf = (hideStreak = false): Settings => ({
   excludedMealTags: [],
 });
 
-const respond = (status: number, body?: unknown) => ({ ok: status < 300, status, text: async () => (body === undefined ? '' : JSON.stringify(body)) });
-const pathOf = (url: string) => url.slice(url.indexOf('/api/v1') + '/api/v1'.length);
+export const respond = (status: number, body?: unknown) => ({ ok: status < 300, status, text: async () => (body === undefined ? '' : JSON.stringify(body)) });
+export const pathOf = (url: string) => url.slice(url.indexOf('/api/v1') + '/api/v1'.length);
 
 /** Puts what an earlier run of the app would have left on disk, then mounts the app. */
 function Seeded({ storage, children }: { storage: Record<string, unknown>; children: ReactNode }) {
@@ -115,7 +116,7 @@ function PressTracker() {
 }
 
 type Options = {
-  route?: 'Today' | 'StatsExplainer';
+  route?: RouteName;
   /** null: nothing in the query cache (the day comes from what the storage holds, as on a cold start). */
   day?: DayState | null;
   me?: Me;
@@ -131,7 +132,7 @@ const nothingStored = {};
  * settings already in the query cache. Reduced motion: the screenshot is taken at once, not in the middle of an
  * animation, so the undo countdown is the text "Còn 5 giây" instead of the shrinking bar.
  */
-const app = ({ route = 'Today', day = dayOf(), me = meOf(), settings = settingsOf(), storage = nothingStored, fetchStub, extra }: Options = {}) =>
+export const app = ({ route = 'Today', day = dayOf(), me = meOf(), settings = settingsOf(), storage = nothingStored, fetchStub, extra }: Options = {}) =>
   withApp(
     <Seeded storage={storage}>
       <View style={styles.fill}>
