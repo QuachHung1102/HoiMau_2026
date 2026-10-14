@@ -38,7 +38,7 @@ const NOON = '2027-03-10T05:00:00.000Z'; // 12:00 in Asia/Ho_Chi_Minh
 const clock = (at: string) => setTestClock(db.admin, at);
 const iso = (ms: number) => new Date(ms).toISOString();
 
-const tick = (userId: string, code: string, id = randomUUID(), occurredAt: string | null = null) =>
+const tick = (userId: string, code: string, id: string = randomUUID(), occurredAt: string | null = null) =>
   asUser(db.app, userId, async c => {
     const { rows } = await c.query('SELECT quest_tick($1, $2, $3) AS result', [code, id, occurredAt]);
     return rows[0].result as Record<string, unknown>;

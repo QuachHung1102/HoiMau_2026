@@ -501,8 +501,8 @@ test('undo: within 10 s the tick is taken back with its reward; later 409 UNDO_W
   const afterE = ok(await undo(user, 'WATER_8', e));
   assert.equal(afterE.day.waterMl, Math.round((target * 2) / 8));
   // the tick before it is the latest again, also for the app after a reload
-  assert.equal(questOf(afterE.day, 'WATER_8').lastTick.id, d);
-  assert.equal(questOf(ok(await undo(user, 'WATER_8', d)).day, 'WATER_8').lastTick.id, b);
+  assert.equal(questOf(afterE.day, 'WATER_8').lastTick?.id, d);
+  assert.equal(questOf(ok(await undo(user, 'WATER_8', d)).day, 'WATER_8').lastTick?.id, b);
   assert.deepEqual(await stored(user.userId), {
     ...NOTHING, logs: 1, completions: 1, progress: 1, ticks: 5, live: 1, xp_rows: 9, coin_rows: 9, xp: 10, coin: 5, high_water: 30,
   });
