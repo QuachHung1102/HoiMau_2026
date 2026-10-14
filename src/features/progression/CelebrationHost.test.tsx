@@ -85,17 +85,17 @@ describe('S65: a level reached', () => {
     nearLevelUp(5);
     const view = await open();
     fireEvent.press(tracker());
-    expect(await screen.findByRole('header', { name: 'Cấp 6 · Người kiên trì' })).toBeTruthy();
-    expect(screen.getByText('+1 điểm tiện ích')).toBeTruthy();
+    expect(await screen.findByRole('header', { name: 'Bạn lên cấp 6' })).toBeTruthy();
+    expect(screen.getByText('Bạn nhận 1 điểm tiện ích.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Xem tiện ích' })).toBeTruthy();
     await settle();
     // the profile read after the write is at level 6 as well: still ONE celebration
     expect(queued()).toEqual([]);
     await closeIt('Để sau');
-    expect(title('Cấp 6 · Người kiên trì')).toBeNull();
+    expect(title('Bạn lên cấp 6')).toBeNull();
     await act(() => queryClient().invalidateQueries({ queryKey: ['me'] }));
     await settle();
-    expect(title('Cấp 6 · Người kiên trì')).toBeNull();
+    expect(title('Bạn lên cấp 6')).toBeNull();
     expect(await keptCelebrated()).toBe('6');
     view.unmount();
   });
@@ -104,12 +104,12 @@ describe('S65: a level reached', () => {
     await keepCelebrated(5);
     const view = await open();
     await push(levelUp(6));
-    await screen.findByRole('header', { name: 'Cấp 6 · Người kiên trì' });
+    await screen.findByRole('header', { name: 'Bạn lên cấp 6' });
     mockNavigate.mockClear();
     fireEvent.press(screen.getByRole('button', { name: 'Xem tiện ích' }));
     expect(mockNavigate).toHaveBeenCalledTimes(1);
     expect(mockNavigate).toHaveBeenCalledWith('Levels');
-    expect(title('Cấp 6 · Người kiên trì')).toBeNull();
+    expect(title('Bạn lên cấp 6')).toBeNull();
     expect(await screen.findByRole('header', { name: 'Cấp độ & tiện ích' })).toBeTruthy();
     await settle();
     view.unmount();
@@ -119,10 +119,10 @@ describe('S65: a level reached', () => {
     await keepCelebrated(5);
     const view = await open();
     await push(levelUp(6));
-    await screen.findByRole('header', { name: 'Cấp 6 · Người kiên trì' });
+    await screen.findByRole('header', { name: 'Bạn lên cấp 6' });
     mockNavigate.mockClear();
     fireEvent.press(screen.getByRole('button', { name: 'Đóng' }));
-    expect(title('Cấp 6 · Người kiên trì')).toBeNull();
+    expect(title('Bạn lên cấp 6')).toBeNull();
     expect(mockNavigate).not.toHaveBeenCalled();
     await settle();
     view.unmount();
@@ -132,13 +132,13 @@ describe('S65: a level reached', () => {
     await keepCelebrated(5);
     const view = await open();
     await push(levelUp(7), levelUp(6));
-    expect(await screen.findByRole('header', { name: 'Cấp 6 · Người kiên trì' })).toBeTruthy();
-    expect(title('Cấp 7 · Người kiên trì')).toBeNull();
+    expect(await screen.findByRole('header', { name: 'Bạn lên cấp 6' })).toBeTruthy();
+    expect(title('Bạn lên cấp 7')).toBeNull();
     await closeIt('Để sau');
-    expect(await screen.findByRole('header', { name: 'Cấp 7 · Người kiên trì' })).toBeTruthy();
+    expect(await screen.findByRole('header', { name: 'Bạn lên cấp 7' })).toBeTruthy();
     await closeIt('Để sau');
-    expect(title('Cấp 7 · Người kiên trì')).toBeNull();
-    expect(title('Cấp 6 · Người kiên trì')).toBeNull();
+    expect(title('Bạn lên cấp 7')).toBeNull();
+    expect(title('Bạn lên cấp 6')).toBeNull();
     expect(await keptCelebrated()).toBe('7');
     view.unmount();
   });
@@ -149,11 +149,11 @@ describe('S65: a level reached', () => {
     await push(levelUp(6));
     act(() => pushCelebrations([levelUp(6)], 'action-1'));
     act(() => pushCelebrations([levelUp(6)], 'action-1'));
-    await screen.findByRole('header', { name: 'Cấp 6 · Người kiên trì' });
+    await screen.findByRole('header', { name: 'Bạn lên cấp 6' });
     // the one without an action id and the first with one are two events for the same level: one overlay, the other dropped
     await closeIt('Để sau');
     await settle();
-    expect(title('Cấp 6 · Người kiên trì')).toBeNull();
+    expect(title('Bạn lên cấp 6')).toBeNull();
     expect(queued()).toEqual([]);
     view.unmount();
   });
@@ -163,8 +163,8 @@ describe('S65: a level reached', () => {
     const view = await open();
     await push(levelUp(5, 'NGUOI_KIEN_TRI'), levelUp(6));
     await settle();
-    expect(title('Cấp 5 · Người kiên trì')).toBeNull();
-    expect(title('Cấp 6 · Người kiên trì')).toBeNull();
+    expect(title('Bạn lên cấp 5')).toBeNull();
+    expect(title('Bạn lên cấp 6')).toBeNull();
     expect(queued()).toEqual([]);
     view.unmount();
   });
@@ -173,7 +173,7 @@ describe('S65: a level reached', () => {
     await keepCelebrated(5);
     const view = await open();
     await push({ type: 'PET_STAGE_UP', stage: 'JUVENILE' }, levelUp(6));
-    await screen.findByRole('header', { name: 'Cấp 6 · Người kiên trì' });
+    await screen.findByRole('header', { name: 'Bạn lên cấp 6' });
     await closeIt('Để sau');
     expect(queued()).toEqual([{ type: 'PET_STAGE_UP', stage: 'JUVENILE' }]);
     expect(screen.queryByRole('button', { name: 'Để sau' })).toBeNull();
@@ -187,12 +187,12 @@ describe('S65: from the server\'s profile, where no answer came back', () => {
     nearLevelUp(5);
     await seedQueue([stored('t-1', { path: tickPath(WATER), body: {} })]);
     const view = await open();
-    expect(await screen.findByRole('header', { name: 'Cấp 6 · Người kiên trì' })).toBeTruthy();
+    expect(await screen.findByRole('header', { name: 'Bạn lên cấp 6' })).toBeTruthy();
     expect(writes().map(request => request.path)).toEqual([tickPath(WATER)]);
-    expect(screen.getByText('+1 điểm tiện ích')).toBeTruthy();
+    expect(screen.getByText('Bạn nhận 1 điểm tiện ích.')).toBeTruthy();
     await closeIt('Để sau');
     await settle();
-    expect(title('Cấp 6 · Người kiên trì')).toBeNull();
+    expect(title('Bạn lên cấp 6')).toBeNull();
     view.unmount();
   });
 
@@ -204,26 +204,83 @@ describe('S65: from the server\'s profile, where no answer came back', () => {
     fireEvent.press(tracker());
     await settle();
     expect(tracker().props.accessibilityLabel).toContain('Có phần đang chờ gửi');
-    expect(title('Cấp 6 · Người kiên trì')).toBeNull();
+    expect(title('Bạn lên cấp 6')).toBeNull();
     expect(queued()).toEqual([]);
     // the network is back; the queue delivers (its own button here), and only then does the server's profile change
     world.down = false;
     fireEvent.press(screen.getByRole('button', { name: 'Thử lại' }));
-    expect(await screen.findByRole('header', { name: 'Cấp 6 · Người kiên trì' })).toBeTruthy();
+    expect(await screen.findByRole('header', { name: 'Bạn lên cấp 6' })).toBeTruthy();
     view.unmount();
   });
 
-  test('levels reached while away (another device) are each celebrated, in order, across a change of title', async () => {
+  test('levels reached while away (another device) are ONE celebration: the highest level, the points of all of them, its title', async () => {
     await keepCelebrated(8);
     setLevel(10, 20);
     const view = await open();
-    expect(await screen.findByRole('header', { name: 'Cấp 9 · Người kiên trì' })).toBeTruthy();
-    await closeIt('Để sau');
-    expect(await screen.findByRole('header', { name: 'Cấp 10 · Chiến binh kỷ luật' })).toBeTruthy();
+    expect(await screen.findByRole('header', { name: 'Bạn lên cấp 10' })).toBeTruthy();
+    expect(screen.getByText('Chiến binh kỷ luật')).toBeTruthy();
+    expect(screen.getByText('Bạn nhận 2 điểm tiện ích.')).toBeTruthy();
+    expect(title('Bạn lên cấp 9')).toBeNull();
     await closeIt('Để sau');
     await settle();
-    expect(title('Cấp 10 · Chiến binh kỷ luật')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Để sau' })).toBeNull();
     expect(await keptCelebrated()).toBe('10');
+    view.unmount();
+  });
+
+  // The same jump, whichever the host hears first: the server's event (one event for the jump, +2) or the profile (level 7).
+  test.each([
+    ['the answer first, then the profile', true],
+    ['the profile first, then the answer', false],
+  ])('a jump of two levels, %s: one overlay, "Bạn lên cấp 7", +2 points, and nothing after it', async (_name, answerFirst) => {
+    await keepCelebrated(5);
+    const view = await open();
+    const jump: GameEvent = { type: 'LEVEL_UP', level: 7, titleKey: 'NGUOI_KIEN_TRI', perkPointsGained: 2 };
+    if (answerFirst) {
+      await push(jump);
+      await screen.findByRole('header', { name: 'Bạn lên cấp 7' });
+      setLevel(7, 20);
+      await act(() => queryClient().invalidateQueries({ queryKey: ['me'] }));
+    } else {
+      // held, so that the profile is read before the answer is handled
+      act(() => setHold(true));
+      setLevel(7, 20);
+      await act(() => queryClient().invalidateQueries({ queryKey: ['me'] }));
+      await settle();
+      await push(jump);
+      act(() => setHold(false));
+      await screen.findByRole('header', { name: 'Bạn lên cấp 7' });
+    }
+    await settle();
+    expect(screen.getByText('Bạn nhận 2 điểm tiện ích.')).toBeTruthy();
+    expect(title('Bạn lên cấp 6')).toBeNull();
+    await closeIt('Để sau');
+    await settle();
+    expect(screen.queryByRole('button', { name: 'Để sau' })).toBeNull();
+    expect(queued()).toEqual([]);
+    view.unmount();
+  });
+
+  test('a level lost and regained (an undo, then the same level again) is not celebrated twice', async () => {
+    await keepCelebrated(5);
+    const view = await open();
+    await push(levelUp(6));
+    await screen.findByRole('header', { name: 'Bạn lên cấp 6' });
+    await closeIt('Để sau');
+    // the profile drops back to 5 (the tick was undone) ...
+    setLevel(5, 340);
+    await act(() => queryClient().invalidateQueries({ queryKey: ['me'] }));
+    await settle();
+    expect(title('Bạn lên cấp 6')).toBeNull();
+    // ... and 6 comes again, as a pushed event and as the profile
+    await push(levelUp(6));
+    setLevel(6, 10);
+    await act(() => queryClient().invalidateQueries({ queryKey: ['me'] }));
+    await settle();
+    expect(title('Bạn lên cấp 6')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Để sau' })).toBeNull();
+    expect(queued()).toEqual([]);
+    expect(await keptCelebrated()).toBe('6');
     view.unmount();
   });
 });
@@ -254,8 +311,8 @@ describe('S65: a fresh sign-in does not replay the past', () => {
     expect(queued()).toEqual([]);
     await push(levelUp(5), levelUp(4, 'TAN_BINH'));
     await settle();
-    expect(title('Cấp 5 · Người kiên trì')).toBeNull();
-    expect(title('Cấp 4 · Tân binh')).toBeNull();
+    expect(title('Bạn lên cấp 5')).toBeNull();
+    expect(title('Bạn lên cấp 4')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Để sau' })).toBeNull();
     expect(queued()).toEqual([]);
     view.unmount();
@@ -283,7 +340,7 @@ describe('S66: a streak milestone', () => {
     withMilestone(milestoneItem(ITEM, 7, 50));
     const view = await open();
     expect(await screen.findByRole('header', { name: '7 ngày giữ nhịp' })).toBeTruthy();
-    expect(screen.getByText('Bạn nhận 50 xu và một huy hiệu mới trong kho đồ.')).toBeTruthy();
+    expect(screen.getByText('Huy hiệu Người giữ nhịp đã vào kho đồ, kèm 50 xu. Kỷ lục mới của bạn: 7 ngày.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Xem huy hiệu' })).toBeTruthy();
     expect(reads()).toHaveLength(1);
     expect(reads()[0].body).toEqual({ ids: [ITEM] });
@@ -367,7 +424,7 @@ describe('S66: a streak milestone', () => {
     await settle();
     expect(reads()).toHaveLength(0);
     act(() => setHold(false));
-    expect(await screen.findByRole('header', { name: 'Cấp 6 · Người kiên trì' })).toBeTruthy();
+    expect(await screen.findByRole('header', { name: 'Bạn lên cấp 6' })).toBeTruthy();
     expect(title('7 ngày giữ nhịp')).toBeNull();
     expect(reads()).toHaveLength(0);
     await closeIt('Để sau');
@@ -385,10 +442,10 @@ describe('the focus flow is never covered', () => {
     act(() => setHold(true));
     await push(levelUp(6));
     await settle();
-    expect(title('Cấp 6 · Người kiên trì')).toBeNull();
+    expect(title('Bạn lên cấp 6')).toBeNull();
     expect(queued()).toHaveLength(1);
     act(() => setHold(false));
-    expect(await screen.findByRole('header', { name: 'Cấp 6 · Người kiên trì' })).toBeTruthy();
+    expect(await screen.findByRole('header', { name: 'Bạn lên cấp 6' })).toBeTruthy();
     await closeIt('Để sau');
     view.unmount();
   });
