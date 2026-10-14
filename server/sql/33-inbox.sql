@@ -11,8 +11,10 @@
 --   * the payload is the object the contract gives that kind (PET_TIRED and QUEST_REMINDER: {});
 --   * (user_id, kind, dedupe_key) is unique: a notification that may exist once (a milestone, a
 --     date) carries its natural key, and the second insert is nothing. A null key never conflicts;
---   * created_at rises strictly per user (app.now(), or the user's latest plus one microsecond):
---     the inbox pages by it, and a page boundary between two equal instants would lose an item;
+--   * created_at is unique per user (an index) and rises strictly (app._notify: app.now(), or the
+--     user's latest plus one microsecond): the inbox pages by it alone. Every caller of
+--     app._notify holds the receiver's users row (FOR NO KEY UPDATE, the first lock of the one
+--     lock order) before it calls it, so two writers of one inbox run one after the other;
 --   * time is app.now() only.
 
 CREATE TABLE IF NOT EXISTS notifications (
@@ -26,7 +28,11 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at timestamptz NOT NULL DEFAULT app.now(),
   CONSTRAINT notifications_once_key UNIQUE (user_id, kind, dedupe_key)
 );
-CREATE INDEX IF NOT EXISTS notifications_user_created_idx ON notifications (user_id, created_at DESC);
+-- One instant per item of one user: the inbox pages by created_at alone. A writer that does not
+-- hold the receiver's users row (two inserts of one inbox at one instant) fails here, loudly,
+-- instead of hiding an item at a page boundary.
+DROP INDEX IF EXISTS notifications_user_created_idx;
+CREATE UNIQUE INDEX IF NOT EXISTS notifications_user_created_key ON notifications (user_id, created_at);
 
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
@@ -47,8 +53,10 @@ SELECT meta.expect_policy('notifications', 'own_update', 'UPDATE',
   '(app.current_user_id() = user_id)', '(app.current_user_id() = user_id)');
 
 -- One notification for p_user, unless (p_user, p_kind, p_dedupe_key) has one already. True when
--- this call created it. Internal: EXECUTE for no role, not SECURITY DEFINER (it runs with the
--- rights of the function that decided the notification).
+-- this call created it. The caller holds p_user's users row lock (see the rules above): without
+-- it two concurrent calls can pick one instant, and the second fails on the unique index.
+-- Internal: EXECUTE for no role, not SECURITY DEFINER (it runs with the rights of the function
+-- that decided the notification).
 CREATE OR REPLACE FUNCTION app._notify(p_user uuid, p_kind text, p_payload jsonb, p_dedupe_key text)
 RETURNS boolean
 LANGUAGE plpgsql SET search_path = public, pg_temp

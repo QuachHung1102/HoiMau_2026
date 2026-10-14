@@ -27,8 +27,11 @@ const HISTORY_MAX_DATES = 92;
 const DATE_TIME =
   /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/;
 
+/** The fraction of seconds of an RFC 3339 text, digits only. */
+const FRACTION = /\.(\d+)/;
+
 /** The last instant written with a four-digit year: PostgreSQL reads no later spelling. */
-export const LAST_INSTANT = Date.UTC(9999, 11, 31, 23, 59, 59, 999);
+const LAST_INSTANT = Date.UTC(9999, 11, 31, 23, 59, 59, 999);
 
 export const refuse = (field: string, rule: FieldError['rule']) =>
   new AppError('VALIDATION_FAILED', { fields: [{ field, rule }] });
@@ -64,9 +67,14 @@ function isCalendarDate(value: string): boolean {
  * as 2 March and 24:00 as the next midnight.
  */
 export function instantOf(value: unknown): number {
+  return instantParts(value)?.ms ?? NaN;
+}
+
+/** The instant (whole milliseconds) and the digits of the fraction it was written with. */
+function instantParts(value: unknown): { ms: number; fraction: string } | null {
   const parts = typeof value === 'string' ? DATE_TIME.exec(value) : null;
   if (parts === null) {
-    return NaN;
+    return null;
   }
   const [, date, hour, minute, second, offsetHour = '00', offsetMinute = '00'] =
     parts;
@@ -76,27 +84,51 @@ export function instantOf(value: unknown): number {
     Number(second) <= 59 &&
     Number(offsetHour) <= 23 &&
     Number(offsetMinute) <= 59;
-  return inRange && isCalendarDate(date) ? Date.parse(parts[0]) : NaN;
+  if (!inRange || !isCalendarDate(date)) {
+    return null;
+  }
+  const fraction = FRACTION.exec(parts[0])?.[1] ?? '';
+  // parsed with three digits of fraction at most: what JavaScript reads for sure
+  const ms = Date.parse(parts[0].replace(FRACTION, `.${fraction.slice(0, 3).padEnd(3, '0')}`));
+  return { ms, fraction };
 }
 
 /**
- * `occurredAt` of a write, as the instant it names in one spelling, or null when the member is
- * absent. What the instant may be (not ahead, not older than 48 h, on an open day) is judged
- * by the function.
+ * The one spelling SQL is given for an instant the client wrote (`occurredAt`, the inbox cursor
+ * `before`): UTC, `YYYY-MM-DDTHH:MM:SS.ffffffZ`, keeping the fraction it was written with up to
+ * microseconds (PostgreSQL's precision; further digits are dropped). Null when it is no instant
+ * (instantOf) or one PostgreSQL cannot read: after 9999 (an offset can push 9999-12-31 into the
+ * year 10000). Before 1970 it is 1970-01-01 (PostgreSQL has no year 0000, and nothing of ours is
+ * that old). Never hand SQL the text as written: RFC 3339 allows offsets up to ±23:59, PostgreSQL
+ * reads them only up to ±15:59.
+ */
+export function instantText(value: unknown): string | null {
+  const parts = instantParts(value);
+  if (parts === null || parts.ms > LAST_INSTANT) {
+    return null;
+  }
+  if (parts.ms < 0) {
+    return '1970-01-01T00:00:00.000000Z';
+  }
+  const micros = parts.fraction.slice(3, 6).padEnd(3, '0');
+  return `${new Date(parts.ms).toISOString().slice(0, 23)}${micros}Z`;
+}
+
+/**
+ * `occurredAt` of a write, as the instant it names in one spelling (instantText), or null when
+ * the member is absent. What the instant may be (not ahead, not older than 48 h, on an open day)
+ * is judged by the function.
  */
 export function occurredAtOf(body: unknown): string | null {
   const { occurredAt } = objectBody(body);
   if (occurredAt === undefined) {
     return null;
   }
-  const ms = instantOf(occurredAt);
-  // An offset can push 9999-12-31 into the year 10000, which PostgreSQL cannot read: such an
-  // instant does not exist for it, so it is no instant at all.
-  if (Number.isNaN(ms) || ms > LAST_INSTANT) {
+  const text = instantText(occurredAt);
+  if (text === null) {
     throw refuse('occurredAt', 'format');
   }
-  // Not before 1970: PostgreSQL has no year 0000, and anything that old is DAY_CLOSED alike.
-  return new Date(Math.max(ms, 0)).toISOString();
+  return text;
 }
 
 /** A date label that names a real date, or the refusal of `field`. */
