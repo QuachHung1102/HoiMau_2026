@@ -204,6 +204,14 @@ const CLASSES: { name: string; sql: string; perGrantee?: true }[] = [
             FROM ${TABLES} ORDER BY t.label`,
   },
   {
+    // Any other owner is exempt from the policies of the table just the same, and may grant it
+    // on. The sequence of an identity column follows its table: the answer names the table.
+    name: 'table owned by a role outside app_*',
+    sql: `SELECT format('CREATE ROLE mc_outsider; ALTER TABLE %s OWNER TO mc_outsider', t.label) AS sql,
+                 ARRAY[format('%s %s is owned by mc_outsider', t.kind, t.label)] AS names
+            FROM ${TABLES} ORDER BY t.label`,
+  },
+  {
     // Nothing registers a trigger yet, so the intact schema has none. ENABLE ALWAYS: the kind
     // that fires whatever session_replication_role says.
     name: 'trigger on a table',
@@ -890,6 +898,14 @@ const FUTURE_COVERED = [
   'PASS ALTER TABLE mc_future_events OWNER TO app_auth -> "table mc_future_events is owned by app role app_auth"',
   'PASS GRANT USAGE ON SEQUENCE mc_future_events_id_seq TO app_auth -> "sequence mc_future_events_id_seq: grants are {app_auth:USAGE}, expected {}"',
   'PASS ALTER TABLE mc_future_view OWNER TO app_auth -> "view mc_future_view is owned by app role app_auth"',
+  ...['table mc_future_events', 'view mc_future_view'].map(
+    relation =>
+      `PASS CREATE ROLE mc_outsider; ALTER TABLE ${
+        relation.split(' ')[1]
+      } OWNER TO mc_outsider -> ` +
+      `"${relation} is owned by mc_outsider: every table, view, sequence and function of ours belongs to ` +
+      `${SUPERUSER.user}, the owner of schema meta, who runs the schema files"`,
+  ),
   'PASS GRANT SELECT ON TABLE mc_future_view TO app_anon -> "view mc_future_view: grants are {app_anon:SELECT,app_auth:SELECT}, expected {app_auth:SELECT}"',
   'PASS ALTER ROUTINE mc_future_count() SECURITY DEFINER -> "function security: the mode of a function is the one registered for it (meta.expect_function); found: mc_future_count() is SECURITY DEFINER, registered invoker"',
   'PASS ALTER ROUTINE app._mc_future_audit() SECURITY INVOKER -> "function security: the mode of a function is the one registered for it (meta.expect_function); found: app._mc_future_audit() is SECURITY INVOKER, registered definer"',
