@@ -99,7 +99,7 @@ export const entries: Entries = {
       motion: 'REDUCED',
     }),
   's66-milestone-overlay': () =>
-    withApp(<CelebrationOverlay shown={{ id: 'item-7', kind: 'STREAK_MILESTONE', days: 7, coins: 50 }} stage="HATCHLING" onClose={() => undefined} onSee={() => undefined} />, {
+    withApp(<CelebrationOverlay shown={{ id: 'item-7', kind: 'STREAK_MILESTONE', days: 7, coins: 50, badgeCode: 'BADGE_STREAK_7' }} stage="HATCHLING" onClose={() => undefined} onSee={() => undefined} />, {
       motion: 'REDUCED',
     }),
 };

@@ -86,11 +86,11 @@ test('the sentences the workout brief fixes are there, word for word', () => {
 test('the progress screens: the strings are in the scan, and the streak that has ended (S67) uses neither of the two words of blame the brief names', () => {
   const mine = texts(progression);
   expect(mine.length).toBeGreaterThan(60);
-  expect(mine).toContain('Bắt đầu lại');
+  expect(mine).toContain('Một khởi đầu mới');
   expect(mine).toContain('Kỷ lục vẫn ở lại kể cả khi một chuỗi kết thúc.');
   // the word is a banned term (spec 9.4), so it is not spelled out in this file (the scan of this folder reads it too)
   const failure = new RegExp('th' + 'ất bại', 'i');
-  const restart = [progression.restartTitle, progression.restartBody(0, 12), progression.restartAction, progression.seeTickets, progression.journeyFooter, ...texts({ rows: progression.journeyRows })];
+  const restart = [progression.restartTitle, progression.restartBody(0, 12), progression.restartBodyRecordOnly(12), progression.restartAction, progression.seeTickets, progression.journeyFooter, ...texts({ rows: progression.journeyRows })];
   for (const text of restart) {
     expect(text).not.toMatch(/mất/i);
     expect(text).not.toMatch(failure);
@@ -107,14 +107,17 @@ test('the sentences the progress brief fixes are there, word for word', () => {
   expect(progression.weekdayShort.join(' ')).toBe('T2 T3 T4 T5 T6 T7 CN');
   expect(progression.legendFrozen).toBe('Ngày dùng vé');
   expect(progression.milestonesTitle).toBe('Cột mốc chuỗi');
-  expect(progression.restartAction).toBe('Bắt đầu một việc nhỏ');
+  expect(progression.restartTitle).toBe('Một khởi đầu mới');
+  expect(progression.restartBody(0, 12)).toBe('Chuỗi hiện tại: 0 ngày. Kỷ lục 12 ngày của bạn vẫn ở đây.');
+  expect(progression.restartAction).toBe('Bắt đầu từ một việc nhỏ');
   expect(progression.seeTickets).toBe('Xem vé giữ nhịp');
   expect(progression.undone).toBe('đã hoàn tác');
   expect(progression.xpToNext(340, 1118, 6)).toBe('340 / 1.118 XP tới cấp 6');
   expect(progression.perkPoints(1)).toBe('1 điểm tiện ích');
   expect(progression.levelsFooter).toBe('Điểm tiện ích không cộng vào chỉ số cơ thể hoặc điểm tổ đội.');
-  expect(progression.levelUpTitle(5, 'Người kiên trì')).toBe('Cấp 5 · Người kiên trì');
-  expect(progression.levelUpBody(1)).toBe('+1 điểm tiện ích');
+  expect(progression.levelUpTitle(5)).toBe('Bạn lên cấp 5');
+  expect(progression.levelUpBody(1)).toBe('Bạn nhận 1 điểm tiện ích.');
+  expect(progression.milestoneBody('BADGE_STREAK_7', 50, 7)).toBe('Huy hiệu Người giữ nhịp đã vào kho đồ, kèm 50 xu. Kỷ lục mới của bạn: 7 ngày.');
   expect([progression.seePerks, progression.later, progression.seeBadge, progression.keepGoing]).toEqual(['Xem tiện ích', 'Để sau', 'Xem huy hiệu', 'Tiếp tục']);
   expect(progression.milestoneTitle(7)).toBe('7 ngày giữ nhịp');
 });

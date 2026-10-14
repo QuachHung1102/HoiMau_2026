@@ -69,6 +69,22 @@ describe('StatBar', () => {
 });
 
 describe('ProgressBar and LevelStrip', () => {
+  // The empty part of the bar: soft by default (it would vanish on a soft card), white or line when asked for.
+  test.each([
+    ['soft', undefined, colors.soft],
+    ['white', 'white', colors.white],
+    ['line', 'line', colors.line],
+  ] as const)('the track of a bar is %s', (_name, track, colour) => {
+    const bar = render(wrap(<ProgressBar value={30} max={100} label="x" track={track} />));
+    const strip = render(wrap(<LevelStrip level={5} title="Người kiên trì" xpIntoLevel={30} xpForNextLevel={100} track={track} />));
+    for (const view of [bar, strip]) {
+      expect(painted(view)).toContain(`"backgroundColor":"${colour}"`);
+      for (const other of [colors.soft, colors.white, colors.line].filter(c => c !== colour)) expect(painted(view)).not.toContain(`"backgroundColor":"${other}"`);
+    }
+    bar.unmount();
+    strip.unmount();
+  });
+
   test('ProgressBar shows its label as text and exposes min, max, now', () => {
     const view = render(wrap(<ProgressBar value={64} max={100} label="64% tới Chồi non" />));
     expect(view.getByText('64% tới Chồi non')).toBeTruthy();

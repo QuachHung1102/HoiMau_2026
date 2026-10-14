@@ -1,7 +1,7 @@
 // The profile tab, the journey, the history of a day, levels and the celebrations (Task 28, S31 S21 S67 S51 S46 S65 S66).
 import type { DayOutcome, MealSlot } from '../../../../domain/types.ts';
 import { SWAPS_PER_SLOT, TICKET_CAP } from '../../../../domain/economy.ts';
-import { formatNumber, levelTitle, milestoneRibbon } from './pet';
+import { formatNumber, milestoneRibbon } from './pet';
 
 // S31, the tab "Cá nhân".
 export const profileSubtitle = 'Hành trình này là của bạn.';
@@ -47,9 +47,11 @@ export const journeyRows = {
 export const journeyFooter = 'Kỷ lục vẫn ở lại kể cả khi một chuỗi kết thúc.';
 
 // S67, the journey after a streak has ended: the record stays, nobody is blamed.
-export const restartTitle = 'Bắt đầu lại';
-export const restartBody = (current: number, best: number) => `Chuỗi hiện tại: ${current} ngày. Kỷ lục ${best} ngày vẫn ở đây.`;
-export const restartAction = 'Bắt đầu một việc nhỏ';
+export const restartTitle = 'Một khởi đầu mới';
+export const restartBody = (current: number, best: number) => `Chuỗi hiện tại: ${current} ngày. Kỷ lục ${best} ngày của bạn vẫn ở đây.`;
+/** On a provisional day the streak is not known: only the record, which never goes down. */
+export const restartBodyRecordOnly = (best: number) => `Kỷ lục ${best} ngày của bạn vẫn ở đây.`;
+export const restartAction = 'Bắt đầu từ một việc nhỏ';
 export const seeTickets = 'Xem vé giữ nhịp';
 
 // S51, the history of one day.
@@ -108,11 +110,21 @@ export const perkRows = {
 export const levelsFooter = 'Điểm tiện ích không cộng vào chỉ số cơ thể hoặc điểm tổ đội.';
 
 // S65 and S66, the celebrations.
-export const levelUpTitle = levelTitle;
-export const levelUpBody = (points: number) => `+${points} điểm tiện ích`;
+/** The title line; the title that goes with the level is the overlay's subtitle. */
+export const levelUpTitle = (level: number) => `Bạn lên cấp ${level}`;
+export const levelUpBody = (points: number) => `Bạn nhận ${points} điểm tiện ích.`;
 export const seePerks = 'Xem tiện ích';
 export const later = 'Để sau';
 export const milestoneTitle = milestoneRibbon;
-export const milestoneBody = (coins: number) => `Bạn nhận ${formatNumber(coins)} xu và một huy hiệu mới trong kho đồ.`;
+/** Names of the streak badges, as in server/content/shopItems.ts (a test compares them). */
+export const badgeNames: Record<string, string> = {
+  BADGE_STREAK_7: 'Người giữ nhịp',
+  BADGE_STREAK_30: 'Giữ nhịp 30 ngày',
+  BADGE_STREAK_100: 'Giữ nhịp 100 ngày',
+};
+const unnamedBadge = 'giữ nhịp';
+/** A milestone is paid once ever, so `days` is a new record. */
+export const milestoneBody = (badgeCode: string, coins: number, days: number) =>
+  `Huy hiệu ${badgeNames[badgeCode] ?? unnamedBadge} đã vào kho đồ, kèm ${formatNumber(coins)} xu. Kỷ lục mới của bạn: ${days} ngày.`;
 export const seeBadge = 'Xem huy hiệu';
 export const keepGoing = 'Tiếp tục';

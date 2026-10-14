@@ -146,11 +146,11 @@ describe('S67: the streak has ended', () => {
     world.day = dayOf({ logicalDate: FRIDAY, streak: { current: 0, best: 12 } });
   }
 
-  test('"Bắt đầu lại": the record stays, there is a small first step, and no word of blame', async () => {
+  test('"Một khởi đầu mới": the record stays, there is a small first step, and no word of blame', async () => {
     ended();
     const view = await openJourney();
-    expect(screen.getByRole('header', { name: 'Bắt đầu lại' })).toBeTruthy();
-    expect(screen.getByText('Chuỗi hiện tại: 0 ngày. Kỷ lục 12 ngày vẫn ở đây.')).toBeTruthy();
+    expect(screen.getByRole('header', { name: 'Một khởi đầu mới' })).toBeTruthy();
+    expect(screen.getByText('Chuỗi hiện tại: 0 ngày. Kỷ lục 12 ngày của bạn vẫn ở đây.')).toBeTruthy();
     expect(screen.getByText('Kỷ lục vẫn ở lại kể cả khi một chuỗi kết thúc.')).toBeTruthy();
     // the other state's card is gone: no flame, no state line, no milestones
     expect(screen.queryByRole('header', { name: 'Đang giữ nhịp' })).toBeNull();
@@ -164,7 +164,7 @@ describe('S67: the streak has ended', () => {
   });
 
   test.each([
-    ['Bắt đầu một việc nhỏ', 'QuestBoard'],
+    ['Bắt đầu từ một việc nhỏ', 'QuestBoard'],
     ['Xem vé giữ nhịp', 'Tickets'],
   ])('"%s" navigates to %s', async (name, route) => {
     ended();
@@ -180,6 +180,23 @@ describe('S67: the streak has ended', () => {
 });
 
 describe('a provisional day (the kept one is over and the server cannot be asked)', () => {
+  test('S67 on a provisional day: no streak number (only the record, which never goes down)', async () => {
+    fridayWithHistory();
+    setLevel(5, 340, { streakCurrent: 0, streakBest: 12, breakNotice: { previous: 12, date: '2026-10-14' } });
+    await AsyncStorage.setItem(`cache:v1:${USER}:day`, JSON.stringify(dayOf({ logicalDate: '2026-10-15', closesAt: new Date(Date.now() - 3_600_000).toISOString() })));
+    await AsyncStorage.setItem(`cache:v1:${USER}:me`, JSON.stringify(meOf()));
+    world.answer = request => {
+      if (request === 'GET /day') throw new TypeError('Network request failed');
+      return undefined;
+    };
+    const view = await openJourney();
+    expect(screen.getByRole('header', { name: 'Một khởi đầu mới' })).toBeTruthy();
+    expect(screen.getByText('Kỷ lục 12 ngày của bạn vẫn ở đây.')).toBeTruthy();
+    expect(screen.queryByText(/Chuỗi hiện tại/)).toBeNull();
+    await settle();
+    view.unmount();
+  });
+
   test('no streak number, no state line, no days to go; today is open, never completed; the record stays', async () => {
     fridayWithHistory();
     // the day on this device ended an hour ago and the server cannot be asked about the new one

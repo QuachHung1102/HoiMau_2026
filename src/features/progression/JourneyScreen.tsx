@@ -135,7 +135,7 @@ export function JourneyScreen({ navigation }: ScreenProps<'Journey'>) {
               <AppText variant="headline" accessibilityRole="header">
                 {vi.restartTitle}
               </AppText>
-              <AppText variant="secondary">{vi.restartBody(progression.streakCurrent, progression.streakBest)}</AppText>
+              <AppText variant="secondary">{provisional ? vi.restartBodyRecordOnly(progression.streakBest) : vi.restartBody(progression.streakCurrent, progression.streakBest)}</AppText>
             </>
           ) : (
             <>

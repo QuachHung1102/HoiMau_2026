@@ -21,7 +21,7 @@ import { clearCelebrations, dismissCelebration, pushCelebrations, useCelebration
 /** What is on screen: a level reached (S65) or a streak milestone (S66). `id` is what the overlay is keyed on. */
 export type Shown =
   | { id: string; kind: 'LEVEL_UP'; level: number; titleKey: TitleKey; points: number }
-  | { id: string; kind: 'STREAK_MILESTONE'; days: number; coins: number };
+  | { id: string; kind: 'STREAK_MILESTONE'; days: number; coins: number; badgeCode: string };
 
 type Props = { shown: Shown; stage: PetStage; skin?: 'fox'; onClose: () => void; onSee: () => void };
 
@@ -38,7 +38,8 @@ export function CelebrationOverlay({ shown, stage, skin, onClose, onSee }: Props
       level={shown.level}
       stage={stage}
       skin={skin}
-      title={vi.levelUpTitle(shown.level, levelTitleText[shown.titleKey])}
+      title={vi.levelUpTitle(shown.level)}
+      subtitle={levelTitleText[shown.titleKey]}
       body={vi.levelUpBody(shown.points)}
       primary={{ ...primary, label: vi.seePerks }}
       secondary={{ ...secondary, label: vi.later }}
@@ -52,7 +53,7 @@ export function CelebrationOverlay({ shown, stage, skin, onClose, onSee }: Props
       days={shown.days}
       skin={skin}
       title={vi.milestoneTitle(shown.days)}
-      body={vi.milestoneBody(shown.coins)}
+      body={vi.milestoneBody(shown.badgeCode, shown.coins, shown.days)}
       primary={{ ...primary, label: vi.seeBadge }}
       secondary={{ ...secondary, label: vi.keepGoing }}
       onClose={onClose}
@@ -134,12 +135,10 @@ function ActiveHost({ userId }: { userId: string }) {
       if (boundUserId() === userId) saveCelebratedLevel(userId, level);
       return;
     }
-    const queued = new Set(queue.flatMap(event => (event.type === 'LEVEL_UP' ? [event.level] : [])));
-    const missing = [];
-    for (let reached = known + 1; reached <= level; reached++) {
-      if (!queued.has(reached)) missing.push({ type: 'LEVEL_UP' as const, level: reached, titleKey: titleKeyForLevel(reached), perkPointsGained: 1 });
-    }
-    pushCelebrations(missing);
+    // Levels reached together are ONE celebration, as the server's own event for a jump is: the highest level, the points
+    // of all of them. What a queued event already covers is not asked for again, so whichever arrives first, one overlay.
+    const covered = queue.reduce((highest, event) => (event.type === 'LEVEL_UP' ? Math.max(highest, event.level) : highest), known);
+    if (level > covered) pushCelebrations([{ type: 'LEVEL_UP', level, titleKey: titleKeyForLevel(level), perkPointsGained: level - covered }]);
   }, [ready, level, queue, userId]);
 
   // What is next, when nothing is on screen and nothing holds it.
@@ -164,7 +163,7 @@ function ActiveHost({ userId }: { userId: string }) {
     const milestone = day?.celebrations.find(item => item.kind === 'STREAK_MILESTONE' && item.readAt === null && !items.current.has(item.id));
     if (milestone) {
       items.current.add(milestone.id);
-      setShown({ id: milestone.id, kind: 'STREAK_MILESTONE', days: milestone.payload.days, coins: milestone.payload.coins });
+      setShown({ id: milestone.id, kind: 'STREAK_MILESTONE', days: milestone.payload.days, coins: milestone.payload.coins, badgeCode: milestone.payload.badgeCode });
       // Online only (not a queueable path). A refusal or no network leaves it unread: it comes back at the next start.
       markInboxRead(queryClient, userId, [milestone.id]).catch(() => undefined);
     }
