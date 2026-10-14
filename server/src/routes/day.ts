@@ -19,16 +19,61 @@ import {
 } from '../readModels/day.ts';
 import { buildDelta, logGrants } from '../readModels/delta.ts';
 import type { Grant } from '../readModels/delta.ts';
-import { members } from './auth.ts';
 
 /** `GET /day/history` answers at most this many dates. */
 const HISTORY_MAX_DATES = 92;
 
+// RFC 3339 with a zone: date, hour, minute, second, an optional fraction, then Z or an offset.
 const DATE_TIME =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+  /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/;
 
 const refuse = (field: string, rule: FieldError['rule']) =>
   new AppError('VALIDATION_FAILED', { fields: [{ field, rule }] });
+
+/**
+ * The body of a write, which the contract has as a JSON object: without one the refusal is
+ * `body` / `required`; for anything else (null, an array, a number, a string) `body` / `format`.
+ */
+function objectBody(body: unknown): Record<string, unknown> {
+  if (body === undefined) {
+    throw refuse('body', 'required');
+  }
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    throw refuse('body', 'format');
+  }
+  return body as Record<string, unknown>;
+}
+
+/** YYYY-MM-DD that names a day of the calendar: 2027-02-30 is none. */
+function isCalendarDate(value: string): boolean {
+  try {
+    return /^\d{4}-\d{2}-\d{2}$/.test(value) && addDays(value, 0) === value;
+  } catch {
+    // not a date at all: the label could not be printed back
+    return false;
+  }
+}
+
+/**
+ * The instant an RFC 3339 text names, in milliseconds, or NaN: the date must exist, the hour be
+ * 00 to 23, minute and second 00 to 59, and a zone be given. JavaScript alone reads 30 February
+ * as 2 March and 24:00 as the next midnight.
+ */
+function instantOf(value: unknown): number {
+  const parts = typeof value === 'string' ? DATE_TIME.exec(value) : null;
+  if (parts === null) {
+    return NaN;
+  }
+  const [, date, hour, minute, second, offsetHour = '00', offsetMinute = '00'] =
+    parts;
+  const inRange =
+    Number(hour) <= 23 &&
+    Number(minute) <= 59 &&
+    Number(second) <= 59 &&
+    Number(offsetHour) <= 23 &&
+    Number(offsetMinute) <= 59;
+  return inRange && isCalendarDate(date) ? Date.parse(parts[0]) : NaN;
+}
 
 /**
  * `occurredAt` of a write, as the instant it names in one spelling, or null when the member is
@@ -36,14 +81,11 @@ const refuse = (field: string, rule: FieldError['rule']) =>
  * by the function.
  */
 function occurredAtOf(body: unknown): string | null {
-  const { occurredAt } = members(body);
+  const { occurredAt } = objectBody(body);
   if (occurredAt === undefined) {
     return null;
   }
-  const ms =
-    typeof occurredAt === 'string' && DATE_TIME.test(occurredAt)
-      ? Date.parse(occurredAt)
-      : NaN;
+  const ms = instantOf(occurredAt);
   if (Number.isNaN(ms)) {
     throw refuse('occurredAt', 'format');
   }
@@ -56,17 +98,8 @@ function dateOf(value: string | null | undefined, field: string): DateLabel {
   if (value === null || value === undefined || value === '') {
     throw refuse(field, 'required');
   }
-  let real = false;
-  try {
-    // year 0000 is a date to JavaScript and none to PostgreSQL
-    real =
-      /^\d{4}-\d{2}-\d{2}$/.test(value) &&
-      !value.startsWith('0000') &&
-      addDays(value, 0) === value;
-  } catch {
-    // not a date at all: the label could not be printed back
-  }
-  if (!real) {
+  // year 0000 is a date to JavaScript and none to PostgreSQL
+  if (!isCalendarDate(value) || value.startsWith('0000')) {
     throw refuse(field, 'format');
   }
   return value;
@@ -109,7 +142,7 @@ async function tick(ctx: Ctx): Promise<RouteResponse> {
 }
 
 async function undo(ctx: Ctx): Promise<RouteResponse> {
-  const { tickId } = members(ctx.body);
+  const { tickId } = objectBody(ctx.body);
   if (tickId === undefined || tickId === null) {
     throw refuse('tickId', 'required');
   }
