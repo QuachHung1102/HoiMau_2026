@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, test } from 'node:test';
+import type { PoolClient } from 'pg';
 import type { GameEvent } from '../../../domain/contract/common.ts';
 import type {
   DayState,
@@ -22,7 +23,7 @@ import type { CallResult, TestApp } from '../../test/http.ts';
 import { createTestDb } from '../../test/testdb.ts';
 import type { TestDb } from '../../test/testdb.ts';
 import { withRole } from '../db.ts';
-import { buildDay } from '../readModels/day.ts';
+import { buildDay, buildDayDetail } from '../readModels/day.ts';
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
@@ -258,6 +259,75 @@ test('closesAt is the instant the logical date changes, in every zone and across
     }
   }
   assert.equal(checked, grid.reduce((sum, [, instants]) => sum + instants.length, 0));
+});
+
+test('a tick one millisecond before closesAt lands on the day GET /day shows, one at closesAt on the next: at eight day boundaries, and in the four zones Node reads differently', async () => {
+  // [zone, an instant inside the day, the day, the instant it ends]
+  const cases: [string, string, string, string][] = [
+    ['America/New_York', '2026-03-07T20:00:00.000Z', '2026-03-07', '2026-03-08T07:00:00.000Z'], // 03:00 EDT, an hour after the change
+    ['America/New_York', '2026-10-31T20:00:00.000Z', '2026-10-31', '2026-11-01T08:00:00.000Z'], // 03:00 EST, on the change day
+    ['Asia/Kolkata', '2026-06-01T10:00:00.000Z', '2026-06-01', '2026-06-01T21:30:00.000Z'],
+    ['Asia/Kathmandu', '2026-06-01T10:00:00.000Z', '2026-06-01', '2026-06-01T21:15:00.000Z'],
+    ['Australia/Lord_Howe', '2026-04-04T03:00:00.000Z', '2026-04-04', '2026-04-04T16:30:00.000Z'], // the 30-minute change
+    ['Europe/Athens', '2026-10-24T12:00:00.000Z', '2026-10-24', '2026-10-25T00:00:00.000Z'], // the first of two 03:00
+    ['Pacific/Kiritimati', '2026-06-01T00:00:00.000Z', '2026-06-01', '2026-06-01T13:00:00.000Z'],
+    ['Pacific/Pago_Pago', '2026-06-01T20:00:00.000Z', '2026-06-01', '2026-06-02T14:00:00.000Z'],
+    // PostgreSQL's zone database, where this Node's says otherwise (see the parity test in
+    // server/test/day.sql.test.ts): British Columbia stays on UTC-7 after 1 November 2026, and
+    // Moldova changes its clocks at 01:00 UTC
+    ['America/Vancouver', '2026-11-10T20:00:00.000Z', '2026-11-10', '2026-11-11T10:00:00.000Z'],
+    ['Canada/Pacific', '2026-11-10T20:00:00.000Z', '2026-11-10', '2026-11-11T10:00:00.000Z'],
+    ['Europe/Chisinau', '2026-03-28T12:00:00.000Z', '2026-03-28', '2026-03-29T01:00:00.000Z'],
+    ['Europe/Tiraspol', '2026-03-28T12:00:00.000Z', '2026-03-28', '2026-03-29T01:00:00.000Z'],
+  ];
+  for (const [zone, inside, date, ends] of cases) {
+    await clock(inside);
+    const user = await newOnboardedUser(db, { timezone: zone });
+    const shown = ok(await get(user, '/day'));
+    assert.deepEqual([shown.logicalDate, shown.closesAt], [date, ends], zone);
+
+    await clock(plus(ends, -1));
+    const last = ok(await tick(user, 'STAND_UP'));
+    assert.deepEqual([last.day.logicalDate, last.day.closesAt], [date, ends], zone);
+    await clock(ends);
+    const first = ok(await tick(user, 'STAND_UP'));
+    assert.equal(first.day.logicalDate, addDays(date, 1), zone);
+    assert.ok(Date.parse(first.day.closesAt) > Date.parse(ends), zone);
+    // each tick is on the day its answer showed
+    assert.deepEqual(
+      await logsOf(user.userId),
+      [
+        { date, water_ml: 0, ticks: 1 },
+        { date: addDays(date, 1), water_ml: 0, ticks: 1 },
+      ],
+      zone,
+    );
+    assert.equal(questOf(last.day, 'STAND_UP').progress, 1, zone);
+    assert.equal(questOf(first.day, 'STAND_UP').progress, 1, zone);
+  }
+});
+
+test('where the label goes back for a while, closesAt is still the next instant it changes (Pacific/Chatham, 4 April 2026)', async () => {
+  // 03:45 CHADT becomes 02:45 CHAST at 14:00 UTC: the 5th starts at 13:15 UTC (03:00), the label
+  // is the 4th again from 14:00 to 14:15 UTC, and the 5th from then on
+  const steps: [at: string, date: string, ends: string][] = [
+    ['2026-04-04T13:00:00.000Z', '2026-04-04', '2026-04-04T13:15:00.000Z'],
+    ['2026-04-04T13:30:00.000Z', '2026-04-05', '2026-04-04T14:00:00.000Z'],
+    ['2026-04-04T14:05:00.000Z', '2026-04-04', '2026-04-04T14:15:00.000Z'],
+    ['2026-04-04T14:15:00.000Z', '2026-04-05', '2026-04-05T14:15:00.000Z'],
+  ];
+  await clock(steps[0][0]);
+  const user = await newOnboardedUser(db, { timezone: 'Pacific/Chatham' });
+  for (const [at, date, ends] of steps) {
+    await clock(at);
+    const day = ok(await tick(user, 'STAND_UP')).day;
+    assert.deepEqual([day.logicalDate, day.closesAt], [date, ends], at);
+  }
+  // the writes landed where the answers said: two on each date
+  assert.deepEqual(await logsOf(user.userId), [
+    { date: '2026-04-04', water_ml: 0, ticks: 2 },
+    { date: '2026-04-05', water_ml: 0, ticks: 2 },
+  ]);
 });
 
 test('buildDay with a date shows that day; without one, today', async () => {
@@ -1032,6 +1102,29 @@ test('GET /day/history/{date}: the ticks and the mark of that day, newest first,
     action(a, 'TICK', plus(at2000, -3 * HOUR), 'WATER_8'),
   ]);
   assert.equal(detail.summary.waterMl, Math.round(prescriptionOf(user.input, at2000).waterMl / 8));
+});
+
+test('GET /day/history/{date}: the summary and the actions come from one statement, so from one snapshot', async () => {
+  await clock(NOON);
+  const user = await newOnboardedUser(db);
+  ok(await tick(user, 'WATER_8'));
+  let statements = 0;
+  const detail = await withRole(db.app, 'app_auth', user.userId, c =>
+    buildDayDetail(
+      {
+        db: {
+          query: (...args: unknown[]) => {
+            statements++;
+            return (c.query as (...all: unknown[]) => unknown)(...args);
+          },
+        } as unknown as PoolClient,
+      },
+      '2027-03-10',
+    ),
+  );
+  assert.equal(statements, 1);
+  assert.equal(detail.actions.length, 1);
+  assert.deepEqual(detail, ok(await get(user, '/day/history/2027-03-10')));
 });
 
 // ---------------------------------------------------------------- Me, isolation, access

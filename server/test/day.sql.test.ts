@@ -136,6 +136,139 @@ test('app._open_log labels the row with the date logicalDateOf gives the instant
   assert.ok(rows[0].dates > 10);
 });
 
+// The server's label is PostgreSQL's (app.logical_date); logicalDateOf of domain/ is what the app
+// draws with. Node and PostgreSQL each carry a copy of the zone database, so the two can differ
+// for a zone, and where they do the server is right by definition. The list below is every zone
+// of `timezones` in which they differ on the grid of the test, today. The test is red when a
+// zone outside the list differs (add it, with its reason: nothing in the server depends on it),
+// and when a listed zone agrees again (remove it: a list nobody prunes hides the next one).
+const DOMAIN_READS_OTHERWISE: Record<string, string> = {
+  'America/Vancouver':
+    "the tz database of this Node puts British Columbia back on UTC-8 on 1 November 2026, PostgreSQL's keeps it on UTC-7",
+  'Canada/Pacific': "the same zone under its old name: the tz database of this Node differs from PostgreSQL's",
+  'Europe/Chisinau':
+    "the tz database of this Node changes Moldova's clocks at 00:00 UTC, PostgreSQL's at 01:00 UTC",
+  'Europe/Tiraspol': "the same zone under another name: the tz database of this Node differs from PostgreSQL's",
+};
+
+test('EVERY zone of timezones: app.logical_date equals logicalDateOf around 03:00 local, on every clock-change day of 2026 and through the year, except in the listed zones', async t => {
+  const zones: string[] = (await db.admin.query('SELECT name FROM timezones ORDER BY name')).rows.map(
+    row => row.name,
+  );
+  const DAY = 24 * HOUR;
+  const start = Date.UTC(2026, 0, 1);
+  const pairs: { zone: string; at: number }[] = [];
+  const unknownToNode: string[] = [];
+  for (const zone of zones) {
+    // this formatter only finds WHERE to look (the days the offset changes, and 03:00 local);
+    // what is compared below is the domain function itself
+    let format: Intl.DateTimeFormat;
+    try {
+      format = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'longOffset' });
+    } catch {
+      unknownToNode.push(zone);
+      continue;
+    }
+    const offsetAt = (ms: number) => {
+      const text = format.formatToParts(ms).find(part => part.type === 'timeZoneName')?.value ?? '';
+      const m = /GMT(?:([+-])(\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(text);
+      if (m === null) {
+        throw new Error(`${zone}: no offset in "${text}"`);
+      }
+      const seconds = Number(m[2] ?? 0) * 3600 + Number(m[3] ?? 0) * 60 + Number(m[4] ?? 0);
+      return (m[1] === '-' ? -seconds : seconds) * 1000;
+    };
+    // the 15th of every second month, and the day before, of and after each change of offset
+    const days = new Set([0, 2, 4, 6, 8, 10].map(month => Date.UTC(2026, month, 15)));
+    let was = offsetAt(start);
+    for (let day = start + DAY; day <= start + 365 * DAY; day += DAY) {
+      const offset = offsetAt(day);
+      if (offset !== was) {
+        [day - DAY, day, day + DAY].forEach(changed => days.add(changed));
+      }
+      was = offset;
+    }
+    for (const day of days) {
+      // 03:00 on the zone's wall clock that day, as this Node reads the zone; then 15, 45 and 75
+      // minutes either side of it: a database that puts the boundary elsewhere shows there
+      const boundary = day + 3 * HOUR - offsetAt(day + 3 * HOUR - offsetAt(day));
+      for (const minutes of [-75, -45, -15, 15, 45, 75]) {
+        pairs.push({ zone, at: boundary + minutes * MINUTE });
+      }
+    }
+  }
+  assert.deepEqual(unknownToNode, []);
+  const { rows } = await db.admin.query(
+    `SELECT app.logical_date(to_timestamp(ms / 1000.0), zone)::text AS label
+       FROM unnest($1::text[], $2::numeric[]) WITH ORDINALITY AS t (zone, ms, n) ORDER BY n`,
+    [pairs.map(pair => pair.zone), pairs.map(pair => pair.at)],
+  );
+  const first = new Map<string, string>();
+  pairs.forEach(({ zone, at }, i) => {
+    const domain = logicalDateOf(at, zone);
+    if (rows[i].label !== domain && !first.has(zone)) {
+      first.set(zone, `${zone} ${iso(at)}: sql ${rows[i].label}, domain ${domain}`);
+    }
+  });
+  assert.ok(zones.length > 400 && pairs.length > 30 * zones.length, `${zones.length} zones, ${pairs.length} instants`);
+  const tz = `tz database of this Node: ${process.versions.tz}`;
+  t.diagnostic(`${zones.length} zones, ${pairs.length} instants compared, ${first.size} zones differ (${tz})`);
+  assert.deepEqual(
+    [...first.entries()].filter(([zone]) => !(zone in DOMAIN_READS_OTHERWISE)).map(([, seen]) => seen),
+    [],
+    `SQL and the domain disagree in a zone outside the list (${tz})`,
+  );
+  assert.deepEqual(
+    Object.keys(DOMAIN_READS_OTHERWISE).filter(zone => !first.has(zone)),
+    [],
+    `a listed zone agrees again: remove it from the list (${tz})`,
+  );
+});
+
+test('app.logical_day_end is the earliest later instant with another label: in every zone, and where the label goes back', async () => {
+  // every zone at four instants, two of them on clock-change nights of Europe and North America
+  const { rows } = await db.admin.query(
+    `SELECT z.name, i.ts, e.ends
+       FROM timezones z
+      CROSS JOIN unnest($1::timestamptz[]) AS i (ts)
+      CROSS JOIN LATERAL (SELECT app.logical_day_end(i.ts, z.name) AS ends) e
+      WHERE NOT (e.ends > i.ts
+                 AND e.ends - i.ts <= interval '27 hours'
+                 AND app.logical_date(e.ends, z.name) <> app.logical_date(i.ts, z.name)
+                 AND app.logical_date(e.ends - interval '1 microsecond', z.name) = app.logical_date(i.ts, z.name))`,
+    [['2026-03-29T00:30:00Z', '2026-06-15T12:00:00.5Z', '2026-10-25T00:30:00Z', '2026-11-01T09:30:00Z']],
+  );
+  assert.deepEqual(rows, []);
+
+  // it is "the earliest": no minute before it carries another label (every zone, one instant)
+  const earlier = await db.admin.query(
+    `SELECT z.name, e.ends, g.at
+       FROM timezones z
+      CROSS JOIN LATERAL (SELECT app.logical_day_end($1::timestamptz, z.name) AS ends) e
+      CROSS JOIN LATERAL generate_series($1::timestamptz, e.ends - interval '1 second', interval '7 minutes') AS g (at)
+      WHERE app.logical_date(g.at, z.name) <> app.logical_date($1::timestamptz, z.name)`,
+    ['2026-04-04T02:13:00Z'],
+  );
+  assert.deepEqual(earlier.rows, []);
+
+  const ends = async (zone: string, at: string) =>
+    (
+      await db.admin.query('SELECT app.logical_day_end($1::timestamptz, $2) AS ends', [at, zone])
+    ).rows[0].ends.toISOString();
+  // Chatham, 4 April 2026: 03:45 becomes 02:45 at 14:00 UTC
+  assert.equal(await ends('Pacific/Chatham', '2026-04-04T13:00:00Z'), '2026-04-04T13:15:00.000Z');
+  assert.equal(await ends('Pacific/Chatham', '2026-04-04T13:15:00Z'), '2026-04-04T14:00:00.000Z');
+  assert.equal(await ends('Pacific/Chatham', '2026-04-04T13:59:59.999Z'), '2026-04-04T14:00:00.000Z');
+  assert.equal(await ends('Pacific/Chatham', '2026-04-04T14:00:00Z'), '2026-04-04T14:15:00.000Z');
+  assert.equal(await ends('Pacific/Chatham', '2026-04-04T14:15:00Z'), '2026-04-05T14:15:00.000Z');
+  // one microsecond before the end, and at it
+  assert.equal(await ends('Asia/Ho_Chi_Minh', '2027-03-10T19:59:59.999999Z'), '2027-03-10T20:00:00.000Z');
+  assert.equal(await ends('Asia/Ho_Chi_Minh', '2027-03-10T20:00:00Z'), '2027-03-11T20:00:00.000Z');
+  // Athens: the first of the two 03:00 of 25 October, the jump over 03:00 on 29 March
+  assert.equal(await ends('Europe/Athens', '2026-10-24T12:00:00Z'), '2026-10-25T00:00:00.000Z');
+  assert.equal(await ends('Europe/Athens', '2026-03-28T12:00:00Z'), '2026-03-29T01:00:00.000Z');
+});
+
 test('app._open_log and the three functions refuse a caller who is not an onboarded user', async () => {
   await clock(NOON);
   const fresh = await newUser(db);

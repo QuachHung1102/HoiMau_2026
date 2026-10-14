@@ -117,6 +117,44 @@ SELECT meta.expect_table('quest_ticks', 'own_read', '{SELECT}', '{}', 'user_id')
 SELECT meta.expect_policy('quest_ticks', 'own_select', 'SELECT', '(app.current_user_id() = user_id)', NULL);
 
 -- ---------------------------------------------------------------------------------------------
+-- A read-only helper beside app.logical_date, for the request roles.
+
+-- The instant at which the logical date of ts in zone tz changes: the earliest instant after ts
+-- whose app.logical_date is another one. By that definition and nothing else, so it is right
+-- also where the label goes BACK for a while (Pacific/Chatham, 4 April 2026: 03:45 becomes
+-- 02:45, so the next date starts at 03:00, stops at 03:45 and starts again 15 minutes later).
+-- It asks app.logical_date itself, so the day a read shows as open and the day a write lands
+-- on come from one time zone database: PostgreSQL's. Never compute this outside SQL.
+-- Found by walking whole minutes, then the seconds of the minute in which the label changed:
+-- zone offsets are whole seconds, so a label changes on a whole second.
+-- ponytail: up to 1500 steps for a whole day ahead (about half a millisecond, measured); it
+-- would miss a label that changes and changes back inside one minute, which no zone does.
+CREATE OR REPLACE FUNCTION app.logical_day_end(ts timestamptz, tz text) RETURNS timestamptz
+LANGUAGE plpgsql STABLE SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_label date := app.logical_date(ts, tz);
+  v_at timestamptz := to_timestamp(floor(extract(epoch FROM ts) / 60) * 60);
+BEGIN
+  FOR i IN 1..3000 LOOP
+    v_at := v_at + interval '1 minute';
+    EXIT WHEN app.logical_date(v_at, tz) <> v_label;
+  END LOOP;
+  v_at := v_at - interval '1 minute';
+  FOR i IN 1..60 LOOP
+    v_at := v_at + interval '1 second';
+    IF v_at > ts AND app.logical_date(v_at, tz) <> v_label THEN
+      RETURN v_at;
+    END IF;
+  END LOOP;
+  RAISE EXCEPTION 'app.logical_day_end: the logical date did not change within 50 hours';
+END $$;
+
+REVOKE ALL ON FUNCTION app.logical_day_end(timestamptz, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.logical_day_end(timestamptz, text) TO app_anon, app_auth, app_job;
+SELECT meta.expect_function('app.logical_day_end(timestamptz, text)', 'invoker', '{app_anon,app_auth,app_job}');
+
+-- ---------------------------------------------------------------------------------------------
 -- Internal helpers: EXECUTE for no role, and none is SECURITY DEFINER.
 
 -- The instant a write counts for (AR-08, R-D05). Null: now. More than 120 s ahead of app.now():
