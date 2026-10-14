@@ -154,6 +154,11 @@ const FIXTURE = `
   ALTER TABLE fx_internal ENABLE ROW LEVEL SECURITY;
   SELECT meta.expect_table('fx_internal', 'internal', '{}', '{}', NULL);
 
+  -- an identity key: its sequence belongs to the table and changes owner with it
+  CREATE TABLE fx_events (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, secret text);
+  ALTER TABLE fx_events ENABLE ROW LEVEL SECURITY;
+  SELECT meta.expect_table('fx_events', 'internal', '{}', '{}', NULL);
+
   CREATE TABLE fx_content (code text PRIMARY KEY);
   GRANT SELECT ON fx_content TO app_auth;
   SELECT meta.expect_table('fx_content', 'content', '{SELECT}', '{}', NULL);
@@ -268,6 +273,11 @@ const mutations = (database: string): [sql: string, raises: string][] => [
     'ALTER TABLE fx_own_rw OWNER TO app_auth',
     'table fx_own_rw is owned by app role app_auth',
   ],
+  // a table with an identity key: the table is named, not the sequence that follows its owner
+  [
+    'ALTER TABLE fx_events OWNER TO app_auth',
+    'table fx_events is owned by app role app_auth',
+  ],
   [
     'ALTER SEQUENCE fx_seq OWNER TO app_auth',
     'sequence fx_seq is owned by app role app_auth',
@@ -275,6 +285,12 @@ const mutations = (database: string): [sql: string, raises: string][] => [
   [
     'ALTER FUNCTION fx_fn(text) OWNER TO app_job',
     'function fx_fn(text) is owned by app role app_job',
+  ],
+  // a function given to a role outside app_*: the function and its owner are named, not the
+  // default privileges of that owner
+  [
+    'CREATE ROLE fx_fifth; ALTER FUNCTION app.week_start(date) OWNER TO fx_fifth',
+    `function app.week_start(date) is owned by fx_fifth: every function of ours belongs to ${SUPERUSER.user}`,
   ],
   [
     'ALTER SCHEMA app OWNER TO app_auth',
@@ -366,6 +382,42 @@ const mutations = (database: string): [sql: string, raises: string][] => [
   [
     'CREATE RULE fx_rule AS ON DELETE TO meta.test_clock DO INSTEAD NOTHING',
     'rule "fx_rule" on meta.test_clock is not allowed',
+  ],
+  // what the intact database has none of: triggers (no registry for them yet), event triggers,
+  // publications, foreign-data wrappers and servers, LEAKPROOF functions
+  [
+    `CREATE TRIGGER fx_touch BEFORE INSERT OR UPDATE ON fx_own_rw FOR EACH ROW EXECUTE FUNCTION fx_trigger();
+     ALTER TABLE fx_own_rw ENABLE ALWAYS TRIGGER fx_touch`,
+    'trigger "fx_touch" on fx_own_rw is not allowed yet',
+  ],
+  [
+    'CREATE TRIGGER fx_touch INSTEAD OF INSERT ON fx_view FOR EACH ROW EXECUTE FUNCTION fx_trigger()',
+    'trigger "fx_touch" on fx_view is not allowed yet',
+  ],
+  [
+    `CREATE FUNCTION fx_ddl() RETURNS event_trigger LANGUAGE plpgsql AS 'BEGIN NULL; END';
+     SELECT meta.expect_function('fx_ddl()', 'invoker', '{}');
+     CREATE EVENT TRIGGER fx_ddl ON ddl_command_end EXECUTE FUNCTION fx_ddl()`,
+    'event trigger fx_ddl is not allowed',
+  ],
+  [
+    'CREATE PUBLICATION fx_pub FOR ALL TABLES',
+    'publication fx_pub is not allowed',
+  ],
+  ['CREATE PUBLICATION fx_pub', 'publication fx_pub is not allowed'],
+  [
+    'CREATE FOREIGN DATA WRAPPER fx_wrapper',
+    'foreign-data wrapper fx_wrapper is not allowed',
+  ],
+  [
+    `CREATE FOREIGN DATA WRAPPER fx_wrapper;
+     CREATE SERVER fx_server FOREIGN DATA WRAPPER fx_wrapper;
+     GRANT USAGE ON FOREIGN SERVER fx_server TO app_auth`,
+    'foreign server fx_server is not allowed',
+  ],
+  [
+    'ALTER FUNCTION app.logical_date(timestamptz, text) LEAKPROOF',
+    'function app.logical_date(timestamp with time zone,text) is LEAKPROOF',
   ],
   // (4) row level security and grants, per class
   [

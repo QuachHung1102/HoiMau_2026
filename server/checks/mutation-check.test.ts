@@ -9,7 +9,8 @@
 //
 // Rules for whoever edits it (backend-tu-chu 6.1 to 6.4, for a check of a check):
 //   * one answer per mutation: SQLSTATE P0001 and a message carrying every fragment listed for
-//     the mutation, each as a whole name. Anything else fails and says which: the mutation did
+//     the mutation, each as a whole name, the first of them where the message (or the first
+//     item after its "found: ") begins. Anything else fails and says which: the mutation did
 //     not apply, verify did not raise, verify crashed, verify raised for another reason;
 //   * a fragment is written the way the one assertion under test says it ("table users: grants
 //     are" and "app_job:TRUNCATE", not "users"): another assertion that merely mentions the
@@ -17,8 +18,11 @@
 //     sentence also holds "users" and "app_auth";
 //   * a mutation that changes nothing reads as "verify did not raise": enumerate what the
 //     intact schema lacks (a privilege not held, a membership not there), never a fixed list;
-//   * a class that enumerated nothing fails. A class that is empty on a correct schema (no
-//     sequence, view or trigger exists) has no place here until the schema has one;
+//   * a class that enumerated nothing fails, so no class is about a kind of object the schema
+//     may lack. A view, a sequence or a trigger function is covered by the classes of
+//     relations and functions; the test on a schema that has them proves every class still
+//     applies (a class that breaks only views, such as dropping security_invoker, has no place
+//     here until the real schema has a view);
 //   * role mutations are rows of cluster-wide catalogs. They are safe because this gate runs
 //     alone and never commits; the last test proves it through a new connection.
 import assert from 'node:assert/strict';
@@ -37,7 +41,10 @@ const VERIFY = readFileSync(
 /** What RAISE EXCEPTION carries: a refusal of 90-verify.sql, not a crash inside it. */
 const RAISED = 'P0001';
 
-/** `names`: what the message of 90-verify.sql must carry, every fragment of it. */
+/**
+ * `names`: what the message of 90-verify.sql must carry, every fragment of it. The first is the
+ * subject of the sentence: the message, or the first item after its "found: ", begins with it.
+ */
 type Mutation = { sql: string; names: string[] };
 type MutationClass = { name: string; mutations: Mutation[] };
 
@@ -90,8 +97,13 @@ async function judge(
         problem: `verify crashed instead of refusing: ${raised.code} "${message}"`,
       };
     }
+    // "schema public: grants are" also stands in the middle of the message about the default
+    // privileges in schema public: the subject counts only where a sentence of verify begins
     const missing = names.filter(
-      name => occurrences(message, name).length === 0,
+      (name, i) =>
+        !occurrences(message, name).some(
+          at => i > 0 || at === 0 || message.slice(0, at).endsWith('found: '),
+        ),
     );
     if (missing.length > 0) {
       return {
@@ -150,15 +162,22 @@ const APP_ROLES = `(SELECT oid, rolname::text AS name, rolcanlogin, rolinherit
 const GRANTEE = `(SELECT $1::text AS name,
                          CASE WHEN $1::text = 'PUBLIC' THEN 'PUBLIC' ELSE quote_ident($1::text) END AS sql,
                          coalesce((SELECT oid FROM pg_roles WHERE rolname = $1::text), 0) AS oid) g`;
-/** Every table and view of ours, with its class when it is one of public. */
-const TABLES = `(SELECT c.oid, c.oid::regclass::text AS label, c.relrowsecurity AS rls, c.relowner AS owner,
-                        CASE c.relkind WHEN 'v' THEN 'view ' ELSE 'table ' END || c.oid::regclass::text AS named,
-                        coalesce(c.relacl, acldefault('r', c.relowner)) AS acl,
-                        e.class, coalesce(e.auth_update_columns, '{}') AS update_columns
-                   FROM pg_class c
-                   JOIN pg_namespace n ON n.oid = c.relnamespace
-                   LEFT JOIN meta.expected_tables e ON n.nspname = 'public' AND e.name = c.relname
-                  WHERE c.relkind IN ('r', 'p', 'v') AND ${OURS}) t`;
+/**
+ * Every table, view and sequence of ours, with its class when it is registered. `kind` is what
+ * 90-verify.sql calls it; `acl_type` what acldefault() calls it.
+ */
+const RELATIONS = `(SELECT c.oid, c.oid::regclass::text AS label, c.relrowsecurity AS rls, c.relowner AS owner,
+                           CASE c.relkind WHEN 'S' THEN 'sequence' WHEN 'v' THEN 'view' ELSE 'table' END AS kind,
+                           x.acl_type, coalesce(c.relacl, acldefault(x.acl_type, c.relowner)) AS acl,
+                           e.class, coalesce(e.auth_update_columns, '{}') AS update_columns
+                      FROM pg_class c
+                      JOIN pg_namespace n ON n.oid = c.relnamespace
+                     CROSS JOIN LATERAL (SELECT (CASE WHEN c.relkind = 'S' THEN 's' ELSE 'r' END)::"char" AS acl_type) x
+                      LEFT JOIN meta.expected_tables e
+                        ON n.nspname = 'public' AND e.name = c.relname AND c.relkind <> 'S'
+                     WHERE c.relkind IN ('r', 'p', 'v', 'S') AND ${OURS}) t`;
+/** The tables and views among them. */
+const TABLES = `(SELECT * FROM ${RELATIONS} WHERE t.kind <> 'sequence') t`;
 /** Every function of ours. */
 const FUNCTIONS = `(SELECT p.oid::regprocedure::text AS label, p.prosecdef AS definer, p.proconfig AS settings,
                            coalesce(p.proacl, acldefault('f', p.proowner)) AS acl
@@ -181,8 +200,19 @@ const CLASSES: { name: string; sql: string; perGrantee?: true }[] = [
     // The premise of running without FORCE ROW LEVEL SECURITY: no application role owns a table.
     name: 'table owned by app_auth',
     sql: `SELECT format('ALTER TABLE %s OWNER TO app_auth', t.label) AS sql,
-                 ARRAY[t.named || ' is owned by app role app_auth'] AS names
+                 ARRAY[format('%s %s is owned by app role app_auth', t.kind, t.label)] AS names
             FROM ${TABLES} ORDER BY t.label`,
+  },
+  {
+    // Nothing registers a trigger yet, so the intact schema has none. ENABLE ALWAYS: the kind
+    // that fires whatever session_replication_role says.
+    name: 'trigger on a table',
+    sql: `SELECT format('CREATE FUNCTION public.mc_trigger() RETURNS trigger LANGUAGE plpgsql AS ''BEGIN RETURN NEW; END'';
+                         SELECT meta.expect_function(''mc_trigger()'', ''invoker'', ''{}'');
+                         CREATE TRIGGER mc_trigger BEFORE INSERT ON %1$s FOR EACH ROW EXECUTE FUNCTION public.mc_trigger();
+                         ALTER TABLE %1$s ENABLE ALWAYS TRIGGER mc_trigger', t.label) AS sql,
+                 ARRAY[format('trigger "mc_trigger" on %s is not allowed', t.label)] AS names
+            FROM ${TABLES} WHERE t.kind = 'table' ORDER BY t.label`,
   },
   {
     // What a rule adds to a statement runs as the owner of the table: privileged code that is
@@ -193,18 +223,33 @@ const CLASSES: { name: string; sql: string; perGrantee?: true }[] = [
             FROM ${TABLES} ORDER BY t.label`,
   },
   {
-    // Every kind of table privilege PostgreSQL knows, to everyone who does not hold it.
-    name: 'table privilege granted to',
+    // Every kind of privilege PostgreSQL knows for the relation (a table, a view, the sequence
+    // of an identity column), to everyone who does not hold it.
+    name: 'table or sequence privilege granted to',
     perGrantee: true,
-    sql: `SELECT format('GRANT %s ON %s TO %s', k.privilege, t.label, g.sql) AS sql,
-                 ARRAY[t.named || ': grants are', g.name || ':' || k.privilege] AS names
-            FROM ${TABLES}
+    sql: `SELECT format('GRANT %s ON %s %s TO %s', k.privilege,
+                        CASE WHEN t.kind = 'sequence' THEN 'SEQUENCE' ELSE 'TABLE' END, t.label, g.sql) AS sql,
+                 ARRAY[format('%s %s: grants are', t.kind, t.label), g.name || ':' || k.privilege] AS names
+            FROM ${RELATIONS}
            CROSS JOIN ${GRANTEE}
            CROSS JOIN LATERAL (SELECT DISTINCT privilege_type AS privilege
-                                 FROM aclexplode(acldefault('r', t.owner))) k
+                                 FROM aclexplode(acldefault(t.acl_type, t.owner))) k
            WHERE NOT EXISTS (SELECT 1 FROM aclexplode(t.acl) a
                               WHERE a.grantee = g.oid AND a.privilege_type = k.privilege)
            ORDER BY t.label, k.privilege`,
+  },
+  {
+    // A privilege an app role holds by design, handed on: "*" in the ACL.
+    name: 'privilege an app role holds, granted again WITH GRANT OPTION',
+    sql: `SELECT format('GRANT %s ON %s %s TO %I WITH GRANT OPTION', a.privilege_type,
+                        CASE WHEN t.kind = 'sequence' THEN 'SEQUENCE' ELSE 'TABLE' END, t.label, r.name) AS sql,
+                 ARRAY[format('%s %s: grants are', t.kind, t.label),
+                       r.name || ':' || a.privilege_type || '*'] AS names
+            FROM ${RELATIONS}
+           CROSS JOIN LATERAL aclexplode(t.acl) a
+            JOIN ${APP_ROLES} r ON r.oid = a.grantee
+           WHERE NOT a.is_grantable
+           ORDER BY t.label, r.name, a.privilege_type`,
   },
   {
     name: 'UPDATE granted to app_auth on a column not registered for it',
@@ -251,7 +296,7 @@ const CLASSES: { name: string; sql: string; perGrantee?: true }[] = [
                     UNION ALL
                    SELECT 'ALL' WHERE NOT has_table_privilege('app_auth', t.oid, 'DELETE')
                                   AND NOT has_any_column_privilege('app_auth', t.oid, 'SELECT, INSERT, UPDATE')) k
-           WHERE t.class IS NOT NULL
+           WHERE t.class IS NOT NULL AND t.kind = 'table'
            ORDER BY t.label, k.cmd`,
   },
   {
@@ -268,6 +313,20 @@ const CLASSES: { name: string; sql: string; perGrantee?: true }[] = [
     name: 'function owned by app_auth',
     sql: `SELECT format('ALTER ROUTINE %s OWNER TO app_auth', f.label) AS sql,
                  ARRAY[format('function %s is owned by app role app_auth', f.label)] AS names
+            FROM ${FUNCTIONS} ORDER BY f.label`,
+  },
+  {
+    // A SECURITY DEFINER function runs as its owner, whoever that is, and its owner may
+    // replace its body: the answer names the function, not the default privileges of the role.
+    name: 'function owned by a role outside app_*',
+    sql: `SELECT format('CREATE ROLE mc_outsider; ALTER ROUTINE %s OWNER TO mc_outsider', f.label) AS sql,
+                 ARRAY[format('function %s is owned by mc_outsider', f.label)] AS names
+            FROM ${FUNCTIONS} ORDER BY f.label`,
+  },
+  {
+    name: 'function declared LEAKPROOF',
+    sql: `SELECT format('ALTER ROUTINE %s LEAKPROOF', f.label) AS sql,
+                 ARRAY[format('function %s is LEAKPROOF', f.label)] AS names
             FROM ${FUNCTIONS} ORDER BY f.label`,
   },
   {
@@ -385,10 +444,50 @@ const CLASSES: { name: string; sql: string; perGrantee?: true }[] = [
     // Applied at login, before any request code runs: a role and an identity nobody asked for.
     name: 'setting stored for an app role in this database',
     sql: `SELECT format('ALTER ROLE %I IN DATABASE %I SET %s = %L', r.name, current_database(), s.name, s.value) AS sql,
-                 ARRAY[format('role %s, database %s: {%s=%s}', r.name, current_database(), s.name, s.value)] AS names
+                 ARRAY[format('a stored setting applies to an app role: role %s, database %s: {%s=%s}',
+                              r.name, current_database(), s.name, s.value)] AS names
             FROM ${APP_ROLES} r
            CROSS JOIN (VALUES ('role', 'app_auth'), ('app.user_id', '${SOMEBODY}')) s (name, value)
            ORDER BY r.name, s.name`,
+  },
+];
+
+/** Objects of the database, not of a schema: the intact one has none, so one of each. */
+const DATABASE_OBJECTS: MutationClass[] = [
+  {
+    name: 'event trigger',
+    mutations: [
+      {
+        sql: `CREATE FUNCTION public.mc_ddl() RETURNS event_trigger LANGUAGE plpgsql AS 'BEGIN NULL; END';
+              SELECT meta.expect_function('mc_ddl()', 'invoker', '{}');
+              CREATE EVENT TRIGGER mc_ddl ON ddl_command_end EXECUTE FUNCTION public.mc_ddl()`,
+        names: ['event trigger mc_ddl is not allowed'],
+      },
+    ],
+  },
+  {
+    name: 'publication',
+    mutations: [
+      {
+        sql: 'CREATE PUBLICATION mc_publication FOR ALL TABLES',
+        names: ['publication mc_publication is not allowed'],
+      },
+    ],
+  },
+  {
+    name: 'foreign-data wrapper, foreign server',
+    mutations: [
+      {
+        sql: 'CREATE FOREIGN DATA WRAPPER mc_wrapper',
+        names: ['foreign-data wrapper mc_wrapper is not allowed'],
+      },
+      {
+        sql: `CREATE FOREIGN DATA WRAPPER mc_wrapper;
+              CREATE SERVER mc_server FOREIGN DATA WRAPPER mc_wrapper;
+              GRANT USAGE ON FOREIGN SERVER mc_server TO app_auth`,
+        names: ['foreign server mc_server is not allowed'],
+      },
+    ],
   },
 ];
 
@@ -436,7 +535,7 @@ const POLICIES = `
 /** The policy dropped and created again, the same but for `change`. */
 function recreated(
   policy: Policy,
-  change: Partial<Pick<Policy, 'permissive' | 'using' | 'check'>>,
+  change: Partial<Pick<Policy, 'permissive' | 'cmd' | 'using' | 'check'>>,
 ): string {
   const { name, table, permissive, cmd, roles, using, check } = {
     ...policy,
@@ -530,6 +629,15 @@ function policyClasses(policies: Policy[]): MutationClass[] {
         })),
     },
     {
+      name: 'policy widened to FOR ALL',
+      mutations: policies
+        .filter(({ cmd }) => cmd !== 'ALL')
+        .map(policy => ({
+          sql: recreated(policy, { cmd: 'ALL' }),
+          names: [`${named(policy)}: command is ALL, registered ${policy.cmd}`],
+        })),
+    },
+    {
       name: 'policy TO PUBLIC',
       mutations: policies.map(policy => ({
         sql: `ALTER POLICY ${q(policy.name)} ON ${policy.table} TO PUBLIC`,
@@ -564,6 +672,7 @@ async function enumerate(client: PoolClient): Promise<MutationClass[]> {
   return [
     ...classes,
     ...policyClasses(await rows<Policy>(POLICIES)),
+    ...DATABASE_OBJECTS,
     {
       name: 'unregistered table, unregistered function, test clock set',
       mutations: ONE_OF_EACH,
@@ -652,6 +761,16 @@ test('self-test: the gate reports a mutation that proves nothing', async () => {
       `FAIL ${rlsOff} [trap] -> raised for the wrong reason: "table ${table.label} (`,
     ],
     [
+      'a name that stands in the message, but not where its sentence begins',
+      [
+        {
+          name: 'trap',
+          mutations: [{ sql: rlsOff, names: ['row level security is off'] }],
+        },
+      ],
+      `FAIL ${rlsOff} [trap] -> raised for the wrong reason: "table ${table.label} (`,
+    ],
+    [
       'a mutation that does not apply',
       [
         {
@@ -698,18 +817,24 @@ test('self-test: the gate reports a mutation that proves nothing', async () => {
   assert.equal(passed.length, 1);
 });
 
-test('every fence broken once: 90-verify.sql raises and names it', async () => {
+/** Every class, on the schema `connection` sees. Fails unless every mutation is detected. */
+async function gate(
+  connection: PoolClient,
+  title: string,
+  printed: (passed: string[]) => string[],
+): Promise<Result> {
   const started = performance.now();
-  const classes = await enumerate(client);
-  const { passed, failed, counts } = await run(client, classes);
+  const classes = await enumerate(connection);
+  const result = await run(connection, classes);
+  const { passed, failed, counts } = result;
   console.log(
     [
-      ...passed,
+      ...printed(passed),
       ...failed,
       '',
       'mutations  class',
       ...counts,
-      `mutation-check: ${passed.length} of ${
+      `${title}: ${passed.length} of ${
         passed.length + failed.length
       } detected, ${classes.length} classes, ${Math.round(
         performance.now() - started,
@@ -725,6 +850,70 @@ test('every fence broken once: 90-verify.sql raises and names it', async () => {
       .slice(0, 20)
       .join('\n')}`,
   );
+  return result;
+}
+
+let detected = 0;
+test('every fence broken once: 90-verify.sql raises and names it', async () => {
+  const { passed } = await gate(client, 'mutation-check', lines => lines);
+  detected = passed.length;
+});
+
+// What later SQL files will bring and the schema does not have yet: an identity key (and so a
+// sequence), a view, a callable function that runs as its caller and pins its search_path, an
+// internal function that must run as the owner. Each is declared the way docs/backend.md says,
+// and nothing above this line knows their names.
+const FUTURE_SCHEMA = `
+  CREATE TABLE mc_future_events (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, user_id uuid NOT NULL, note text);
+  ALTER TABLE mc_future_events ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY own_select ON mc_future_events FOR SELECT TO app_auth USING (app.current_user_id() = user_id);
+  GRANT SELECT ON mc_future_events TO app_auth;
+  SELECT meta.expect_table('mc_future_events', 'own_read', '{SELECT}', '{}', 'user_id');
+  SELECT meta.expect_policy('mc_future_events', 'own_select', 'SELECT', '(app.current_user_id() = user_id)', NULL);
+
+  CREATE VIEW mc_future_view WITH (security_invoker = true) AS SELECT count(*) AS n FROM mc_future_events;
+  GRANT SELECT ON mc_future_view TO app_auth;
+  SELECT meta.expect_table('mc_future_view', 'content', '{SELECT}', '{}', NULL);
+
+  CREATE FUNCTION mc_future_count() RETURNS bigint
+    LANGUAGE sql STABLE SET search_path = public, pg_temp AS 'SELECT count(*) FROM mc_future_events';
+  GRANT EXECUTE ON FUNCTION mc_future_count() TO app_auth;
+  SELECT meta.expect_function('mc_future_count()', 'invoker', '{app_auth}');
+
+  CREATE FUNCTION app._mc_future_audit() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS 'BEGIN RETURN NEW; END';
+  SELECT meta.expect_function('app._mc_future_audit()', 'definer', '{}');
+`;
+/** One line per new kind of object: what only the enumeration could have produced. */
+const FUTURE_COVERED = [
+  'PASS ALTER TABLE mc_future_events OWNER TO app_auth -> "table mc_future_events is owned by app role app_auth"',
+  'PASS GRANT USAGE ON SEQUENCE mc_future_events_id_seq TO app_auth -> "sequence mc_future_events_id_seq: grants are {app_auth:USAGE}, expected {}"',
+  'PASS ALTER TABLE mc_future_view OWNER TO app_auth -> "view mc_future_view is owned by app role app_auth"',
+  'PASS GRANT SELECT ON TABLE mc_future_view TO app_anon -> "view mc_future_view: grants are {app_anon:SELECT,app_auth:SELECT}, expected {app_auth:SELECT}"',
+  'PASS ALTER ROUTINE mc_future_count() SECURITY DEFINER -> "function security: the mode of a function is the one registered for it (meta.expect_function); found: mc_future_count() is SECURITY DEFINER, registered invoker"',
+  'PASS ALTER ROUTINE app._mc_future_audit() SECURITY INVOKER -> "function security: the mode of a function is the one registered for it (meta.expect_function); found: app._mc_future_audit() is SECURITY INVOKER, registered definer"',
+];
+
+test('self-test: a schema with an identity key, a view and the rarer kinds of function is covered with no edit here', async () => {
+  const future = await createTestDb();
+  const connection = await future.admin.connect();
+  try {
+    await connection.query('SET search_path = public, pg_temp');
+    await connection.query(FUTURE_SCHEMA);
+    await connection.query(VERIFY);
+    const { passed } = await gate(connection, 'future schema', () => []);
+    assert.ok(
+      passed.length > detected,
+      `${passed.length} mutations on the larger schema, ${detected} on the real one`,
+    );
+    for (const line of FUTURE_COVERED) {
+      assert.ok(passed.includes(line), `missing: ${line}`);
+    }
+  } finally {
+    connection.release();
+    await future.drop();
+  }
 });
 
 test('after the last rollback, through a new connection: verify passes and the roles of the cluster are untouched', async () => {

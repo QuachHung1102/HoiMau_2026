@@ -205,6 +205,43 @@ BEGIN
   IF found IS NOT NULL THEN
     RAISE EXCEPTION 'rule % is not allowed: what a rule does runs as the owner of the table', found;
   END IF;
+  -- A trigger runs its function on every write to its table, whoever makes the write, and
+  -- ENABLE ALWAYS or a SECURITY DEFINER function decides with whose rights and when. Nothing
+  -- registers a trigger yet, so the intact schema has none (those PostgreSQL keeps for foreign
+  -- keys are internal).
+  SELECT string_agg(format('"%s" on %s', t.tgname, t.tgrelid::regclass), ', '
+                    ORDER BY t.tgrelid::regclass::text, t.tgname)
+    INTO found
+    FROM pg_trigger t
+    JOIN pg_class c ON c.oid = t.tgrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+   WHERE n.nspname NOT LIKE 'pg\_%' AND n.nspname <> 'information_schema'
+     AND NOT t.tgisinternal;
+  IF found IS NOT NULL THEN
+    RAISE EXCEPTION 'trigger % is not allowed yet: the first trigger needs a registry of triggers (a table and a meta.expect_trigger in 02-meta.sql) and an assertion here that compares it with pg_trigger', found;
+  END IF;
+  -- Objects of the database, not of a schema, and each a way past everything asserted here:
+  -- an event trigger runs its function inside the commands of every role, the owner's included;
+  -- a publication sends rows out of the database, with no grant or policy in between; a
+  -- foreign-data wrapper or server is a door to data that sits outside these fences.
+  SELECT format('%s %s is not allowed: %s', x.kind, x.name, x.why)
+    INTO found
+    FROM (SELECT 'event trigger', evtname::text, 'its function runs inside the commands of every role'
+            FROM pg_event_trigger
+          UNION ALL
+          SELECT 'publication', pubname::text, 'it sends rows out of this database, past every grant and policy'
+            FROM pg_publication
+          UNION ALL
+          SELECT 'foreign-data wrapper', fdwname::text, 'what it reaches sits outside this database and its fences'
+            FROM pg_foreign_data_wrapper
+          UNION ALL
+          SELECT 'foreign server', srvname::text, 'what it reaches sits outside this database and its fences'
+            FROM pg_foreign_server) x (kind, name, why)
+   ORDER BY x.kind, x.name
+   LIMIT 1;
+  IF found IS NOT NULL THEN
+    RAISE EXCEPTION '%', found;
+  END IF;
 
   -- (5) Policies in public are exactly the registered ones, text for text; all of them
   -- PERMISSIVE and TO app_auth, the only role that is granted anything on a table.
@@ -321,6 +358,18 @@ BEGIN
   IF found IS NOT NULL THEN
     RAISE EXCEPTION 'function security: the mode of a function is the one registered for it (meta.expect_function); found: %', found;
   END IF;
+  -- LEAKPROOF is a promise that a function reveals nothing about its arguments; the planner
+  -- may then run it on rows that row level security has not filtered yet. No function of ours
+  -- makes that promise.
+  SELECT string_agg(p.oid::regprocedure::text, ', ' ORDER BY p.oid::regprocedure::text)
+    INTO found
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname NOT LIKE 'pg\_%' AND n.nspname <> 'information_schema'
+     AND p.proleakproof;
+  IF found IS NOT NULL THEN
+    RAISE EXCEPTION 'function % is LEAKPROOF: it may run on rows before row level security has filtered them', found;
+  END IF;
 
   -- (2) (4) (7) (8) Ownership and grants of everything of ours, read from the ACL. Nothing is
   -- owned by an app role (the owner needs no grant and is not subject to its policies), and
@@ -385,6 +434,7 @@ BEGIN
              ) d (role, namespace, objtype, acl)
     )
     SELECT o.kind, o.label, pg_get_userbyid(o.owner)::text AS owner,
+           (SELECT pg_get_userbyid(nspowner)::text FROM pg_namespace WHERE nspname = 'meta') AS files_owner,
            ARRAY(SELECT x FROM unnest(o.expected) x ORDER BY x COLLATE "C") AS expected,
            -- "*" marks WITH GRANT OPTION
            ARRAY(SELECT s.x
@@ -395,12 +445,16 @@ BEGIN
                   ORDER BY s.x COLLATE "C") AS actual
       FROM objects o
      -- Who owns an object is judged before what follows from it: a table before the grants on
-     -- its columns (an owner needs none, so they no longer show), a function before the
-     -- default privileges of its owner.
-     ORDER BY o.kind IN ('column', 'default privileges'), o.kind, o.label
+     -- its columns (an owner needs none, so they no longer show) and before the sequence of its
+     -- identity column (which changes owner with it), a function before the default privileges
+     -- of its owner.
+     ORDER BY o.kind IN ('column', 'default privileges'), o.kind = 'sequence', o.kind, o.label
   LOOP
     IF r.kind NOT IN ('column', 'default privileges') AND r.owner LIKE 'app\_%' THEN
       RAISE EXCEPTION '% % is owned by app role %', r.kind, r.label, r.owner;
+    ELSIF r.kind = 'function' AND r.owner <> r.files_owner THEN
+      -- a SECURITY DEFINER function runs as its owner, and its owner may replace its body
+      RAISE EXCEPTION 'function % is owned by %: every function of ours belongs to %, the owner of schema meta, who runs the schema files', r.label, r.owner, r.files_owner;
     ELSIF r.actual <> r.expected THEN
       RAISE EXCEPTION '% %: grants are %, expected %', r.kind, r.label, r.actual, r.expected;
     END IF;
