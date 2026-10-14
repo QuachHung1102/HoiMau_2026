@@ -6,7 +6,7 @@ import { api } from '../../shared/api/client';
 import { wipeQueries } from '../../shared/api/session';
 import * as pendingActions from '../../shared/storage/pendingActions';
 import { ProgressRing } from '../../shared/ui/ProgressRing';
-import { app, hold, queryClient, refuse, respond, settle, world } from '../dashboard/todayTestKit';
+import { app, hold, nearLevelUp, queryClient, refuse, respond, settle, world } from '../dashboard/todayTestKit';
 import { useCelebrationQueue } from '../progression/celebrations';
 import { COMPLETE, detail, fakeTimers, foreground, gym, installWorkoutTestEnv, openDetail, pass, sessions, startSession, system } from './workoutTestKit';
 
@@ -330,7 +330,8 @@ describe('recording the session', () => {
   });
 
   test('the events of the answer go to the celebrations once, and its day becomes the day', async () => {
-    gym.events = [{ type: 'LEVEL_UP', level: 6, titleKey: 'NGUOI_KIEN_TRI', perkPointsGained: 1 }];
+    // the 50 XP of the completing session take the profile over the level: the server's own LEVEL_UP, and its own QUEST_COMPLETED
+    nearLevelUp();
     let queue: ReturnType<typeof useCelebrationQueue> = [];
     const Watch = () => {
       queue = useCelebrationQueue();
@@ -340,7 +341,7 @@ describe('recording the session', () => {
     await pass(600 * S);
     await endAndSave();
     await screen.findByRole('header', { name: 'Bạn đã dành thời gian cho mình' });
-    expect(queue).toEqual([gym.events[0]]);
+    expect(queue).toEqual([{ type: 'LEVEL_UP', level: 6, titleKey: 'NGUOI_KIEN_TRI', perkPointsGained: 1 }]);
     const day = queryClient().getQueryData<typeof world.day>(['day']);
     expect(day?.quests.find(quest => quest.code === 'WORKOUT_MAIN')?.completed).toBe(true);
     view.unmount();
@@ -454,7 +455,6 @@ describe('the session waits on this device', () => {
       queue = useCelebrationQueue();
       return null;
     };
-    gym.events = [{ type: 'LEVEL_UP', level: 6, titleKey: 'NGUOI_KIEN_TRI', perkPointsGained: 1 }];
     const view = await begin({ extra: <Watch /> });
     await pass(600 * S);
     const request = hold(COMPLETE);
@@ -466,7 +466,7 @@ describe('the session waits on this device', () => {
     await screen.findByRole('header', { name: 'Chào bạn trở lại' });
     expect(app.session.status).toBe('signedOut');
 
-    const answer: WorkoutResult = { completed: true, xpAwarded: 50, coinAwarded: 20, elapsedSec: 600, durationSec: 900, day: world.day, delta: { xp: 50, coin: 20, events: gym.events } };
+    const answer: WorkoutResult = { completed: true, xpAwarded: 50, coinAwarded: 20, elapsedSec: 600, durationSec: 900, day: world.day, delta: { xp: 50, coin: 20, events: [{ type: 'LEVEL_UP', level: 6, titleKey: 'NGUOI_KIEN_TRI', perkPointsGained: 1 }] } };
     await act(async () => request.release(respond(200, answer)));
     await settle();
     expect((await AsyncStorage.getAllKeys()).filter(key => key.startsWith('cache:'))).toEqual([]);

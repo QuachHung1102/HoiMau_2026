@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen } from '@testing-library/react-native';
 import { AccessibilityInfo } from 'react-native';
+import type { GameEvent } from '../../../domain/contract/common.ts';
 import type { DayState } from '../../../domain/contract/core.ts';
 import { clearUserCache } from '../../shared/storage/cache';
 import { useCelebrationQueue } from '../progression/celebrations';
@@ -161,11 +162,11 @@ describe('the record is confirmed', () => {
   });
 
   test('the events of the answer go to the celebrations once', async () => {
-    world.events = [{ type: 'LEVEL_UP', level: 6, titleKey: 'NGUOI_KIEN_TRI', perkPointsGained: 1 }];
+    const events: GameEvent[] = [{ type: 'LEVEL_UP', level: 6, titleKey: 'NGUOI_KIEN_TRI', perkPointsGained: 1 }];
     world.answer = (request, init) => {
       if (request !== NUTRITION) return undefined;
       world.day = { ...world.day, caloriesIn: 2250 };
-      return respond(200, { actionId: init.headers['Idempotency-Key'], day: world.day, delta: { xp: 50, coin: 20, events: world.events } });
+      return respond(200, { actionId: init.headers['Idempotency-Key'], day: world.day, delta: { xp: 50, coin: 20, events } });
     };
     let queue: ReturnType<typeof useCelebrationQueue> = [];
     const Watch = () => {
@@ -176,7 +177,7 @@ describe('the record is confirmed', () => {
     type(kcalField(), '600');
     save();
     expect(await screen.findByText(/Đã ghi\./)).toBeTruthy();
-    expect(queue).toEqual(world.events);
+    expect(queue).toEqual(events);
     view.unmount();
   });
 

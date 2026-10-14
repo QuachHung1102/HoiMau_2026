@@ -1,6 +1,7 @@
 import { act, fireEvent, screen } from '@testing-library/react-native';
-import { hold, refuse, respond, world } from '../dashboard/todayTestKit';
-import { catalog, catalogQueries, detail, gym, installWorkoutTestEnv, openCatalog } from './workoutTestKit';
+import { fetchMock, hold, refuse, respond, world } from '../dashboard/todayTestKit';
+import { api } from '../../shared/api/client';
+import { catalog, catalogQueries, detail, gym, installWorkoutTestEnv, openCatalog, serverCatalog } from './workoutTestKit';
 
 // The real registry; `navigate` of the detail screens is recorded on its way to the navigator.
 const mockNavigate = jest.fn();
@@ -122,6 +123,42 @@ describe('S17: workouts for what the person has', () => {
   });
 });
 
+describe('the equipment parameter: the server reads "absent" and "empty" differently', () => {
+  // one workout that needs nothing, one that needs dumbbells, one that needs dumbbells and a mat
+  const withGear = [catalog[0], { ...catalog[1], equipment: ['ta-tay'] }, { ...catalog[2], equipment: ['ta-tay', 'tham'] }];
+
+  test('"Không cần" sends equipment= and shows only what needs nothing; owning things adds what they allow', async () => {
+    gym.items = query => serverCatalog(query, withGear);
+    const view = await openCatalog();
+    expect(await screen.findByRole('header', { name: catalog[0].name })).toBeTruthy();
+    expect(catalogQueries()).toEqual(['duration=15&space=ROOM&equipment=']);
+    expect(screen.queryAllByRole('button', { name: /kcal \(ước tính\)$/ })).toHaveLength(0);
+
+    await pressChip('Tạ tay');
+    expect(lastQuery()).toBe('duration=15&space=ROOM&equipment=ta-tay');
+    expect(await rowLabels()).toEqual([expect.stringMatching(/^Cardio nhẹ trong phòng/)]);
+    await pressChip('Thảm');
+    expect(await screen.findAllByRole('button', { name: /kcal \(ước tính\)$/ })).toHaveLength(2);
+    // taking everything away again is "owns nothing", not "no filter"
+    await pressChip('Không cần');
+    expect(lastQuery()).toBe('duration=15&space=ROOM&equipment=');
+    await screen.findByRole('header', { name: catalog[0].name });
+    expect(screen.queryAllByRole('button', { name: /kcal \(ước tính\)$/ })).toHaveLength(0);
+    view.unmount();
+  });
+
+  test('on the wire an empty value stays in the query and a missing one stays out: two different questions', async () => {
+    gym.items = query => serverCatalog(query, withGear);
+    const view = await openCatalog();
+    await screen.findByRole('header', { name: catalog[0].name });
+    expect((await api.get<{ items: unknown[] }>('/workout/catalog', { duration: 15, equipment: '' })).items).toHaveLength(1);
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toMatch(/\/workout\/catalog\?duration=15&equipment=$/);
+    expect((await api.get<{ items: unknown[] }>('/workout/catalog', { duration: 15 })).items).toHaveLength(3);
+    expect(fetchMock.mock.calls.at(-1)?.[0]).not.toContain('equipment');
+    view.unmount();
+  });
+});
+
 describe('S48: nothing matches', () => {
   test('says so, and "Xóa bớt bộ lọc" takes the equipment filter away first, then the space', async () => {
     // only a person with every piece of equipment and no wish about the space finds something
@@ -198,7 +235,9 @@ describe('the catalog cannot be loaded', () => {
     world.down = false;
     world.answer = server;
     fireEvent.press(screen.getAllByRole('button', { name: 'Thử lại' }).at(-1) as never);
-    expect(await screen.findByRole('header', { name: detail.name })).toBeTruthy();
+    // every workout of the fixture lasts 15 minutes: the server's answer for 5 is an empty list, which is an answer
+    expect(await screen.findByText('Chưa có bài phù hợp')).toBeTruthy();
+    expect(screen.queryByText('Chưa tải được dữ liệu')).toBeNull();
     expect(lastQuery()).toBe('duration=5&space=ROOM&equipment=');
     view.unmount();
   });

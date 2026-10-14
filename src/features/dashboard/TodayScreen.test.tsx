@@ -53,6 +53,7 @@ function finishedDay(closesIn: number): DayState {
 
 describe('S09: the day as the server gave it', () => {
   test('every block, top to bottom, with the numbers of the day and the profile', async () => {
+    world.day = dayOf({ unreadCount: 1 }); // the real day has none until Task 22 sends celebrations; the bell's dot is still drawn for one
     const view = await openToday();
     expect(screen.getByText('Chào An, mình bắt đầu từ việc nhỏ nhé.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Hộp thư, có thư mới' })).toBeTruthy();
@@ -182,6 +183,7 @@ describe('S09: links', () => {
     ['button', /^Khép lại hôm nay/, 'EndOfDay'],
     ['button', 'Xem tất cả nhiệm vụ', 'QuestBoard'],
   ] as const)('%s "%s" navigates to %s', async (role, name, route) => {
+    world.day = dayOf({ unreadCount: 1 }); // the bell is named "có thư mới" only with unread mail
     const view = await openToday();
     fireEvent.press(screen.getByRole(role, { name }));
     expect(mockNavigate.mock.calls).toEqual([[route]]);
