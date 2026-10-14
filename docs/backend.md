@@ -15,6 +15,7 @@ npm run server:install     # npm ci trong server/ (tải cả bộ nhị phân P
 npm run server:typecheck   # tsc --noEmit theo server/tsconfig.json
 npm run server:test        # test của server trên PostgreSQL thật
 npm run server:dev         # API trên cụm phát triển, http://127.0.0.1:8787/api/v1 (xem "Tầng HTTP")
+npm --prefix server run scenario -- list   # kịch bản dev và dời đồng hồ (xem "Kịch bản phát triển và dịch chuyển thời gian")
 npm run db:verify          # cổng 1: lược đồ tự kiểm
 npm run db:api-check       # cổng 2: một request thật làm được gì
 npm run db:mutation-check  # cổng 3: cổng 1 có biết kêu không
@@ -1391,3 +1392,72 @@ Cổng 1 và cổng 3 đọc catalog; cổng 2 hỏi quyền và chạy năm ca 
 - thời gian: job chạy theo giờ của bộ lập lịch, mỗi giờ phút 15; múi giờ lệch nửa giờ (Ấn Độ: 03:00 là hh:30 UTC) được đóng trễ tới 45 phút, theo thiết kế: ngày vẫn mở cho tới khi job xử lý nó (AR-09).
 
 Sửa `32-dayclose.sql` hay `33-inbox.sql` thì chạy `npm run server:test`, không chỉ `npm run db:verify`.
+
+## Kịch bản phát triển và dịch chuyển thời gian (`scripts/scenario.ts`, `scripts/scenarios/*.ts`)
+
+Một dòng lệnh đưa cơ sở dữ liệu phát triển vào một tình huống có tên (chưa onboarding, ngày đầu, chuỗi 2, chuỗi 6, bỏ ba ngày, chuỗi vừa đứt) để mở app lên là thấy ngay. Cổng kiểm đầu-cuối (Task 29) dùng đúng các kịch bản này. Mọi trạng thái được dựng **chỉ bằng API của server đang chạy và các job thật**, trong lúc đồng hồ test được bước qua từng ngày; không có hàng nghiệp vụ nào được chèn thẳng.
+
+### Dùng
+
+Bật `npm run server:dev` (cửa sổ khác), rồi từ thư mục gốc:
+
+```sh
+npm --prefix server run scenario -- list             # tên và mô tả từng kịch bản
+npm --prefix server run scenario -- streak2          # dựng một kịch bản
+npm --prefix server run scenario -- clock 2027-03-04T02:00:00Z   # đặt đồng hồ test (có múi giờ)
+npm --prefix server run scenario -- clock off        # trả về giờ thật
+npm --prefix server run jobs -- day-close --now 2027-03-04T21:00:00Z   # chạy một job một lần
+```
+
+Kịch bản in tài khoản (`demo-<tên>@hoimau.test`, mật khẩu `matkhau123`, tên hiển thị "An"), một ghi chú, và đồng hồ nó để lại. Chạy lại cùng kịch bản xóa tài khoản đó rồi dựng lại từ đầu, kết quả như nhau.
+
+| Tên | Tình huống | Đồng hồ khi xong (giờ địa phương Hồ Chí Minh) |
+|---|---|---|
+| `fresh` | đã đăng ký, chưa onboarding | 01/03/2027 09:00 |
+| `day1` | đã onboarding, chưa ghi gì | 01/03/2027 09:00 |
+| `streak2` | hai ngày hoàn thành đã đóng; hôm nay mở, chưa ghi gì: còn một ngày tốt nữa là có ngọn lửa | 03/03/2027 20:00 |
+| `streak6` | sáu ngày hoàn thành đã đóng; hôm nay mở, lần đóng sau chạm mốc 7 ngày | 07/03/2027 20:00 |
+| `missed3` | ba ngày bỏ lỡ đã đóng; thú mệt (`GET /pet` mood `TIRED`) | 04/03/2027 09:00 |
+| `broken` | chuỗi 5, hôm qua bỏ lỡ và đã đóng: trong cửa sổ cứu chuỗi, `breakNotice.previous` là 5 | 07/03/2027 09:00 |
+
+- **Cách dựng.** Đăng ký, onboarding (Hồ Chí Minh, số đo hợp lý), rồi mỗi ngày: đồng hồ tới 12:00 địa phương, ghi một bữa mà tổng nằm giữa `calorieWindow.min` và `.max` của `GET /day` (không tự tính dải), hoàn thành bài tập ngắn nhất của thư viện thật; đồng hồ tới 04:00 địa phương hôm sau (sau 03:00) và chạy `day-close`. Một ngày bỏ lỡ chỉ bỏ hai bước đầu.
+- **Ngày và giờ chỉ đến từ server.** Giờ địa phương được đặt từ `closesAt` của `GET /day` (03:00 hôm sau), không từ phép tính múi giờ của Node: Node và PostgreSQL lệch nhau ở bốn múi giờ (xem "Ngày và nhiệm vụ"). Cách trừ giờ từ `closesAt` chỉ đúng với múi giờ có độ lệch cố định; tài khoản demo luôn ở `Asia/Ho_Chi_Minh` (không đổi giờ mùa hè). Múi giờ khác thì phải hỏi server từng thời điểm.
+- **Đồng hồ là của chung.** Một cơ sở dữ liệu có một đồng hồ test. Kịch bản nào cũng bắt đầu từ 01/03/2027 09:00 (lùi nếu kịch bản trước kết thúc muộn hơn) và để đồng hồ ở thời điểm cuối. Khi đồng hồ đi tới, `day-close` (của kịch bản, và của bộ lập lịch trong `server:dev`) đóng ngày cho **mọi** người dùng: tài khoản demo của kịch bản chạy trước sẽ có thêm ngày bỏ lỡ. Muốn thấy một tình huống nguyên vẹn thì chạy kịch bản đó **sau cùng**.
+- **`jobs -- <tên> --now <ISO>` chỉ đưa thời điểm cho job**, không đổi `app.now()` của SQL (dấu giờ của thông báo, của phiên). Muốn dời cả hai thì đặt đồng hồ bằng `scenario -- clock`, rồi chạy `jobs -- <tên>` không có `--now`.
+
+### Cảnh báo: đồng hồ là của phát triển và test
+
+- `meta.test_clock` làm `app.now()` đứng yên ở một thời điểm cho **mọi** kết nối. Nó tồn tại để dev và test dời thời gian, không bao giờ để ở nơi khác: **`90-verify.sql` (cổng 1, `npm run db:verify`) báo lỗi khi bảng có dòng**.
+- Sau khi dùng xong: `scenario -- clock off`. `npm run server:dev` cũng xóa dòng đó mỗi lần khởi động và in `Removed the test clock (…)`: nếu không, `migrate` chạy `90-verify.sql` và từ chối khởi động.
+- Lệnh từ chối chạy nếu kết nối không phải cơ sở dữ liệu `hoimau` ở cổng **54330**. Nó hỏi chính kết nối (`current_database()` và `current_setting('port')`), không tin chuỗi kết nối. Nó không bao giờ nối vào cổng 5432.
+
+### Hợp đồng kịch bản
+
+Mỗi file `scripts/scenarios/<tên>.ts` (trừ `*.test.ts`) export mặc định một `Scenario` và được `scenario.ts` tìm thấy khi chạy; thêm kịch bản là thêm một file, không sửa danh sách nào. `name` chỉ gồm a-z, 0-9 (không là `list` hay `clock`) và là phần giữa của email.
+
+```ts
+type Scenario = {
+  name: string;
+  describe: string;
+  run(ctx: ScenarioCtx): Promise<{ email: string; password: string; note: string }>;
+};
+type ScenarioCtx = {
+  call(method: string, path: string, opts?: { token?: string; body?: unknown; key?: string }): Promise<any>;
+  admin: pg.Pool;
+  setClock(iso: string | null): Promise<void>;
+  runJob(name: string): Promise<unknown>;
+  reset(email: string): Promise<void>;
+};
+```
+
+- `call` đi tới server qua HTTP (đường dẫn so với `/api/v1`), trả về thân JSON, và **ném** khi trạng thái ngoài 2xx (kèm mã lỗi). Lượt ghi nào hợp đồng đòi `Idempotency-Key` thì kịch bản truyền `key`.
+- `admin` chỉ đọc được (`SELECT`); mọi cách khác ném lỗi. Hàng nghiệp vụ chỉ vào qua API.
+- `setClock` ghi `meta.test_clock`; `runJob` chạy job thật một lần cho `SELECT app.now()` và trả về số đếm của nó; `reset` xóa hẳn người dùng demo đó (khóa ngoại `ON DELETE CASCADE` kéo theo mọi hàng của họ) và **từ chối** mọi email ngoài `demo-<tên>@hoimau.test`, nên không chạm tới mồi nhử (`@decoy.invalid`).
+- `scripts/scenarioKit.ts` (không nằm trong `scenarios/`) có các bước dùng chung: `begin` (reset, đồng hồ về `START`, đăng ký, onboarding), `playDays`, `completeStory`, `closeDay`, `goTo`. Kịch bản mới của nhiệm vụ sau thường chỉ gọi chúng rồi thêm bước của tính năng mình.
+- **Cổng đầu-cuối** gọi `makeCtx({ baseUrl, admin, app })` của `scenario.ts` với server thử và cơ sở dữ liệu của nó rồi `loadScenarios()`, chạy `run`, và đọc kết quả bằng API (`server/scripts/scenario.test.ts` làm đúng vậy).
+
+### Test và phần cổng không nhìn thấy
+
+`server/scripts/scenario.test.ts` chạy từng kịch bản trên một app thử (đồng hồ test, job thật) và đọc kết quả lại qua API: `fresh` → `onboarded: false`; `day1` → chuỗi 0, cấp 1; `streak2` → chuỗi 2; `streak6` → chuỗi 6, rồi hoàn thành hôm nay và `day-close` sau 03:00 → chuỗi 7 và một mốc trong `celebrations`; `missed3` → thú `TIRED`; `broken` → `breakNotice.previous` 5. Thêm: chạy hai lần cho cùng kết quả, đồng hồ để đúng chỗ, mồi nhử không đổi, `reset` từ chối email ngoài mẫu, `admin` không ghi được, và rào cản cơ sở dữ liệu từ chối cơ sở dữ liệu test.
+
+Không cổng nào đọc các file này (cổng 1 đọc catalog, cổng 2 và 3 gọi hàm): `scripts/` chỉ do `scenario.test.ts` giữ. `scripts/dev.ts` xóa đồng hồ trước `migrate` được kiểm bằng tay (đặt đồng hồ, khởi động lại `server:dev`, thấy dòng thông báo, `npm run db:verify` xanh), không có test tự động.
