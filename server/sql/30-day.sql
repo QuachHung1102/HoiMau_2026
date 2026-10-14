@@ -414,8 +414,9 @@ BEGIN
 END $$;
 
 -- "Close today" (S45, AR-13). The wall clock of the instant in the user's zone decides:
--- 03:00-17:59 BEDTIME_TOO_EARLY; otherwise bedtime_marked_at is set unless it is set already,
--- and from 18:00 to 22:59 the hidden quest BEDTIME_BEFORE_23 of that log is completed, once,
+-- 03:00-17:59 BEDTIME_TOO_EARLY; otherwise bedtime_marked_at becomes that instant unless an
+-- earlier one is marked already (marks can arrive out of order: the earliest accepted instant is
+-- when the person marked), and from 18:00 to 22:59 the hidden quest BEDTIME_BEFORE_23 of that log is completed, once,
 -- for its reward (reason QUEST_COMPLETE, ref BEDTIME_BEFORE_23:<logical_date>). A repeat is not
 -- an error and earns nothing.
 --   + {bedtimeMarkedAt, completed}; completed = this call completed the hidden quest
@@ -439,7 +440,7 @@ BEGIN
   IF v_hour BETWEEN 3 AND 17 THEN
     RAISE EXCEPTION 'BEDTIME_TOO_EARLY' USING ERRCODE = 'HM000', DETAIL = '{}';
   END IF;
-  UPDATE daily_logs SET bedtime_marked_at = coalesce(bedtime_marked_at, v_at) WHERE id = l.id
+  UPDATE daily_logs SET bedtime_marked_at = least(bedtime_marked_at, v_at) WHERE id = l.id
   RETURNING * INTO l;
 
   v_ref := 'BEDTIME_BEFORE_23:' || to_char(l.logical_date, 'YYYY-MM-DD');

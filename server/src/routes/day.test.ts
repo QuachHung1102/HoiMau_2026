@@ -594,7 +594,7 @@ test('undo refusals: the tick of another user, of another quest, a malformed id;
   for (const tickId of ['', 'not-a-uuid', 7, { id: mine }, [mine]]) {
     refusal(await undo(user, 'STAND_UP', tickId), 422, 'VALIDATION_FAILED', fields('tickId', 'format'));
   }
-  for (const body of [{}, { tickId: null }, undefined]) {
+  for (const body of [{}, { tickId: null }]) {
     refusal(
       await app.call('POST', '/day/quests/STAND_UP/undo', { token: user.token, key: key(), body }),
       422,
@@ -801,9 +801,20 @@ test('occurredAt: 47 h 59 min old lands on its own day; 48 h 1 min is 409 DAY_CL
   refusal(await tick(user, 'WATER_8', { occurredAt: plus(now, 121 * SECOND) }), 422, 'OCCURRED_AT_INVALID');
   refusal(await bedtime(user, { occurredAt: plus(now, 121 * SECOND) }), 422, 'OCCURRED_AT_INVALID');
   refusal(await tick(user, 'WATER_8', { occurredAt: '9999-12-31T23:59:59Z' }), 422, 'OCCURRED_AT_INVALID');
-  for (const occurredAt of ['yesterday', '2027-03-12', '2027-03-12T05:00:00', '2027-02-31T05:00:00+99:99', 1789000000000, null, '']) {
+  const notAnInstant = [
+    'yesterday', '2027-03-12', '2027-03-12T05:00:00', '2027-02-31T05:00:00+99:99', 1789000000000, null, '',
+    // an instant that does not exist: JavaScript alone reads the first as 2 March, the second as
+    // the next midnight
+    '2027-02-30T05:00:00Z', '2027-03-12T24:00:00Z', '2027-02-29T05:00:00Z', '2027-13-01T05:00:00Z',
+    '2027-03-12T05:60:00Z', '2027-03-12T05:00:60Z', '2027-03-12T05:00:00+24:00', '2027-03-12T05:00:00+07:60',
+    '2027-03-12t05:00:00z', '2027-03-12 05:00:00Z',
+  ];
+  for (const occurredAt of notAnInstant) {
     refusal(await tick(user, 'WATER_8', { occurredAt }), 422, 'VALIDATION_FAILED', fields('occurredAt', 'format'));
+    refusal(await bedtime(user, { occurredAt: occurredAt as string }), 422, 'VALIDATION_FAILED', fields('occurredAt', 'format'));
   }
+  // 29 February of a leap year and the last second of a day are instants (here: long past)
+  refusal(await tick(user, 'WATER_8', { occurredAt: '2024-02-29T23:59:59.999999+14:00' }), 409, 'DAY_CLOSED');
   assert.deepEqual(await stored(user.userId), kept);
 });
 
@@ -999,6 +1010,66 @@ test('a bedtime mark sent late counts for the instant it was made: 22:55 sent at
   const other = await newOnboardedUser(db);
   refusal(await bedtime(other, { occurredAt: '2027-03-10T10:00:00.000Z' }), 409, 'BEDTIME_TOO_EARLY');
   assert.deepEqual(await stored(other.userId), NOTHING);
+});
+
+test('bedtime marks that arrive out of order: the earliest instant is kept, and the reward is for an instant before 23:00, once', async () => {
+  const at2255 = '2027-03-10T15:55:00.000Z';
+  const at2310 = '2027-03-10T16:10:00.000Z';
+  const rewarded = { xp: 30, coin: 15, events: [{ type: 'QUEST_COMPLETED', questCode: 'BEDTIME_BEFORE_23' }] };
+  const nothing = { xp: 0, coin: 0, events: [] };
+
+  // marked at 23:10 and delivered at once; the mark made at 22:55 arrives after it
+  await clock(at2310);
+  const late = await newOnboardedUser(db);
+  const first = ok(await bedtime(late));
+  assert.deepEqual([first.day.bedtimeMarkedAt, first.delta], [at2310, nothing]);
+  const second = ok(await bedtime(late, { occurredAt: at2255 }));
+  assert.deepEqual([second.day.bedtimeMarkedAt, second.delta], [at2255, rewarded]);
+  const third = ok(await bedtime(late, { occurredAt: at2255 }));
+  assert.deepEqual([third.day.bedtimeMarkedAt, third.delta], [at2255, nothing]);
+  assert.deepEqual(await stored(late.userId), {
+    ...NOTHING, logs: 1, completions: 1, progress: 1, xp_rows: 1, coin_rows: 1, xp: 30, coin: 15, high_water: 30,
+  });
+
+  // the other order: 22:55 first, then 23:10
+  await clock(at2255);
+  const early = await newOnboardedUser(db);
+  const one = ok(await bedtime(early));
+  assert.deepEqual([one.day.bedtimeMarkedAt, one.delta], [at2255, rewarded]);
+  await clock(at2310);
+  const two = ok(await bedtime(early));
+  assert.deepEqual([two.day.bedtimeMarkedAt, two.delta], [at2255, nothing]);
+  assert.deepEqual(await stored(early.userId), {
+    ...NOTHING, logs: 1, completions: 1, progress: 1, xp_rows: 1, coin_rows: 1, xp: 30, coin: 15, high_water: 30,
+  });
+});
+
+test('the body of a write is a JSON object: none is 422 body / required, anything else 422 body / format, and nothing is written', async () => {
+  await clock('2027-03-10T13:00:00.000Z'); // 20:00: a bedtime mark would be accepted
+  const user = await newOnboardedUser(db);
+  const made = key();
+  ok(await tick(user, 'WATER_8', { k: made }));
+  const kept = await stored(user.userId);
+  const paths = ['/day/quests/WATER_8/progress', '/day/bedtime', '/day/quests/WATER_8/undo'];
+  for (const path of paths) {
+    for (const body of [null, [], [{}], 5, 'x', true]) {
+      refusal(
+        await app.call('POST', path, { token: user.token, key: key(), body }),
+        422,
+        'VALIDATION_FAILED',
+        fields('body', 'format'),
+      );
+    }
+    refusal(await app.call('POST', path, { token: user.token, key: key() }), 422, 'VALIDATION_FAILED', fields('body', 'required'));
+  }
+  assert.deepEqual(await stored(user.userId), kept);
+  // an object with members the contract does not know is an object: they are ignored
+  const extra = await app.call('POST', '/day/quests/WATER_8/progress', {
+    token: user.token,
+    key: key(),
+    body: { unknown: 1, tickId: made },
+  });
+  assert.equal(questOf(ok(extra).day, 'WATER_8').progress, 2);
 });
 
 // ---------------------------------------------------------------- history
