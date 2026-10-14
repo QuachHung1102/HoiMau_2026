@@ -3,7 +3,7 @@ import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { AppState } from 'react-native';
 import type { DayState, QuestState } from '../../../domain/contract/core.ts';
 import { clearUserCache } from '../../shared/storage/cache';
-import { dayOf, hold, HIDDEN, installTodayTestEnv, openToday, queryClient, refuse, requested, settle, STAND_UP, USER, world, writes } from '../dashboard/todayTestKit';
+import { dayOf, fetchMock, hold, HIDDEN, installTodayTestEnv, openToday, queryClient, refuse, requested, settle, STAND_UP, USER, world, writes } from '../dashboard/todayTestKit';
 
 // The real registry; the detail screens' `navigate` is recorded on its way to the navigator, so a link to a route that
 // no task has registered yet (inert, AR-25) can still be asserted by name.
@@ -161,6 +161,17 @@ describe('ticks from the board (S11)', () => {
     expect(standUps()[0].body).toEqual({});
     expect(screen.getByText('1 / 6 lần')).toBeTruthy();
     expect(world.day.quests.find(quest => quest.code === STAND_UP)?.progress).toBe(1);
+    view.unmount();
+  });
+
+  test('"Hoàn tác" takes back that very tick: the undo of the STAND_UP quest carries the tick id', async () => {
+    const view = await openBoard();
+    fireEvent.press(stand());
+    fireEvent.press(await screen.findByRole('button', { name: 'Hoàn tác' }));
+    await settle();
+    const undone = fetchMock.mock.calls.filter(([url]) => url.endsWith(`/day/quests/${STAND_UP}/undo`));
+    expect(undone).toHaveLength(1);
+    expect(JSON.parse(undone[0][1].body ?? 'null')).toEqual({ tickId: standUps()[0].id });
     view.unmount();
   });
 
