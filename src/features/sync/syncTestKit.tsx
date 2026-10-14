@@ -131,7 +131,8 @@ export function installSyncTestEnv() {
     Object.assign(server, { down: false, write: () => respond(200, { ok: true }), me: () => respond(200, onboarded) });
     fetchMock.mockImplementation(async (url, init) => {
       if (server.down) throw new TypeError('Network request failed');
-      if (init.method === 'GET') return url.endsWith('/me') ? server.me() : respond(200, {});
+      // The stand-up reminder (StandUpHost) reads the day in every onboarded shell; this stand-in has no day to give.
+      if (init.method === 'GET') return url.endsWith('/me') ? server.me() : url.endsWith('/day') ? respond(404) : respond(200, {});
       return url.endsWith('/auth/logout') ? respond(204) : server.write();
     });
   });

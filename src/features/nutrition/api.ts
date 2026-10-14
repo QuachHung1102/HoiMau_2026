@@ -19,7 +19,7 @@ const NUTRITION_QUEST = 'NUTRITION_TARGET';
 export type KcalField = 'kcal' | 'label';
 export type KcalForm = { ok: true; kcal: number; label?: string } | { ok: false; errors: Partial<Record<KcalField, string>> };
 
-const length = (text: string) => [...text.normalize('NFC')].length;
+const length = (text: string) => [...text].length;
 
 /**
  * Reads the two fields. The amount is digits only (no sign, no decimals, no separators), 1 to 5000 as the domain
@@ -32,7 +32,8 @@ export function checkKcalForm(kcalText: string, labelText: string): KcalForm {
   if (typed === '') errors.kcal = vi.kcalRequired;
   else if (!/^[0-9]+$/.test(typed)) errors.kcal = vi.kcalFormat;
   else if (Number(typed) < min || Number(typed) > max) errors.kcal = vi.kcalRange;
-  const label = labelText.trim();
+  // The form that is counted is the form that is sent: a label typed in decomposed form is sent composed.
+  const label = labelText.trim().normalize('NFC');
   if (length(label) > LIMITS.mealLabel.max) errors.label = vi.labelTooLong;
   return Object.keys(errors).length > 0 ? { ok: false, errors } : { ok: true, kcal: Number(typed), ...(label === '' ? {} : { label }) };
 }

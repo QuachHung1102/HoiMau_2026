@@ -3,6 +3,7 @@ import { act, fireEvent, screen } from '@testing-library/react-native';
 import type { DayState, QuestState } from '../../../domain/contract/core.ts';
 import { clearUserCache } from '../../shared/storage/cache';
 import { BEDTIME, dayOf, hold, HIDDEN, installTodayTestEnv, meOf, openToday, app, queryClient, refuse, respond, settle, USER, world, writes } from '../dashboard/todayTestKit';
+import * as pendingActions from '../../shared/storage/pendingActions';
 import { useCelebrationQueue } from '../progression/celebrations';
 
 installTodayTestEnv();
@@ -267,6 +268,23 @@ describe('loading and a provisional day', () => {
     expect(await screen.findByRole('header', { name: 'Đang chờ gửi' })).toBeTruthy();
     expect(screen.queryByText('Chúc bạn nghỉ ngon')).toBeNull();
     expect(screen.queryByText(/XP/)).toBeNull();
+    view.unmount();
+  });
+});
+
+describe('fix round 1', () => {
+  test('if sending throws, the screen is not stuck "saving": the flag is released whatever happens', async () => {
+    world.day = evening();
+    const view = await openEndOfDay();
+    const sendFails = jest.spyOn(pendingActions, 'deliver').mockRejectedValueOnce(new Error('storage went away'));
+    // the press hands back what the handler returned: here its rejection, which is nobody's to catch in the screen
+    await act(async () => {
+      await expect(fireEvent.press(markButton())).rejects.toThrow('storage went away');
+    });
+    expect(sendFails).toHaveBeenCalledTimes(1);
+    // the record is on this device (the queue had it before the throw): the screen shows it waiting, not a busy button
+    expect(await screen.findByRole('header', { name: 'Đang chờ gửi' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: MARK })).toBeNull();
     view.unmount();
   });
 });

@@ -73,18 +73,22 @@ export function EndOfDayScreen({ navigation }: ScreenProps<'EndOfDay'>) {
     sending.current = true;
     setSaving(true);
     setFailed(null);
-    const outcome = await send({ path: BEDTIME_PATH, body: {} });
-    if (outcome.state === 'confirmed' && boundUserId() === userId) {
-      const { day: next, delta } = outcome.result;
-      // The server's day first, then this screen's own state, in the same block: no render in between.
-      acceptDay(queryClient, userId, next);
-      pushCelebrations(delta.events);
-      setResult({ xp: delta.xp, rewarded: delta.events.some(event => event.type === 'QUEST_COMPLETED' && event.questCode === BEDTIME) });
+    try {
+      const outcome = await send({ path: BEDTIME_PATH, body: {} });
+      if (outcome.state === 'confirmed' && boundUserId() === userId) {
+        const { day: next, delta } = outcome.result;
+        // The server's day first, then this screen's own state, in the same block: no render in between.
+        acceptDay(queryClient, userId, next);
+        pushCelebrations(delta.events);
+        setResult({ xp: delta.xp, rewarded: delta.events.some(event => event.type === 'QUEST_COMPLETED' && event.questCode === BEDTIME) });
+      }
+      // Queued: nothing to do, the waiting state comes from the queue. Refused: it is not kept anywhere.
+      if (outcome.state === 'failed') setFailed(outcome.code);
+    } finally {
+      // Whatever happened, the button works again.
+      sending.current = false;
+      setSaving(false);
     }
-    sending.current = false;
-    setSaving(false);
-    // Queued: nothing to do, the waiting state comes from the queue. Refused: it is not kept anywhere.
-    if (outcome.state === 'failed') setFailed(outcome.code);
   };
 
   if (!view) {

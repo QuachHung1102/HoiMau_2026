@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen } from '@testing-library/react-native';
+import { AccessibilityInfo } from 'react-native';
 import type { DayState } from '../../../domain/contract/core.ts';
 import { clearUserCache } from '../../shared/storage/cache';
 import { useCelebrationQueue } from '../progression/celebrations';
-import { dayOf, hold, installTodayTestEnv, meOf, NUTRITION, openToday, queryClient, refuse, respond, settle, USER, world, writes } from '../dashboard/todayTestKit';
+import { app, dayOf, hold, installTodayTestEnv, meOf, NUTRITION, openToday, queryClient, refuse, respond, settle, USER, world, writes } from '../dashboard/todayTestKit';
 
 installTodayTestEnv();
 
@@ -308,5 +309,98 @@ describe('the day behind the form', () => {
     expect(screen.queryByText(/Đã ghi\./)).toBeNull();
     expect(screen.queryByText(/XP/)).toBeNull();
     view.unmount();
+  });
+});
+
+describe('fix round 1', () => {
+  test('while this screen\'s own request is out the total is the server\'s last, marked "đang lưu" (not "Đang chờ gửi", and without the typed amount)', async () => {
+    const answer = hold(NUTRITION);
+    const view = await openManual();
+    type(kcalField(), '400');
+    save();
+    await settle();
+    expect(screen.getByLabelText('Hôm nay. 1.650 / 2.394 kcal · cần trong 2.155–2.633 · đang lưu')).toBeTruthy();
+    expect(screen.queryByText(/2\.050/)).toBeNull();
+    expect(screen.queryByText(/Đang chờ gửi/)).toBeNull();
+    await act(async () => answer.release());
+    expect(await screen.findByText('Đã ghi. Tổng hôm nay: 2.050 kcal')).toBeTruthy();
+    view.unmount();
+  });
+
+  test('a record that really settled as queued is in the total, marked "Đang chờ gửi"', async () => {
+    const view = await openToday();
+    world.down = true;
+    await act(async () => {
+      await app.send({ path: '/nutrition/log', body: { kcal: 300 } });
+    });
+    fireEvent.press(screen.getByRole('button', { name: /^Ăn đủ cho mục tiêu/ }));
+    await screen.findByRole('header', { name: 'Ghi bữa ăn' });
+    expect(screen.getByLabelText('Hôm nay. 1.950 / 2.394 kcal · cần trong 2.155–2.633 · Đang chờ gửi')).toBeTruthy();
+    expect(screen.queryByText(/đang lưu/)).toBeNull();
+    view.unmount();
+  });
+
+  test('a label typed in decomposed form is counted and sent as the composed form: 60 composed characters are accepted and sent as 60', async () => {
+    const view = await openManual();
+    const composed = 'ă'.repeat(60);
+    const decomposed = composed.normalize('NFD');
+    expect([...decomposed].length).toBe(120);
+    type(kcalField(), '450');
+    type(labelField(), decomposed);
+    save();
+    expect(await screen.findByText(/^Đã ghi\./)).toBeTruthy();
+    const sent = (logs()[0].body as { label: string }).label;
+    expect(sent).toBe(composed);
+    expect([...sent].length).toBe(60);
+    view.unmount();
+  });
+
+  test('a refusal beside the button goes away as soon as either field is edited', async () => {
+    world.closedDate = world.day.logicalDate;
+    const view = await openManual();
+    type(kcalField(), '400');
+    save();
+    expect(await screen.findByText(/^Chưa ghi được bữa ăn\./)).toBeTruthy();
+    type(kcalField(), '410');
+    expect(screen.queryByText(/^Chưa ghi được bữa ăn\./)).toBeNull();
+
+    save();
+    expect(await screen.findByText(/^Chưa ghi được bữa ăn\./)).toBeTruthy();
+    type(labelField(), 'Bún');
+    expect(screen.queryByText(/^Chưa ghi được bữa ăn\./)).toBeNull();
+    view.unmount();
+  });
+
+  describe('how long the confirmation stays', () => {
+    const fakeTimers = () => jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    const message = 'Đã ghi. Tổng hôm nay: 2.050 kcal';
+
+    test('7 seconds, with no seconds in the text and no action', async () => {
+      fakeTimers();
+      const view = await openManual();
+      type(kcalField(), '400');
+      save();
+      expect(await screen.findByText(message)).toBeTruthy();
+      await act(() => jest.advanceTimersByTimeAsync(6_900));
+      expect(screen.getByText(message)).toBeTruthy();
+      expect(screen.queryByText(/giây/)).toBeNull();
+      await act(() => jest.advanceTimersByTimeAsync(200));
+      expect(screen.queryByText(message)).toBeNull();
+      view.unmount();
+    });
+
+    test('9 seconds with a screen reader on', async () => {
+      fakeTimers();
+      jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(true);
+      const view = await openManual();
+      type(kcalField(), '400');
+      save();
+      expect(await screen.findByText(message)).toBeTruthy();
+      await act(() => jest.advanceTimersByTimeAsync(8_900));
+      expect(screen.getByText(message)).toBeTruthy();
+      await act(() => jest.advanceTimersByTimeAsync(200));
+      expect(screen.queryByText(message)).toBeNull();
+      view.unmount();
+    });
   });
 });

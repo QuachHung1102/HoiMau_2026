@@ -29,6 +29,9 @@ import { checkKcalForm, serverKcalErrors, useLogKcal, type KcalField } from './a
 const FIELDS = ['kcal', 'label'] as const;
 // A guard against a pasted wall of text, not a rule: the rule (60) is checked and explained under the field.
 const LABEL_TYPED_MAX = 200;
+// Two lines (the total, and the reward when there is one) take longer to read than the default 4 s.
+const CONFIRMATION_MS = 7000;
+const CONFIRMATION_SCREEN_READER_MS = 9000;
 
 /** S16: a meal that is not on the menu. Today's total is the server's (plus what waits on this device, marked). */
 export function ManualKcalScreen({ navigation }: ScreenProps<'ManualKcal'>) {
@@ -72,7 +75,11 @@ export function ManualKcalScreen({ navigation }: ScreenProps<'ManualKcal'>) {
     if (!outcome) return;
     if (outcome.state === 'confirmed') {
       // The total and the reward are the server's. No Undo: a logged meal cannot be removed (AR-12).
-      snackbar.show({ message: [vi.logged(outcome.total), outcome.questDone ? vi.questReward(outcome.xp) : undefined].filter(Boolean).join('\n') });
+      snackbar.show({
+        message: [vi.logged(outcome.total), outcome.questDone ? vi.questReward(outcome.xp) : undefined].filter(Boolean).join('\n'),
+        durationMs: CONFIRMATION_MS,
+        screenReaderDurationMs: CONFIRMATION_SCREEN_READER_MS,
+      });
       if (here.current) back();
     } else if (outcome.state === 'queued') {
       setWaiting(true);
@@ -84,9 +91,12 @@ export function ManualKcalScreen({ navigation }: ScreenProps<'ManualKcal'>) {
   };
 
   const dayCode = dayQuery.error instanceof ApiError ? dayQuery.error.code : '';
-  const line = view ? today.kcalLine(view.caloriesIn, view.calorieWindow) : undefined;
-  // Amounts still waiting on this device are in the total, marked as waiting (nothing is granted for them yet).
-  const totalLine = view && line && view.pending.kcal > 0 ? questsVi.withStatus(line, common.queued) : line;
+  // While this screen's own request is out the queue lists it too (as unsent): that is "saving", not waiting, and its
+  // amount is not added here: the total is what the server last gave. Only records that really settled as queued
+  // (earlier ones) are in the total, marked as waiting (nothing is granted for them yet).
+  const shown = day && saving ? { caloriesIn: day.caloriesIn, waiting: false } : view ? { caloriesIn: view.caloriesIn, waiting: view.pending.kcal > 0 } : undefined;
+  const line = view && shown ? today.kcalLine(shown.caloriesIn, view.calorieWindow) : undefined;
+  const totalLine = line && (saving ? questsVi.withStatus(line, questsVi.saving) : shown?.waiting ? questsVi.withStatus(line, common.queued) : line);
 
   if (waiting) {
     // Kept on this device and not on the server yet: the waiting mark and its words, no total, no reward.
@@ -133,6 +143,7 @@ export function ManualKcalScreen({ navigation }: ScreenProps<'ManualKcal'>) {
         value={kcal}
         onChangeText={text => {
           setKcal(text);
+          setFailed(null);
           setErrors(now => ({ ...now, kcal: undefined }));
         }}
         error={errors.kcal}
@@ -150,6 +161,7 @@ export function ManualKcalScreen({ navigation }: ScreenProps<'ManualKcal'>) {
         value={label}
         onChangeText={text => {
           setLabel(text);
+          setFailed(null);
           setErrors(now => ({ ...now, label: undefined }));
         }}
         error={errors.label}
