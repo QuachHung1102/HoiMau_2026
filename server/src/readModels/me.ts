@@ -50,6 +50,9 @@ type Row = {
   perk_spent: number;
   calorie_target: string;
   water_ml: number;
+  day_water_ml: number;
+  day_calories_in: string;
+  bedtime_marked: boolean;
   owned: string[];
   theme: string;
   skin: string;
@@ -71,6 +74,8 @@ const PROFILE = `
          (SELECT coalesce(sum(l.amount), 0)::int FROM coin_ledger l WHERE l.user_id = u.id) AS coin,
          (SELECT coalesce(sum(k.cost), 0)::int FROM perk_unlocks k WHERE k.user_id = u.id) AS perk_spent,
          p.calorie_target, p.water_ml,
+         coalesce(t.water_ml, 0) AS day_water_ml, coalesce(t.calories_in, 0) AS day_calories_in,
+         t.bedtime_marked_at IS NOT NULL AS bedtime_marked,
          ARRAY(SELECT code FROM items) AS owned,
          coalesce((SELECT code FROM items WHERE equipped AND kind = 'THEME'),
                   (SELECT code FROM shop_items WHERE is_default AND kind = 'THEME')) AS theme,
@@ -80,6 +85,8 @@ const PROFILE = `
     FROM users u
     LEFT JOIN progression_state g ON g.user_id = u.id
     LEFT JOIN prescriptions p ON p.user_id = u.id
+    -- today's log, when the day has one: reading never creates it
+    LEFT JOIN daily_logs t ON t.user_id = u.id AND t.logical_date = app.logical_date(app.now(), u.timezone)
    WHERE u.id = app.current_user_id()`;
 
 async function profile({ db }: Reader): Promise<Row> {
@@ -165,14 +172,14 @@ export async function buildMe(ctx: Reader): Promise<Me> {
   return {
     user,
     progression: progressionOf(row),
-    // ponytail: nothing of today is read yet, so water, bedtime, calories and workout minutes
-    // count as 0; the day routes (Task 20) feed the real day here.
+    // Water, bedtime and calories are those of today's log (zero on a day without one).
+    // ponytail: no workout is recorded yet, so both minute counts are 0; Task 21 feeds them.
     stats: mapStats({
-      waterMl: 0,
+      waterMl: row.day_water_ml,
       waterTargetMl: row.water_ml,
-      bedtimeMarked: false,
+      bedtimeMarked: row.bedtime_marked,
       streakCurrent: row.streak_current,
-      caloriesIn: 0,
+      caloriesIn: Number(row.day_calories_in),
       calorieTarget: Number(row.calorie_target),
       resistanceMinutes7d: 0,
       cardioMinutes7d: 0,
