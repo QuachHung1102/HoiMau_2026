@@ -4,6 +4,7 @@
 //
 // A job reads time from its `now` argument only, which is `SELECT app.now()` here and in run.ts:
 // the test clock of a scenario applies to jobs exactly as it does to SQL.
+import { randomUUID } from 'node:crypto';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -63,9 +64,9 @@ export async function loadJobs(
 }
 
 /**
- * One run of `job`, recorded in job_runs (run key: the ISO instant `now`) and logged as one
- * line. A throw is recorded with ok = false and thrown again. A record that cannot be written
- * (the database is gone) is logged and does not change the outcome.
+ * One run of `job`, recorded in job_runs as a row of its own (a fresh run id; run_for = `now`)
+ * and logged as one line. A throw is recorded with ok = false and thrown again. A record that
+ * cannot be written (the database is gone) is logged and does not change the outcome.
  */
 async function execute(
   job: Job,
@@ -92,9 +93,10 @@ async function execute(
     ...(ok ? { detail } : detail),
   });
   await withRole(pool, 'app_job', null, c =>
-    c.query('SELECT job_record_run($1, $2, $3, $4)', [
+    c.query('SELECT job_record_run($1, $2, $3, $4, $5)', [
       job.name,
-      now.toISOString(),
+      randomUUID(),
+      now,
       ok,
       JSON.stringify(detail ?? {}),
     ]),

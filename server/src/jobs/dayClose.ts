@@ -4,8 +4,9 @@
 // missed run and what was earned (closeDays, AR-03); job_apply_day_close writes it, one user per
 // transaction, as a compare-and-set behind the user's row lock (32-dayclose.sql). A user whose
 // apply fails is counted and logged and does not stop the others; a user whose days changed
-// since they were read (a late write) or whom another run closed first applies nothing
-// ("skipped") and is offered again by the next run if anything is left to close.
+// since they were read (a late write) or whom another run closed first applies nothing, is read
+// again once ("retried"), and when that applies nothing either is left ("skipped") for the next
+// run, if anything is left to close.
 import type { Pool } from 'pg';
 import { STREAK_MILESTONES } from '../../../domain/economy.ts';
 import { closeDays } from '../../../domain/streak.ts';
@@ -72,24 +73,39 @@ const dayClose: Job = {
   due: (now, lastRunAt) =>
     lastRunAt === null || lastRunAt.getTime() < slotOf(now),
   async run(pool, now, log) {
-    const counts = { users: 0, applied: 0, skipped: 0, failed: 0, dates: 0 };
+    const counts = { users: 0, applied: 0, retried: 0, skipped: 0, failed: 0, dates: 0 };
+    const candidates = (from: string | null, limit: number) =>
+      withRole(pool, 'app_job', null, c =>
+        c.query<Candidate>(CANDIDATES, [now, limit, from]),
+      ).then(({ rows }) => rows);
     let after: string | null = null;
     for (;;) {
-      const { rows } = await withRole(pool, 'app_job', null, c =>
-        c.query<Candidate>(CANDIDATES, [now, BATCH, after]),
-      );
+      const rows = await candidates(after, BATCH);
       if (rows.length === 0) {
         return counts;
       }
       for (const row of rows) {
+        // the cursor just before this user: a fresh read of it starts there
+        const from = after;
         after = row.user_id;
         counts.users++;
         try {
-          const { applied, grants } = await closeUser(pool, row);
-          if (applied) {
+          let read = row;
+          let result = await closeUser(pool, read);
+          if (!result.applied) {
+            // its days changed between the read and the apply (a late write, a ticket), or another
+            // run closed it first: read it again, once. Changed again: the next run takes it.
+            counts.retried++;
+            const [again] = await candidates(from, 1);
+            if (again?.user_id === row.user_id) {
+              read = again;
+              result = await closeUser(pool, read);
+            }
+          }
+          if (result.applied) {
             counts.applied++;
-            counts.dates += row.days.length;
-            logGrants({ log, userId: row.user_id }, grants);
+            counts.dates += read.days.length;
+            logGrants({ log, userId: row.user_id }, result.grants);
           } else {
             counts.skipped++;
           }
