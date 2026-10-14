@@ -6,6 +6,7 @@ import type { Mailer } from './app.ts';
 import { loadConfig } from './config.ts';
 import type { Config } from './config.ts';
 import { createPool } from './db.ts';
+import { startScheduler } from './jobs/scheduler.ts';
 import { createLogger, describeError } from './log.ts';
 import { DEFAULT_OUTBOX, outboxMailer } from './mailer.ts';
 
@@ -30,7 +31,10 @@ export function mailerFromEnv(
   );
 }
 
-/** Pool, app and listening socket. `stop` lets requests in flight finish, then closes all three. */
+/**
+ * Pool, app, listening socket and the job scheduler. `stop` stops the scheduler (its runs in
+ * flight end first), lets requests in flight finish, then closes the rest.
+ */
 export async function serve(
   { databaseUrl, journalKey, host, port }: Config,
   mailer: Mailer,
@@ -45,8 +49,11 @@ export async function serve(
     server.listen(port, host, resolve);
   });
   log.line({ level: 'info', evt: 'listening', host, port });
+  const scheduler = await startScheduler({ pool, log });
   return {
     async stop() {
+      // no new run; the runs in flight end before the pool does
+      await scheduler.stop();
       // a request that never ends must not keep the process alive for ever
       const force = setTimeout(() => server.closeAllConnections(), 10_000);
       await new Promise(resolve => server.close(resolve));
