@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import type { Pool } from 'pg';
+import { SUPERUSER } from '../scripts/cluster.ts';
 import { migrate } from '../src/migrate.ts';
 import { expectPgError, setTestClock } from '../test/helpers.ts';
 import { createTestDb } from '../test/testdb.ts';
@@ -157,6 +158,10 @@ const FIXTURE = `
   GRANT SELECT ON fx_content TO app_auth;
   SELECT meta.expect_table('fx_content', 'content', '{SELECT}', '{}', NULL);
 
+  CREATE TABLE fx_content_part (id int PRIMARY KEY, code text NOT NULL REFERENCES fx_content (code));
+  GRANT SELECT ON fx_content_part TO app_auth;
+  SELECT meta.expect_table('fx_content_part', 'content', '{SELECT}', '{}', NULL);
+
   CREATE VIEW fx_view WITH (security_invoker = true) AS SELECT code FROM fx_content;
   GRANT SELECT ON fx_view TO app_auth;
   SELECT meta.expect_table('fx_view', 'content', '{SELECT}', '{}', NULL);
@@ -173,14 +178,25 @@ const FIXTURE = `
 
   CREATE FUNCTION app._fx_helper(p_user uuid) RETURNS int LANGUAGE sql AS 'SELECT 1';
   SELECT meta.expect_function('app._fx_helper(uuid)', '{}');
+
+  CREATE FUNCTION app._fx_pinned(p_user uuid) RETURNS int
+    LANGUAGE sql SET search_path = public, pg_temp AS 'SELECT 1';
+  SELECT meta.expect_function('app._fx_pinned(uuid)', '{}');
 `;
 
 const MEMBERSHIP =
   'role membership must be only app_conn in app_anon, app_auth, app_job WITH INHERIT FALSE, SET TRUE; found: ';
 const SEARCH_PATH =
-  'SECURITY DEFINER function must carry exactly SET search_path = public, pg_temp (or pg_catalog, pg_temp) and no other setting: ';
+  'function settings: a SECURITY DEFINER function must carry exactly SET search_path = public, pg_temp (or pg_catalog, pg_temp), any other function that or no setting at all; found: ';
 const SCHEMA_USAGE = '{app_anon:USAGE,app_auth:USAGE,app_job:USAGE}';
 const APP_HELPER = '{app_anon:EXECUTE,app_auth:EXECUTE,app_job:EXECUTE}';
+const FUNCTION_SECURITY =
+  'function security: an internal function (in meta, or a name starting with "_") must be SECURITY INVOKER, any other must be SECURITY DEFINER exactly when it carries a setting; found: ';
+/** A table registered as content whose rows hang off `parent`. */
+const claimedContent = (parent: string) =>
+  `CREATE TABLE fx_diary (id int PRIMARY KEY, parent ${parent});
+   GRANT SELECT ON fx_diary TO app_auth;
+   SELECT meta.expect_table('fx_diary', 'content', '{SELECT}', '{}', NULL)`;
 const LEAKY_VIEW = `CREATE VIEW fx_leak AS SELECT * FROM fx_own_read;
   GRANT SELECT ON fx_leak TO app_auth;
   SELECT meta.expect_table('fx_leak', 'content', '{SELECT}', '{}', NULL)`;
@@ -235,6 +251,11 @@ const mutations = (database: string): [sql: string, raises: string][] => [
   [
     'ALTER TABLE fx_own_read OWNER TO app_auth',
     'table fx_own_read is owned by app role app_auth',
+  ],
+  // a table with column grants: the owner is named, not the column grants an owner no longer shows
+  [
+    'ALTER TABLE fx_own_rw OWNER TO app_auth',
+    'table fx_own_rw is owned by app role app_auth',
   ],
   [
     'ALTER SEQUENCE fx_seq OWNER TO app_auth',
@@ -322,6 +343,19 @@ const mutations = (database: string): [sql: string, raises: string][] => [
      SELECT meta.expect_table('fx_copy', 'content', '{SELECT}', '{}', NULL)`,
     'materialized view fx_copy is not allowed',
   ],
+  // a rule is privileged code that is no function
+  [
+    'CREATE RULE fx_rule AS ON INSERT TO fx_own_rw DO ALSO DELETE FROM fx_internal',
+    'rule "fx_rule" on fx_own_rw is not allowed',
+  ],
+  [
+    'CREATE RULE fx_rule AS ON INSERT TO fx_view DO INSTEAD NOTHING',
+    'rule "fx_rule" on fx_view is not allowed',
+  ],
+  [
+    'CREATE RULE fx_rule AS ON DELETE TO meta.test_clock DO INSTEAD NOTHING',
+    'rule "fx_rule" on meta.test_clock is not allowed',
+  ],
   // (4) row level security and grants, per class
   [
     'ALTER TABLE fx_own_read DISABLE ROW LEVEL SECURITY',
@@ -334,6 +368,19 @@ const mutations = (database: string): [sql: string, raises: string][] => [
   [
     'ALTER TABLE fx_internal DISABLE ROW LEVEL SECURITY',
     'table fx_internal (internal): row level security is off',
+  ],
+  // the class is a claim: a content table hangs off content only
+  [
+    claimedContent('uuid REFERENCES fx_own_rw (user_id)'),
+    'content table fx_diary has a foreign key to fx_own_rw (own_rw)',
+  ],
+  [
+    claimedContent('int REFERENCES fx_internal (id)'),
+    'content table fx_diary has a foreign key to fx_internal (internal)',
+  ],
+  [
+    claimedContent('text REFERENCES meta.expected_tables (name)'),
+    'content table fx_diary has a foreign key to meta.expected_tables (not registered)',
   ],
   [
     'ALTER TABLE fx_own_read RENAME COLUMN user_id TO owner_id',
@@ -498,6 +545,41 @@ const mutations = (database: string): [sql: string, raises: string][] => [
     'ALTER FUNCTION fx_fn(text) SET session_replication_role = replica',
     `${SEARCH_PATH}fx_fn(text) {"search_path=public, pg_temp",session_replication_role=replica}`,
   ],
+  // a SECURITY INVOKER helper runs as the owner when a SECURITY DEFINER function calls it
+  [
+    'ALTER FUNCTION app._fx_helper(uuid) SET search_path = pg_temp, public',
+    `${SEARCH_PATH}app._fx_helper(uuid) {"search_path=pg_temp, public"}`,
+  ],
+  [
+    'ALTER FUNCTION app._fx_pinned(uuid) SET search_path = public',
+    `${SEARCH_PATH}app._fx_pinned(uuid) {search_path=public}`,
+  ],
+  [
+    'ALTER FUNCTION app._fx_helper(uuid) SET session_replication_role = replica',
+    `${SEARCH_PATH}app._fx_helper(uuid) {session_replication_role=replica}`,
+  ],
+  // security of a function: internal ones run as the caller, the others as the owner exactly
+  // when they carry a setting
+  [
+    'ALTER FUNCTION fx_fn(text) SECURITY INVOKER',
+    `${FUNCTION_SECURITY}fx_fn(text) is SECURITY INVOKER`,
+  ],
+  [
+    'ALTER FUNCTION app.now() SECURITY INVOKER',
+    `${FUNCTION_SECURITY}app.now() is SECURITY INVOKER`,
+  ],
+  [
+    'ALTER FUNCTION app._fx_helper(uuid) SECURITY DEFINER SET search_path = public, pg_temp',
+    `${FUNCTION_SECURITY}app._fx_helper(uuid) is SECURITY DEFINER`,
+  ],
+  [
+    'ALTER FUNCTION meta.expect_function(text, text[]) SECURITY DEFINER',
+    `${FUNCTION_SECURITY}meta.expect_function(text,text[]) is SECURITY DEFINER`,
+  ],
+  [
+    'ALTER FUNCTION fx_trigger() SET search_path = public, pg_temp',
+    `${FUNCTION_SECURITY}fx_trigger() is SECURITY INVOKER`,
+  ],
   // (7) every function of ours is registered, and EXECUTE is granted to exactly the registered roles
   [
     "CREATE FUNCTION public.fx_unregistered() RETURNS int LANGUAGE sql AS 'SELECT 1'",
@@ -582,12 +664,39 @@ const mutations = (database: string): [sql: string, raises: string][] => [
      SELECT meta.expect_function('_fx_h(uuid)', '{app_auth}')`,
     'internal function must be registered with no role: _fx_h(uuid) {app_auth}',
   ],
-  // the default ACL of a function (proacl is null) opens it to PUBLIC
+  // a function born while the default was open keeps no ACL of its own (proacl is null), which
+  // means EXECUTE to PUBLIC, also after the default is closed again
   [
     `ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO PUBLIC;
      CREATE FUNCTION fx_open() RETURNS int LANGUAGE sql AS 'SELECT 1';
+     ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
      SELECT meta.expect_function('fx_open()', '{}')`,
     'function fx_open(): grants are {PUBLIC:EXECUTE}, expected {}',
+  ],
+  // default privileges: what the next table, sequence or function is born with
+  [
+    'ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO PUBLIC',
+    `default privileges for functions created by ${SUPERUSER.user}: grants are {PUBLIC:EXECUTE}, expected {}`,
+  ],
+  [
+    'ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO app_auth',
+    `default privileges for functions created by ${SUPERUSER.user}: grants are {app_auth:EXECUTE}, expected {}`,
+  ],
+  [
+    'ALTER DEFAULT PRIVILEGES GRANT INSERT, UPDATE, DELETE ON TABLES TO app_auth',
+    `default privileges for tables created by ${SUPERUSER.user}: grants are {app_auth:DELETE,app_auth:INSERT,app_auth:UPDATE}, expected {}`,
+  ],
+  [
+    'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO app_anon',
+    `default privileges for tables created by ${SUPERUSER.user} in schema public: grants are {app_anon:SELECT}, expected {}`,
+  ],
+  [
+    'ALTER DEFAULT PRIVILEGES GRANT USAGE ON SEQUENCES TO PUBLIC',
+    `default privileges for sequences created by ${SUPERUSER.user}: grants are {PUBLIC:USAGE}, expected {}`,
+  ],
+  [
+    'CREATE ROLE fx_fifth; ALTER DEFAULT PRIVILEGES FOR ROLE fx_fifth GRANT SELECT ON TABLES TO app_auth',
+    'default privileges for tables created by fx_fifth: grants are {app_auth:SELECT}, expected {}',
   ],
   // the registry itself is not trusted: a row that contradicts its class is refused, however
   // it got there, even when the catalog agrees with it
