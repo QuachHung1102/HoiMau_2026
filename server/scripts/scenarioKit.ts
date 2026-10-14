@@ -5,6 +5,7 @@
 // This file is not in scripts/scenarios/ on purpose: every file there is a scenario.
 import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
+import { addDays } from '../../domain/logicalDate.ts';
 
 export type CallOptions = {
   token?: string;
@@ -52,8 +53,9 @@ const ONBOARDING = {
 export const demoEmail = (name: string) => `demo-${name}@hoimau.test`;
 
 /**
- * The instant of local hour `hour` (3 to 26: 24 is midnight, 28 would be 04:00) of the logical
- * day that closes at `closesAt` (03:00 local the next day, as `GET /day` says).
+ * The instant of local hour `hour` (3 to 28: 24 is midnight, 27 is the 03:00 that closes the day,
+ * 28 is 04:00 of the next day) counted from the logical day that closes at `closesAt` (03:00 local
+ * the next day, as `GET /day` says).
  * ponytail: fixed offsets only; the demo users live in Asia/Ho_Chi_Minh (no daylight saving).
  * Any other zone: ask the server for each instant instead.
  */
@@ -84,9 +86,22 @@ export async function begin(ctx: ScenarioCtx, name: string, onboard: boolean) {
   return { email, token: session.token as string };
 }
 
-/** Moves the clock to local hour `hour` of the user's current logical day. */
+/**
+ * Moves the clock to local hour `hour` (3 to 28, see localHour) counted from the user's current
+ * logical day, then asks the server which day it is: hours before 27 stay in this day, 27 and 28
+ * are in the next one. A zone whose day is not 24 hours long fails here instead of drifting.
+ */
 export async function goTo(ctx: ScenarioCtx, token: string, hour: number) {
-  await ctx.setClock(localHour((await getDay(ctx, token)).closesAt, hour));
+  if (!Number.isInteger(hour) || hour < 3 || hour > 28) {
+    throw new RangeError(`hour ${hour} is outside 3 to 28`);
+  }
+  const day = await getDay(ctx, token);
+  await ctx.setClock(localHour(day.closesAt, hour));
+  const expected = hour < 27 ? day.logicalDate : addDays(day.logicalDate, 1);
+  const now = (await getDay(ctx, token)).logicalDate;
+  if (now !== expected) {
+    throw new Error(`after moving the clock to hour ${hour} of ${day.logicalDate} the server says ${now}, not ${expected}`);
+  }
 }
 
 /**
@@ -115,10 +130,15 @@ export async function completeStory(ctx: ScenarioCtx, token: string) {
 
 /** Steps the clock to 04:00 local of the next day, past the 03:00 close, and runs `day-close`. */
 export async function closeDay(ctx: ScenarioCtx, token: string) {
+  const closing = (await getDay(ctx, token)).logicalDate;
   await goTo(ctx, token, 28);
-  const counts = (await ctx.runJob('day-close')) as { failed?: number };
-  if (counts.failed !== 0) {
-    throw new Error(`day-close failed for ${counts.failed} user(s)`);
+  const counts = (await ctx.runJob('day-close')) as { failed?: number; skipped?: number };
+  if (counts.failed !== 0 || counts.skipped !== 0) {
+    throw new Error(`day-close left ${counts.failed} failed and ${counts.skipped} skipped user(s)`);
+  }
+  const { days } = await ctx.call('GET', `/day/history?from=${closing}&to=${closing}`, { token });
+  if (days[0]?.outcome === 'OPEN' || days[0]?.outcome === undefined) {
+    throw new Error(`${closing} is not closed after day-close (${days[0]?.outcome})`);
   }
 }
 
