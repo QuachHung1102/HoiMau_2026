@@ -21,6 +21,8 @@ export function provisionalDay(kept: DayState, now: number): DayState {
     bedtimeMarkedAt: null,
     quests: kept.quests.map(quest => ({ ...quest, progress: 0, completed: false, lastTick: null })),
     story: { ...kept.story, done: 0 },
+    // Not known this morning, so none is claimed: no unread mail, nothing to celebrate.
+    unreadCount: 0,
     celebrations: [],
   };
 }

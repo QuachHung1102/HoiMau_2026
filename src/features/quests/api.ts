@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { AppState } from 'react-native';
 import type { ActionResult } from '../../../domain/contract/common.ts';
 import type { DayState, Settings, UndoRequest } from '../../../domain/contract/core.ts';
-import { api, boundUserId } from '../../shared/api/client';
+import { api, boundUserId, onRequestOutcome } from '../../shared/api/client';
 import { useSession } from '../../shared/api/session';
 import { readCache, writeCache } from '../../shared/storage/cache';
 import { provisionalDay } from '../dashboard/provisionalDay';
@@ -25,6 +25,11 @@ export function acceptDay(queryClient: QueryClient, userId: string, day: DayStat
   queryClient.setQueryData(dayKey, day);
   writeCache(userId, 'day', day);
 }
+
+const SKEW_RECHECK_MS = 60_000;
+const SKEW_RECHECKS = 5;
+// Shared by every user of `useDay`: for which close the day is being asked for again, how often, and when last.
+const skew = { close: 0, count: 0, askedAt: 0 };
 
 async function fetchDay(userId: string, signal: AbortSignal): Promise<DayState> {
   const day = await api.get<DayState>('/day', undefined, { signal });
@@ -85,10 +90,18 @@ export function useDay() {
     });
     return () => subscription.remove();
   }, [revalidate]);
+  // "Numbers update when the network returns": while the day shown is a guess, any request that got through says
+  // it has. (The read it starts reports "ok" too; that one is joined, not repeated.)
+  useEffect(() => {
+    if (!provisional) return;
+    return onRequestOutcome(outcome => {
+      if (outcome === 'ok') revalidate();
+    });
+  }, [provisional, revalidate]);
+
   // A timer to the close of the day on screen (or, while a day that is over waits for its answer, at once); no polling.
-  // ponytail: when the server still gives the same day after its close by this device's clock (a clock that runs
-  // ahead), nothing is armed: the new day comes with the next return to the app or the next delivered record.
   const nextClose = data ? Date.parse(data.closesAt) : closes;
+  // The close has passed by this device's clock and the server still gives this day: the clock runs ahead.
   const closedForServer = closes !== undefined && !over && Date.now() >= closes;
   useEffect(() => {
     if (nextClose === undefined || closedForServer) return;
@@ -99,6 +112,27 @@ export function useDay() {
     }, Math.max(0, nextClose - Date.now()));
     return () => clearTimeout(timer);
   }, [nextClose, closedForServer, revalidate, queryClient]);
+  // With a clock that runs ahead the real close is still to come: the day is asked for again once a minute, at most
+  // SKEW_RECHECKS times, and no more once the server gives another day. Records made meanwhile are shown on the day
+  // the server gives (`applyPending` has no upper end).
+  // ponytail: a clock more than 5 minutes ahead gets the new day with the next return to the app or the next
+  // delivered record, not on this schedule; widen SKEW_RECHECKS if such clocks turn out to be common.
+  const lastAnswer = query.dataUpdatedAt;
+  useEffect(() => {
+    if (closes === undefined) skew.close = 0;
+    if (closes === undefined || !closedForServer) return;
+    if (skew.close !== closes) Object.assign(skew, { close: closes, count: 0, askedAt: 0 });
+    if (skew.count >= SKEW_RECHECKS) return;
+    const armedAt = Date.now();
+    const timer = setTimeout(() => {
+      // Every user of this hook has such a timer; the first one to fire asks, for all of them.
+      if (skew.askedAt > armedAt) return;
+      Object.assign(skew, { askedAt: Date.now(), count: skew.count + 1 });
+      revalidate();
+    }, SKEW_RECHECK_MS);
+    return () => clearTimeout(timer);
+    // `lastAnswer` / `lastFailure`: each answer to a re-check, the same day again or none, arms the next one
+  }, [closes, closedForServer, lastAnswer, lastFailure, revalidate]);
 
   // `isFetching` is read here on purpose as well: "over" depends on the clock, and the start and the end of a read
   // are what make this hook look at the clock again (a read that brings back the same day changes nothing else).
