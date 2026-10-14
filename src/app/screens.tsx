@@ -14,6 +14,9 @@ import { ArchetypeStepScreen } from '../features/onboarding/ArchetypeStepScreen'
 import { ProfileStepScreen } from '../features/onboarding/ProfileStepScreen';
 import { stepOptions } from '../features/onboarding/StepScreen';
 import { OnbTargetsScreen, TargetsScreen } from '../features/onboarding/TargetsScreen';
+import { ManualKcalScreen } from '../features/nutrition/ManualKcalScreen';
+import { EndOfDayScreen } from '../features/quests/EndOfDayScreen';
+import { QuestBoardScreen } from '../features/quests/QuestBoardScreen';
 import { tabLabel } from '../shared/i18n/vi/nav';
 import type { ScreenEntry, TabRoot } from './routes';
 
@@ -41,6 +44,9 @@ export const tabRoots: TabRoot[] = [{ name: 'Today', component: TodayScreen, lab
 export const detailScreens: ScreenEntry[] = [
   { name: 'Targets', component: TargetsScreen },
   { name: 'StatsExplainer', component: StatsExplainerScreen },
+  { name: 'QuestBoard', component: QuestBoardScreen },
+  { name: 'EndOfDay', component: EndOfDayScreen },
+  { name: 'ManualKcal', component: ManualKcalScreen },
 ];
 
 /** Full-screen modal flow above the tabs; the tab bar cannot interrupt it. */

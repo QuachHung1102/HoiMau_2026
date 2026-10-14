@@ -26,6 +26,7 @@ import { ErrorState, LoadingState } from '../../shared/ui/States';
 import { Touchable } from '../../shared/ui/Touchable';
 import { useMe } from '../auth/api';
 import { useDay, useSettings, WATER } from '../quests/api';
+import { useStandUp } from '../quests/useStandUp';
 import { useTick } from '../quests/useTick';
 import { WaterTracker } from '../quests/WaterTracker';
 import { applyPending } from './applyPending';
@@ -78,6 +79,8 @@ export function TodayScreen({ navigation }: ScreenProps<'Today'>) {
   const pending = usePendingActions(userId);
   // The one recorder of the water quest on this screen: the tracker and the card's button share it.
   const water = useTick(WATER);
+  // The stand-up reminder lives as long as this tab root does (the signed-in app); it shows nothing itself.
+  useStandUp();
   const day = dayQuery.data;
   // On a provisional day the streak is not known (yesterday's close may have changed it): not shown as known.
   const hideStreak = hideStreakSetting || dayQuery.provisional;
