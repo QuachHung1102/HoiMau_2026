@@ -36,7 +36,11 @@ export const attacks: Attack[] = [
             'SELECT job_apply_day_close($1, $2, $3, $4, $5, $6)',
             [ctx.decoy, null, '2026-01-01', '[]', '{}', '[]'],
           ],
-          ['job_record_run', 'SELECT job_record_run($1, $2, $3, $4)', ['day-close', 'x', true, '{}']],
+          [
+            'job_record_run',
+            'SELECT job_record_run($1, $2, $3, $4, $5)',
+            ['day-close', '00000000-0000-4000-8000-000000000001', '2031-01-01T00:00:00Z', true, '{}'],
+          ],
         ] as const) {
           await ctx.expectPgError(
             ctx.asUser(ctx.app, ctx.userA, c => c.query(sql, [...params])),

@@ -315,6 +315,15 @@ test('app._notify takes the five kinds of the contract and nothing else, once pe
     code: '23514',
     messagePrefix: 'new row for relation "notifications" violates check constraint "notifications_payload_check"',
   });
+  // two items of one user at one instant: refused (a writer that skips the users lock fails loudly)
+  await expectPgError(
+    db.admin.query(
+      `INSERT INTO notifications (user_id, kind, payload, dedupe_key, created_at)
+       VALUES ($1, 'PET_TIRED', '{}', 'x1', $2), ($1, 'PET_TIRED', '{}', 'x2', $2)`,
+      [userId, '2027-03-11T00:00:00Z'],
+    ),
+    { code: '23505', messagePrefix: 'duplicate key value violates unique constraint "notifications_user_created_key"' },
+  );
   const micros = await db.admin.query(
     `SELECT count(DISTINCT created_at)::int AS n, min(created_at) = $2::timestamptz AS from_clock
        FROM notifications WHERE user_id = $1`,
@@ -331,7 +340,7 @@ test('the job functions are for app_job: app_auth and app_anon are refused at EX
   for (const [sql, params] of [
     ['SELECT job_day_close_candidates($1, $2, $3)', [AFTER_03_13, 1, null]],
     ['SELECT job_apply_day_close($1, $2, $3, $4, $5, $6)', [userId, null, '2027-03-12', '[]', '{}', '[]']],
-    ['SELECT job_record_run($1, $2, $3, $4)', ['day-close', 'x', true, '{}']],
+    ['SELECT job_record_run($1, $2, $3, $4, $5)', ['day-close', randomUUID(), AFTER_03_13, true, '{}']],
   ] as const) {
     const name = sql.slice(7, sql.indexOf('('));
     await expectPgError(
@@ -339,12 +348,19 @@ test('the job functions are for app_job: app_auth and app_anon are refused at EX
       { code: '42501', messagePrefix: `permission denied for function ${name}` },
     );
   }
-  // job_record_run upserts one row per job and run key
-  await asJob(db.app, c => c.query('SELECT job_record_run($1, $2, $3, $4)', ['day-close', 'k1', false, '{"failed":1}']));
-  await asJob(db.app, c => c.query('SELECT job_record_run($1, $2, $3, $4)', ['day-close', 'k1', true, '{"failed":0}']));
+  // job_record_run: one row per run, also for two runs for one instant
+  const at = '2027-03-12T20:15:00.000Z';
+  for (const [ok, detail] of [[false, '{"failed":1}'], [true, '{"failed":0}']] as const) {
+    await asJob(db.app, c =>
+      c.query('SELECT job_record_run($1, $2, $3, $4, $5)', ['day-close', randomUUID(), at, ok, detail]),
+    );
+  }
   assert.deepEqual(
-    (await db.admin.query("SELECT ok, detail FROM job_runs WHERE job = 'day-close' AND run_key = 'k1'")).rows,
-    [{ ok: true, detail: { failed: 0 } }],
+    (await db.admin.query("SELECT ok, detail FROM job_runs WHERE job = 'day-close' AND run_for = $1 ORDER BY ok", [at])).rows,
+    [
+      { ok: false, detail: { failed: 1 } },
+      { ok: true, detail: { failed: 0 } },
+    ],
   );
 });
 

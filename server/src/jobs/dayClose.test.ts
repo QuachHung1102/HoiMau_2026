@@ -14,6 +14,7 @@ import type { CallResult, TestApp } from '../../test/http.ts';
 import { createTestDb } from '../../test/testdb.ts';
 import type { TestDb } from '../../test/testdb.ts';
 import { createLogger } from '../log.ts';
+import dayClose from './dayClose.ts';
 import { runJob } from './scheduler.ts';
 
 let db: TestDb;
@@ -374,9 +375,11 @@ test('a user whose apply fails does not stop the others; the run is recorded wit
     assert.equal(result.failed, 1);
     assert.equal((await stored(broken.userId)).closed, null);
     assert.equal((await stored(fine.userId)).closed, '2027-03-10');
-    const { rows } = await db.admin.query("SELECT ok, detail FROM job_runs WHERE job = 'day-close' AND run_key = $1", [
-      at,
-    ]);
+    // earlier tests ran for this instant too: each run is a row of its own
+    const { rows } = await db.admin.query(
+      "SELECT ok, detail FROM job_runs WHERE job = 'day-close' AND run_for = $1 AND (detail ->> 'failed')::int > 0",
+      [at],
+    );
     assert.deepEqual(rows, [{ ok: true, detail: result }]);
     const failures = lines.map(line => JSON.parse(line)).filter(line => line.evt === 'job_user_failed');
     assert.deepEqual(
@@ -397,7 +400,7 @@ test('the job lines carry counts, never an email or a message', async () => {
   await close(closeOf(1));
   const job = lines.map(line => JSON.parse(line)).find(line => line.evt === 'job');
   assert.deepEqual(Object.keys(job).sort(), ['detail', 'evt', 'job', 'level', 'ms', 'ok', 'ts']);
-  assert.deepEqual(Object.keys(job.detail).sort(), ['applied', 'dates', 'failed', 'skipped', 'users']);
+  assert.deepEqual(Object.keys(job.detail).sort(), ['applied', 'dates', 'failed', 'retried', 'skipped', 'users']);
   assert.ok(!lines.join('\n').includes(user.email));
 });
 
@@ -407,4 +410,109 @@ test('a run leaves every row of the decoy as it was (the decoy is never a candid
   const result = await close('2031-01-01T00:00:00.000Z');
   assert.ok((result.applied as number) > 0, 'the run closed somebody');
   assert.deepEqual(await decoyRows(db.admin), rowsBefore);
+});
+
+test('two runs for one instant are two rows of job_runs, each with its own counts', async () => {
+  const at = '2029-06-01T00:15:00.000Z';
+  const first = await close(at);
+  const second = await close(at);
+  const { rows } = await db.admin.query(
+    "SELECT detail FROM job_runs WHERE job = 'day-close' AND run_for = $1 ORDER BY ran_at, created_at",
+    [at],
+  );
+  assert.equal(rows.length, 2);
+  assert.deepEqual(
+    rows.map(row => row.detail).sort((a, b) => b.applied - a.applied),
+    [first, second].sort((a, b) => (b.applied as number) - (a.applied as number)),
+  );
+});
+
+/**
+ * A pool for dayClose.run alone: withRole's statements answered as PostgreSQL would, the two job
+ * functions answered by `candidates` and `apply`, every call kept in `calls`.
+ */
+function fakePool(
+  candidates: (from: string | null, limit: number) => unknown[],
+  apply: () => { applied: boolean; grants: [] },
+) {
+  const calls: { fn: string; params: unknown[] }[] = [];
+  const client = {
+    on() {},
+    off() {},
+    release() {},
+    async query(sql: string, params: unknown[] = []) {
+      if (sql.startsWith('COMMIT') || sql.startsWith('ROLLBACK')) {
+        return [{ command: sql.slice(0, sql.indexOf(';')) }, { rows: [{ clean: true }] }];
+      }
+      if (sql.includes('job_day_close_candidates')) {
+        calls.push({ fn: 'candidates', params });
+        return { rows: candidates(params[2] as string | null, params[1] as number) };
+      }
+      if (sql.includes('job_apply_day_close')) {
+        calls.push({ fn: 'apply', params });
+        return { rows: [{ result: apply() }] };
+      }
+      return { rows: [] };
+    },
+  };
+  return { pool: { connect: async () => client } as never, calls };
+}
+
+test('a user whose apply finds its days changed is read again once in the same run: applied on the fresh read, or left for the next run and counted', async () => {
+  const user = randomUUID();
+  const other = randomUUID();
+  const state = { streakCurrent: 0, streakBest: 0, streakBeforeBreak: null, breakDate: null, missedRun: 0, lastOutcome: null };
+  const stale = { user_id: user, last_closed: null, state, days: [{ date: '2027-03-10', storyCompleted: false, ticketApplied: false }] };
+  const fresh = { ...stale, days: [{ date: '2027-03-10', storyCompleted: true, ticketApplied: false }] };
+  const now = new Date('2027-03-10T20:16:00.000Z');
+  const quiet = createLogger(() => {});
+
+  // the second read sees the late write; its apply goes through
+  let reads = 0;
+  let answers = [false, true];
+  let fake = fakePool(
+    (from, limit) => (from === user ? [] : limit === 1 ? [fresh] : reads++ === 0 ? [stale] : []),
+    () => ({ applied: answers.shift()!, grants: [] }),
+  );
+  const applied = await dayClose.run(fake.pool, now, quiet);
+  assert.deepEqual(applied, { users: 1, applied: 1, retried: 1, skipped: 0, failed: 0, dates: 1 });
+  const applies = fake.calls.filter(call => call.fn === 'apply');
+  assert.equal(applies.length, 2);
+  assert.deepEqual(JSON.parse(applies[1].params[3] as string), fresh.days);
+  // the retry read starts at the cursor before the user (null: the first of the batch), for one user
+  assert.deepEqual(fake.calls[2], { fn: 'candidates', params: [now, 1, null] });
+
+  // changed again: one retry, then left
+  reads = 0;
+  answers = [false, false];
+  fake = fakePool(
+    (from, limit) => (from === user ? [] : limit === 1 ? [fresh] : reads++ === 0 ? [stale] : []),
+    () => ({ applied: answers.shift()!, grants: [] }),
+  );
+  assert.deepEqual(await dayClose.run(fake.pool, now, quiet), {
+    users: 1,
+    applied: 0,
+    retried: 1,
+    skipped: 1,
+    failed: 0,
+    dates: 0,
+  });
+  assert.equal(fake.calls.filter(call => call.fn === 'apply').length, 2);
+
+  // closed meanwhile by another run: the fresh read offers somebody else, who is not applied here
+  reads = 0;
+  answers = [false];
+  fake = fakePool(
+    (from, limit) => (from === user ? [] : limit === 1 ? [{ ...stale, user_id: other }] : reads++ === 0 ? [stale] : []),
+    () => ({ applied: answers.shift()!, grants: [] }),
+  );
+  assert.deepEqual(await dayClose.run(fake.pool, now, quiet), {
+    users: 1,
+    applied: 0,
+    retried: 1,
+    skipped: 1,
+    failed: 0,
+    dates: 0,
+  });
+  assert.equal(fake.calls.filter(call => call.fn === 'apply').length, 1);
 });

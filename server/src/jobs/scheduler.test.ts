@@ -153,7 +153,7 @@ test('a run that throws is logged without its message, recorded with ok = false,
   try {
     await tickAt('2027-03-10T10:15:00.000Z');
     const { rows } = await db.admin.query(
-      "SELECT job, ok, detail FROM job_runs WHERE run_key = '2027-03-10T10:15:00.000Z' AND job IN ('failing', 'fine') ORDER BY job",
+      "SELECT job, ok, detail FROM job_runs WHERE run_for = '2027-03-10T10:15:00.000Z' AND job IN ('failing', 'fine') ORDER BY job",
     );
     assert.deepEqual(
       rows.map(row => [row.job, row.ok, row.detail.error ?? row.detail.done]),

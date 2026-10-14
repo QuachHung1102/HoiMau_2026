@@ -49,16 +49,19 @@ CREATE TABLE IF NOT EXISTS ticket_grant_weeks (
   PRIMARY KEY (user_id, week_start)
 );
 
--- One row per run of a job (run_key: the instant it ran for). No user data.
+-- One row per run of a job: run_id is drawn by the runner for each run, so two runs for one
+-- instant (the CLI beside the scheduler, two processes) are two rows; run_for is the instant the
+-- run ran for. No user data.
 CREATE TABLE IF NOT EXISTS job_runs (
+  run_id uuid PRIMARY KEY,
   job text NOT NULL,
-  run_key text NOT NULL,
+  run_for timestamptz NOT NULL,
   ran_at timestamptz NOT NULL DEFAULT app.now(),
   ok boolean NOT NULL,
   detail jsonb NOT NULL DEFAULT '{}',
-  created_at timestamptz NOT NULL DEFAULT app.now(),
-  PRIMARY KEY (job, run_key)
+  created_at timestamptz NOT NULL DEFAULT app.now()
 );
+CREATE INDEX IF NOT EXISTS job_runs_job_for_idx ON job_runs (job, run_for);
 
 ALTER TABLE freeze_tickets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ticket_grant_weeks ENABLE ROW LEVEL SECURITY;
@@ -223,25 +226,25 @@ BEGIN
   RETURN jsonb_build_object('applied', true, 'grants', v_grants);
 END $$;
 
--- One row per job and run key; a second record of the same run replaces the first.
-CREATE OR REPLACE FUNCTION job_record_run(p_job text, p_run_key text, p_ok boolean, p_detail jsonb)
+-- One row per run (p_run_id: drawn by the runner for that run).
+CREATE OR REPLACE FUNCTION job_record_run(p_job text, p_run_id uuid, p_run_for timestamptz, p_ok boolean, p_detail jsonb)
 RETURNS void
 LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp
 AS $$
-  INSERT INTO job_runs (job, run_key, ok, detail) VALUES (p_job, p_run_key, p_ok, coalesce(p_detail, '{}'))
-  ON CONFLICT (job, run_key) DO UPDATE SET ran_at = app.now(), ok = EXCLUDED.ok, detail = EXCLUDED.detail
+  INSERT INTO job_runs (run_id, job, run_for, ok, detail)
+  VALUES (p_run_id, p_job, p_run_for, p_ok, coalesce(p_detail, '{}'))
 $$;
 
 REVOKE ALL ON FUNCTION
   job_day_close_candidates(timestamptz, int, uuid),
   job_apply_day_close(uuid, date, date, jsonb, jsonb, jsonb),
-  job_record_run(text, text, boolean, jsonb)
+  job_record_run(text, uuid, timestamptz, boolean, jsonb)
   FROM PUBLIC, app_anon, app_auth, app_job;
 GRANT EXECUTE ON FUNCTION
   job_day_close_candidates(timestamptz, int, uuid),
   job_apply_day_close(uuid, date, date, jsonb, jsonb, jsonb),
-  job_record_run(text, text, boolean, jsonb)
+  job_record_run(text, uuid, timestamptz, boolean, jsonb)
   TO app_job;
 SELECT meta.expect_function('job_day_close_candidates(timestamptz, int, uuid)', 'definer', '{app_job}');
 SELECT meta.expect_function('job_apply_day_close(uuid, date, date, jsonb, jsonb, jsonb)', 'definer', '{app_job}');
-SELECT meta.expect_function('job_record_run(text, text, boolean, jsonb)', 'definer', '{app_job}');
+SELECT meta.expect_function('job_record_run(text, uuid, timestamptz, boolean, jsonb)', 'definer', '{app_job}');
