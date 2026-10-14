@@ -2,6 +2,7 @@ import type { Pool } from 'pg';
 import type { Health, TimezoneList } from '../../../domain/contract/core.ts';
 import type { Route } from '../app.ts';
 import { withRole } from '../db.ts';
+import { jobHealth } from '../jobs/scheduler.ts';
 import { describeError } from '../log.ts';
 
 const intlAccepts = (zone: string): boolean => {
@@ -65,11 +66,11 @@ const meta: Route[] = [
       if (failure !== null) {
         log.line({ level: 'error', evt: 'health', ...describeError(failure) });
       }
-      // jobs: filled once the scheduler records its runs
+      // jobs: the scheduler's memory of this process (job_runs is internal, and this route anonymous)
       const body: Health = {
         ok: failure === null,
         db: failure === null,
-        jobs: [],
+        jobs: jobHealth(),
       };
       return { status: 200, body };
     },
