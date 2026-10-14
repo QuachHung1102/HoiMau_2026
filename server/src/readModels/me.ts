@@ -53,6 +53,8 @@ type Row = {
   day_water_ml: number;
   day_calories_in: string;
   bedtime_marked: boolean;
+  resistance_minutes: number;
+  cardio_minutes: number;
   owned: string[];
   theme: string;
   skin: string;
@@ -76,6 +78,7 @@ const PROFILE = `
          p.calorie_target, p.water_ml,
          coalesce(t.water_ml, 0) AS day_water_ml, coalesce(t.calories_in, 0) AS day_calories_in,
          t.bedtime_marked_at IS NOT NULL AS bedtime_marked,
+         m.resistance_minutes, m.cardio_minutes,
          ARRAY(SELECT code FROM items) AS owned,
          coalesce((SELECT code FROM items WHERE equipped AND kind = 'THEME'),
                   (SELECT code FROM shop_items WHERE is_default AND kind = 'THEME')) AS theme,
@@ -87,6 +90,16 @@ const PROFILE = `
     LEFT JOIN prescriptions p ON p.user_id = u.id
     -- today's log, when the day has one: reading never creates it
     LEFT JOIN daily_logs t ON t.user_id = u.id AND t.logical_date = app.logical_date(app.now(), u.timezone)
+    -- the minutes of the sessions of today's logical date and the six before, by modality
+   CROSS JOIN LATERAL (
+          SELECT coalesce(sum(w.elapsed_sec) FILTER (WHERE w.modality = 'RESISTANCE'), 0)::float8 / 60
+                   AS resistance_minutes,
+                 coalesce(sum(w.elapsed_sec) FILTER (WHERE w.modality IN ('CARDIO', 'HIIT')), 0)::float8 / 60
+                   AS cardio_minutes
+            FROM daily_logs d JOIN workout_sessions w ON w.daily_log_id = d.id
+           WHERE d.user_id = u.id
+             AND d.logical_date BETWEEN app.logical_date(app.now(), u.timezone) - 6
+                                    AND app.logical_date(app.now(), u.timezone)) m
    WHERE u.id = app.current_user_id()`;
 
 async function profile({ db }: Reader): Promise<Row> {
@@ -172,8 +185,8 @@ export async function buildMe(ctx: Reader): Promise<Me> {
   return {
     user,
     progression: progressionOf(row),
-    // Water, bedtime and calories are those of today's log (zero on a day without one).
-    // ponytail: no workout is recorded yet, so both minute counts are 0; Task 21 feeds them.
+    // Water, bedtime and calories are those of today's log (zero on a day without one); the
+    // minutes are those of the sessions of the last seven logical dates.
     stats: mapStats({
       waterMl: row.day_water_ml,
       waterTargetMl: row.water_ml,
@@ -181,8 +194,8 @@ export async function buildMe(ctx: Reader): Promise<Me> {
       streakCurrent: row.streak_current,
       caloriesIn: Number(row.day_calories_in),
       calorieTarget: Number(row.calorie_target),
-      resistanceMinutes7d: 0,
-      cardioMinutes7d: 0,
+      resistanceMinutes7d: row.resistance_minutes,
+      cardioMinutes7d: row.cardio_minutes,
     }),
     pet: petOf(row),
     appearance: {

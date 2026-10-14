@@ -27,14 +27,18 @@ const HISTORY_MAX_DATES = 92;
 const DATE_TIME =
   /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/;
 
-const refuse = (field: string, rule: FieldError['rule']) =>
+/** The last instant written with a four-digit year: PostgreSQL reads no later spelling. */
+const LAST_INSTANT = Date.UTC(9999, 11, 31, 23, 59, 59, 999);
+
+export const refuse = (field: string, rule: FieldError['rule']) =>
   new AppError('VALIDATION_FAILED', { fields: [{ field, rule }] });
 
 /**
  * The body of a write, which the contract has as a JSON object: without one the refusal is
  * `body` / `required`; for anything else (null, an array, a number, a string) `body` / `format`.
+ * Also for the writes of routes/nutrition.ts and routes/workout.ts.
  */
-function objectBody(body: unknown): Record<string, unknown> {
+export function objectBody(body: unknown): Record<string, unknown> {
   if (body === undefined) {
     throw refuse('body', 'required');
   }
@@ -80,13 +84,15 @@ function instantOf(value: unknown): number {
  * absent. What the instant may be (not ahead, not older than 48 h, on an open day) is judged
  * by the function.
  */
-function occurredAtOf(body: unknown): string | null {
+export function occurredAtOf(body: unknown): string | null {
   const { occurredAt } = objectBody(body);
   if (occurredAt === undefined) {
     return null;
   }
   const ms = instantOf(occurredAt);
-  if (Number.isNaN(ms)) {
+  // An offset can push 9999-12-31 into the year 10000, which PostgreSQL cannot read: such an
+  // instant does not exist for it, so it is no instant at all.
+  if (Number.isNaN(ms) || ms > LAST_INSTANT) {
     throw refuse('occurredAt', 'format');
   }
   // Not before 1970: PostgreSQL has no year 0000, and anything that old is DAY_CLOSED alike.
@@ -106,7 +112,7 @@ function dateOf(value: string | null | undefined, field: string): DateLabel {
 }
 
 /** The answer of a write: the ledger lines of its grants, then today and what changed. */
-async function actionResult(
+export async function actionResult(
   ctx: Ctx,
   grants: Grant[],
   events: GameEvent[],

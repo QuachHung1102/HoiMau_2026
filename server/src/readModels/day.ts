@@ -129,26 +129,20 @@ type SummaryRow = {
   story_total: number;
   water_ml: number;
   calories_in: string;
+  workout_minutes: number;
   /** Null unless asked for ($3). */
-  actions:
-    | {
-        id: string;
-        kind: DayDetail['actions'][number]['kind'];
-        at: string;
-        label: string | null;
-        undone: boolean;
-      }[]
-    | null;
+  actions: DayDetail['actions'] | null;
 };
 
 // One row per date from $1 to $2. A date before the user's first day is NONE; one the day-close
 // job has not processed is OPEN; a closed one is COMPLETED when its log says the story was
-// done, else MISSED (a missed day needs no log). Task 22 adds FROZEN, Task 21 the workout
-// minutes.
+// done, else MISSED (a missed day needs no log). Task 22 adds FROZEN. workout_minutes: the
+// seconds of the date's sessions / 60.
 // With $3 the row also carries the recorded actions of its date, newest first, read in this
 // same statement: the summary and the list are one snapshot. TICK: every tick, the undone ones
-// marked. BEDTIME: the mark is a column of the log, so the log's id stands for it. Task 21 adds
-// NUTRITION and WORKOUT to the union.
+// marked. NUTRITION: every log, its kcal and slot (null for a manual entry). WORKOUT: every
+// session, the workout's name and the seconds spent. BEDTIME: the mark is a column of the log,
+// so the log's id stands for it.
 const SUMMARIES = `
   SELECT to_char(g.day, 'YYYY-MM-DD') AS logical_date,
          CASE WHEN g.day < s.onboard_date THEN 'NONE'
@@ -157,16 +151,28 @@ const SUMMARIES = `
               ELSE 'MISSED' END AS outcome,
          k.story_done, k.story_total,
          coalesce(d.water_ml, 0) AS water_ml, coalesce(d.calories_in, 0) AS calories_in,
+         coalesce((SELECT sum(w.elapsed_sec)::float8 / 60 FROM workout_sessions w
+                    WHERE w.daily_log_id = d.id), 0) AS workout_minutes,
          CASE WHEN $3::boolean THEN (
            SELECT coalesce(jsonb_agg(jsonb_build_object(
-                    'id', a.id, 'kind', a.kind, 'at', a.happened, 'label', a.label, 'undone', a.undone)
+                    'id', a.id, 'kind', a.kind, 'at', a.happened, 'mealSlot', a.meal_slot,
+                    'label', a.label, 'value', a.value, 'undone', a.undone)
                     ORDER BY a.happened DESC, a.recorded DESC, a.id), '[]'::jsonb)
-             FROM (SELECT t.id, 'TICK' AS kind, t.occurred_at AS happened, q.code AS label,
+             FROM (SELECT t.id, 'TICK' AS kind, t.occurred_at AS happened, NULL AS meal_slot,
+                          q.code AS label, NULL::numeric AS value,
                           t.undone_at IS NOT NULL AS undone, t.created_at AS recorded
                      FROM quest_ticks t JOIN quests q ON q.id = t.quest_id
                     WHERE t.daily_log_id = d.id
                    UNION ALL
-                   SELECT d.id, 'BEDTIME', d.bedtime_marked_at, NULL, false, d.bedtime_marked_at
+                   SELECT n.id, 'NUTRITION', n.occurred_at, n.meal_slot, n.label, n.kcal, false, n.created_at
+                     FROM nutrition_logs n
+                    WHERE n.daily_log_id = d.id
+                   UNION ALL
+                   SELECT w.id, 'WORKOUT', w.occurred_at, NULL, i.name, w.elapsed_sec, false, w.created_at
+                     FROM workout_sessions w JOIN exercise_items i ON i.id = w.exercise_item_id
+                    WHERE w.daily_log_id = d.id
+                   UNION ALL
+                   SELECT d.id, 'BEDTIME', d.bedtime_marked_at, NULL, NULL, NULL, false, d.bedtime_marked_at
                     WHERE d.bedtime_marked_at IS NOT NULL) a) END AS actions
     FROM users u
     JOIN progression_state s ON s.user_id = u.id
@@ -187,7 +193,7 @@ const summaryOf = (row: SummaryRow): DaySummary => ({
   storyTotal: row.story_total,
   waterMl: row.water_ml,
   caloriesIn: Number(row.calories_in),
-  workoutMinutes: 0,
+  workoutMinutes: row.workout_minutes,
 });
 
 /** One summary per date from `from` to `to`, both included, oldest first. For an onboarded caller. */
@@ -215,13 +221,8 @@ export async function buildDayDetail(
   return {
     summary: summaryOf(rows[0]),
     actions: rows[0].actions.map(action => ({
-      id: action.id,
-      kind: action.kind,
+      ...action,
       at: new Date(action.at).toISOString(),
-      mealSlot: null,
-      label: action.label,
-      value: null,
-      undone: action.undone,
     })),
   };
 }
