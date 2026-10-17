@@ -1473,7 +1473,7 @@ Mỗi ngày logic người dùng có bốn bữa (sáng, trưa, tối, phụ) kh
 
 | Bảng | Lớp | Ghi chú |
 |---|---|---|
-| `meal_plans` | `content` | Thư viện món. Khóa chính `id`, duy nhất `code`. `kcal > 0`, `protein_g`, `carbs_g`, `fat_g ≥ 0` (`numeric`), `meal_slot` (4 bữa), `tags`, `portion_text`, `description`, `image_key` (`NULL` khi không có ảnh). |
+| `meal_plans` | `content` | Thư viện món. Khóa chính `id`, duy nhất `code`. `kcal` 1–5000 (như `nutrition_logs`, nên một bữa luôn ghi được), `protein_g`, `carbs_g`, `fat_g ≥ 0` (`numeric`), `meal_slot` (4 bữa), `tags`, `portion_text`, `description`, `image_key` (`NULL` khi không có ảnh). |
 | `daily_meal_plans` | `own_read` | Khóa chính `(user_id, logical_date, meal_slot)`. `meal_id` (khóa ngoại; `NULL` khi mọi món của bữa bị loại trừ lúc lập thực đơn), `swaps_used ≥ 0`, `shown_meal_ids` (các món bữa này đã hiện trong ngày, không bao giờ được đề xuất lại), `macro_warning`, `logged_action_id` (khóa ngoại tới `nutrition_logs`, có khi bữa đã được ghi). |
 
 `40-nutrition.sql` cũng thêm khóa ngoại `nutrition_logs.meal_id → meal_plans (id)` mà `31-story.sql` để lại.
@@ -1487,6 +1487,8 @@ Mỗi ngày logic người dùng có bốn bữa (sáng, trưa, tối, phụ) kh
 `GET /nutrition/plan` đọc thực đơn của **hôm nay** (ngày logic của `app.now()` theo múi giờ đã lưu, do SQL quyết). Chưa có dòng nào thì Node lập: với mỗi bữa `rankMeals(thư viện, slotTarget(đơn kê hiện tại, bữa), bữa, { excludeIds: [], excludedTags: excluded_meal_tags })`, rồi `pickMeal(ranked, Math.random)` (ngẫu nhiên trong 5 món đầu); `macroWarning` lấy từ kết quả xếp hạng. Bốn bữa được lưu bằng `nutrition_plan_save`, rồi đọc lại. Không còn món nào cho một bữa (mọi món bị loại trừ) → `meal: null`, `macroWarning: true`. Không món nào trong ±30 % → món gần nhất theo kcal, `macroWarning: true`. Thay đổi loại trừ nguyên liệu tác động ngay tới ứng viên đổi món và tới thực đơn từ lần lập sau (AR-15); lập lại thực đơn khi đổi cài đặt nằm ngoài phạm vi.
 
 Hai lần đọc đầu tiên chạy song song: cả hai có thể thấy chưa có dòng nào và cùng gọi `nutrition_plan_save`; hàm khóa dòng `users` trước, lượt sau chờ lượt trước commit rồi `ON CONFLICT DO NOTHING`, và câu đọc lại (một câu lệnh mới, READ COMMITTED) thấy thực đơn của lượt trước. Kết quả: một thực đơn, mọi câu trả lời giống nhau.
+
+**Qua nửa đêm logic giữa đọc và lưu.** `ensurePlan` đọc "hôm nay" (ngày D) rồi mới gọi `nutrition_plan_save(D, …)`. Nếu ranh giới ngày logic rơi đúng giữa hai câu lệnh, hàm tính lại hôm nay là D+1 và từ chối D là `DAY_CLOSED`: request trả `409 DAY_CLOSED`, không dòng nào được lưu. Gửi lại (app coi như mọi `409` có thể thử lại) sẽ lập thực đơn cho D+1. Cửa sổ chỉ dài bằng hai câu lệnh trong cùng một request; không có cơ chế tự thử lại trong server.
 
 ### Hàm
 
@@ -1504,7 +1506,7 @@ Ba hàm gọi được là `SECURITY DEFINER`, chỉ `app_auth`. **Khóa**: `use
 | Route | Auth | Thành công | Lỗi riêng |
 |---|---|---|---|
 | `GET /nutrition/plan` | `user` | `200 MealPlanState` | `409 DAY_CLOSED` (chỉ khi phải lập mà hôm nay không mở) |
-| `GET /nutrition/swap-candidates?mealSlot=` | `user` | `200 SwapCandidates` | `422 VALIDATION_FAILED` (`mealSlot` / `required`, `enum`) |
+| `GET /nutrition/swap-candidates?mealSlot=` | `user` | `200 SwapCandidates` | `422 VALIDATION_FAILED` (`mealSlot` / `required`, `enum`), `409 DAY_CLOSED` (như trên) |
 | `POST /nutrition/swap` | `user`, có khóa | `200 MealPlanState` | `422 VALIDATION_FAILED` (`mealSlot` / `required`, `enum`; `mealId` / `required`, `format`), `409 PLAN_NOT_FOUND`, `409 MEAL_ALREADY_LOGGED`, `409 SWAP_LIMIT_REACHED`, `422 SWAP_CANDIDATE_INVALID`, `409 DAY_CLOSED` |
 | `POST /nutrition/log` với `mealSlot` | `user`, có khóa | `200 ActionResult` | `409 PLAN_NOT_FOUND`, `409 MEAL_ALREADY_LOGGED`, `409 DAY_CLOSED`, `422 OCCURRED_AT_INVALID`, `422 VALIDATION_FAILED` (`mealSlot` cùng `kcal`) |
 

@@ -787,7 +787,7 @@ paths:
           description: '`SESSION_INVALID`'
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
         '409':
-          description: '`ONBOARDING_REQUIRED`'
+          description: '`ONBOARDING_REQUIRED`, `DAY_CLOSED`'
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
         '500':
           description: '`INTERNAL`'
@@ -813,7 +813,7 @@ paths:
           description: '`SESSION_INVALID`'
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
         '409':
-          description: '`ONBOARDING_REQUIRED`'
+          description: '`ONBOARDING_REQUIRED`, `DAY_CLOSED`'
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
         '422':
           description: '`VALIDATION_FAILED`'
