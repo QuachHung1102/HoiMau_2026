@@ -5,9 +5,9 @@
 - [Phân tích màn hình / luồng UX](../docs/design/screen-map.md).
 - [Hệ thống thiết kế](../DESIGN.md): font, màu, khoảng cách, icon và quy ước native.
 - [Animation](../docs/design/animation.md): trigger, timing, easing, lifecycle và Reduce Motion.
-- [Xem chuyển động trực tiếp](motion/playground.html): 55 chuyển động, 39 cốt lõi và 16 điểm nhấn, có công tắc giảm chuyển động.
+- [Xem chuyển động trực tiếp](motion/playground.html): 89 chuyển động, 73 cốt lõi và 16 điểm nhấn, có công tắc giảm chuyển động.
 - [Mầm tách lớp](assets/mam/): 5 giai đoạn × 3 tâm trạng, điểm xoay nằm sẵn trong SVG.
-- [Động tác mẫu](motion/exercises/): 6 video WebM lặp, không tiếng, kèm ảnh tư thế chính; khung xương tại `assets/exercise/rig-side.svg`.
+- [Động tác mẫu](motion/exercises/): 40 động tác, mỗi động tác một ảnh tư thế chính; 6 động tác đầu có thêm video WebM lặp, không tiếng. Khung xương nhìn nghiêng `assets/exercise/rig-side.svg` và nhìn thẳng `assets/exercise/rig-front.svg`; keyframe sinh bằng `node design/motion/rig-keyframes.mjs`, ảnh tư thế bằng `node design/motion/render-poses.mjs`.
 - Kiểm tra bàn giao: `node design/check.mjs`; thêm `--sync` để sinh lại gallery, dữ liệu playground và bảng danh mục chuyển động.
 - [Danh mục màn đã xuất](screens.json), [nguồn hình ảnh](assets/sources.json), [metadata GIF](motion/manifest.json).
 
