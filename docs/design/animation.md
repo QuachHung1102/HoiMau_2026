@@ -29,16 +29,25 @@ Nguồn chuẩn: [tokens.json](../../design/motion/tokens.json).
 | `transition` | 320 ms | Phần tử xuất hiện hoặc đổi chỗ, dịch tối đa 8 dp |
 | `celebration` | 450 ms | Pop thành công, huy hiệu, Mầm vui; scale 0,96 → 1 (đỉnh 1,06) |
 | `countUp` | 600 ms | Đếm số XP, xu, kcal; chip “+10 XP” bay lên |
+| `stepRun` | 750 ms | Một sải chạy bộ nhẹ (2 bước, khoảng 160 bước/phút), lặp |
+| `stepBrisk` | 1.100 ms | Một sải đi bộ nhanh (khoảng 109 bước/phút), hoặc 2 lần nhún nhẹ, lặp |
+| `stepCycle` | 1.200 ms | Đi bộ tại chỗ, nâng gối, gót chạm mông: 2 bước (100 bước/phút), lặp |
+| `stepSlow` | 1.600 ms | Một sải đi bộ chậm (75 bước/phút), lặp |
 | `shimmerLoop` | 1.200 ms | Skeleton lấp lánh, lặp |
 | `celebrationLong` | 1.600 ms | Lên cấp, cột mốc chuỗi, Mầm tiến hóa, kết thúc buổi tập |
 | `flameLoop` | 2.000 ms | Lửa chuỗi ≥ 3 ngày, lặp khi đang được nhìn thấy |
 | `demoLoop` | 2.400 ms | Minh họa động tác trong Focus Mode, lặp |
 | `mascotIdle` | 3.000 ms | Mầm thở, lá đung đưa, chớp mắt, lặp |
 | `repCycle` | 3.200 ms | Một lần lặp của động tác mẫu có nhịp (squat, chống đẩy tựa bàn, chùng chân lùi), lặp |
-| `holdCycle` | 4.000 ms | Động tác mẫu giữ tư thế (plank tựa gối, thả lỏng vai), lặp |
+| `holdCycle` | 4.000 ms | Động tác mẫu giữ tư thế (plank tựa gối, thả lỏng vai, các động tác giãn), lặp |
 | `mascotTired` | 5.000 ms | Mầm buồn ngủ, lặp |
 | `undoWindow` | 5.000 ms | Thanh đếm ngược Hoàn tác; phải bằng cửa sổ nghiệp vụ F-06 do máy chủ quy định |
+| `slowRepCycle` | 6.000 ms | Một lần lặp chậm: nhón gót khoảng 3 giây lên, 3 giây xuống |
 | `breathCycle` | 8.000 ms | Hít vào 4 giây · thở ra 4 giây |
+| `sideHoldCycle` | 8.000 ms | Động tác giữ tư thế lần lượt hai bên (nghiêng cổ, xoay thân), mỗi bên 4 giây |
+| `breathLong` | 10.000 ms | Thở bụng 5 · 5 giây, thở ra dài 4 · 6 giây |
+| `boxBreath` | 16.000 ms | Thở vuông 4 · 4 · 4 · 4 giây |
+| `bodyScan` | 20.000 ms | Thả lỏng từng vùng: 5 vùng × 4 giây |
 
 Easing: `enter` cubic-bezier(0.2, 0, 0, 1), `exit` (0.4, 0, 1, 1), `idle` (0.4, 0, 0.6, 1), `linear`. Lò xo cho Reanimated `withSpring`: `pop` (damping 12, stiffness 220) và `gentle` (damping 18, stiffness 120); playground dùng cubic-bezier xấp xỉ `webApprox`. Chuyển màn, sheet và Back vẫn dùng motion native của nền tảng.
 
@@ -103,7 +112,11 @@ Runtime đề xuất: react-native-reanimated cho mọi chuyển động giao di
 
 Opacity/transform phù hợp cho animation đơn giản; không animate toàn bộ layout danh sách trong mỗi frame. Mục tiêu độ mượt cần đo trên thiết bị thật, không suy ra từ GIF hoặc máy phát triển. Không xuất toàn bộ màn hình thành ảnh rồi animate ảnh đó trong sản phẩm.
 
-Động tác mẫu dùng khung xương `design/assets/exercise/rig-side.svg` và keyframe trong catalog (loại `exercise`). App có thể render trực tiếp bằng react-native-svg, hoặc phát `videoUrl` (WebM/MP4 lặp, không tiếng). Video quay thật có thể thay bất kỳ lúc nào. WebM trong repo là bản xem trước; iOS (AVPlayer) không phát WebM, nên khi đóng gói cần xuất thêm bản MP4 H.264 cho mỗi động tác.
+Động tác mẫu dùng khung xương và keyframe trong catalog (loại `exercise`, 40 mục, mỗi động tác trong thư viện một mục). Trường `rig` chọn khung: `side` là `design/assets/exercise/rig-side.svg` (nhìn nghiêng, mặt hướng sang phải; tay chân `-f` ở gần, `-b` ở xa), `front` là `design/assets/exercise/rig-front.svg` (nhìn thẳng; `-r` là bên phải của nhân vật, nằm bên trái người xem, `-l` là bên trái). Khung nhìn thẳng dùng cho chuyển động trong mặt phẳng trán hoặc xoay: nghiêng cổ, xoay thân, xoay hông, đẩy vai, bước ngang. Hai khung cùng bảng màu, độ dày nét, tỉ lệ; mỗi khớp là một nhóm có `style="transform-origin:Xpx Ypx"`. Trường `prop` là danh sách đạo cụ cần hiện (`mat`, `bench`, `chair`, `sofa`, `wall`, `anchor`, `band`, `miniband`, `dumbbell`, `dumbbell-f`, `palm-f`): hiện phần tử `#prop-<tên>` và `#prop-<tên>-*`, đạo cụ khác ẩn. Dây kháng lực là một nhóm có keyframe riêng (`#prop-band`, `#prop-miniband`) để đầu dây đi theo tay hoặc đùi. Trường `poster` là thời điểm trong vòng lặp (0–1) của ảnh tư thế chính, cũng là tư thế đứng yên khi giảm chuyển động.
+
+Động tác thở dùng `demo: "breath"`: nhân vật ngồi trên ghế, bụng phồng theo hơi thở, và `pattern` là các pha `[{label, ms}]` (“Hít vào”, “Giữ”, “Thở ra”, “Nghỉ”) có tổng bằng thời lượng vòng lặp; app hiện nhãn của pha đang chạy. “Thả lỏng từng vùng” thêm `highlight` `[{region, ms}]`, `region` là id khớp trong khung xương, vùng đang tới lượt được làm nổi (playground dùng viền sáng màu lá).
+
+Keyframe của 34 động tác mới được sinh bằng `node design/motion/rig-keyframes.mjs` từ bảng góc khớp; script tự kiểm: vòng lặp khép kín, điểm chạm (bàn chân, bàn tay, đầu gối, đầu dây) lệch không quá 1,5 px giữa các keyframe khi nội suy tuyến tính, bàn chân không lún xuống sàn, góc mỗi khớp nằm trong tầm vận động an toàn của người lớn. Thêm `--check` để chỉ so với catalog. Ảnh tư thế 480×360 sinh bằng `node design/motion/render-poses.mjs` từ chính keyframe đó. App render trực tiếp bằng react-native-svg; chỉ 6 động tác đầu có WebM làm bản xem trước lúc thiết kế (iOS AVPlayer không phát WebM; nếu cần video khi đóng gói thì xuất MP4 H.264). Video quay thật có thể thay bất kỳ lúc nào.
 
 ## Kiểm chứng và giới hạn
 
@@ -144,6 +157,40 @@ Bảng dưới được sinh từ `design/motion/catalog.json` bằng `node desi
 | `exercise-chung-chan-lui` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
 | `exercise-plank-tua-goi` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
 | `exercise-tha-long-vai` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-nghieng-co-nhe` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-mo-nguc` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-gian-co-tay` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-xoay-than-khi-ngoi` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-cui-nguoi-gian-lung` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-cong-va-vong-lung` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-gian-dui-truoc` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-gian-bap-chan` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-xoay-hong` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-dung-len-ngoi-xuong-ghe` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-chong-day-tua-tuong` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-nhon-got` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-cau-mong` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-tay-chan-doi-dien` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-squat-cam-ta-tay` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-day-vai-voi-ta-tay` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-cheo-ta-tay` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-gap-hong-voi-ta-tay` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-cuon-ta-tay-truoc` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-keo-day-khang-luc` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-buoc-ngang-voi-day-khang-luc` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-di-bo-tai-cho` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-nang-dau-goi` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-got-cham-mong` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-dang-tay-buoc-ngang` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-di-bo-nhanh` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-chay-bo-nhe` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-nhun-nhe-tai-cho` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-leo-nui-tua-ban` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-di-bo-cham` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Ảnh tư thế chính đứng yên, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-tho-bung` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Nhân vật ngồi yên; chữ hướng dẫn nhịp thở đổi theo từng pha, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-tho-ra-dai` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Nhân vật ngồi yên; chữ hướng dẫn nhịp thở đổi theo từng pha, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-tho-vuong` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Nhân vật ngồi yên; chữ hướng dẫn nhịp thở đổi theo từng pha, kèm 3 bước hướng dẫn bằng chữ. |
+| `exercise-tha-long-tung-vung` | 1 | exercise | S18, S19, S82 | visible:exercise-demo | Nhân vật ngồi yên; tên từng vùng cơ thể hiện lần lượt bằng chữ, kèm 3 bước hướng dẫn bằng chữ. |
 | `xp-float` | 1 | reward | S09, S20, S33 | confirmed:xp-awarded | “+10 XP” hiện tĩnh trong thanh thông báo. |
 | `coin-fly` | 2 | reward | S09, S20 | confirmed:coin-awarded | Số xu mới hiện ngay trên chip xu. |
 | `reject-revert` | 1 | feedback | S09 | state:failed | Ô nước trở về trống ngay; lời nhắn lỗi và nút Thử lại hiện bên cạnh. |
