@@ -372,15 +372,15 @@ move('TAY_CHAN_DOI_DIEN', 'Tay chân đối diện', {
   rig: 'side', prop: ['mat'], durationToken: 'holdCycle', poster: 0.5,
   pose: t => {
     const u = hold(t), P = quadruped(side(), QX, QUAD_TAU);
-    P.aim('head', QUAD_TAU - 18 * u); // the head lifts a little so the reaching arm shows below it
-    armSide(P, 'f', QUAD_HAND(QX));
-    quadArm ??= (() => { const Q = quadruped(side(), QX, QUAD_TAU); armSide(Q, 'b', QUAD_HAND(QX)); return worldArm(Q, 'b'); })();
-    // far arm forward (a little below level, so it shows under the head) and near leg back
-    armAngles(P, 'b', lerp(quadArm[0], -80, u), lerp(quadArm[1], -80, u));
-    return legAngles(P, 'f', 92 * u, lerp(90, 92, u), lerp(140, 102, u));
+    P.aim('head', QUAD_TAU); // head neutral, in line with the back
+    armSide(P, 'b', QUAD_HAND(QX));
+    quadArm ??= (() => { const Q = quadruped(side(), QX, QUAD_TAU); armSide(Q, 'f', QUAD_HAND(QX)); return worldArm(Q, 'f'); })();
+    // near arm straight forward at shoulder height (level with the floor), far leg straight back: opposite limbs
+    armAngles(P, 'f', lerp(quadArm[0], -90, u), lerp(quadArm[1], -90, u));
+    return legAngles(P, 'b', 92 * u, lerp(90, 92, u), lerp(140, 102, u));
   },
-  contacts: [{ fixed: SP.hand('f') }, { fixed: SP.knee('b') }, { fixed: SP.toe('b') }, { fixed: SP.heel('b') }],
-  straight: ['f'],
+  contacts: [{ fixed: SP.hand('b') }, { fixed: SP.knee('f') }, { fixed: SP.toe('f') }, { fixed: SP.heel('f') }],
+  straight: ['b'],
 });
 
 move('SQUAT_TA_TAY', 'Squat cầm tạ tay', {
