@@ -471,7 +471,7 @@ export const MEALS: Meal[] = ROWS.map(([code, name, mealSlot, kcal, proteinG, ca
   fatG,
   tags,
   portionText: `1 phần của ${name.toLowerCase()}.`,
-  description: `${name}, một gợi ý cho ${mealSlot.toLowerCase()}.`,
+  description: `Mô tả của ${name.toLowerCase()}.`,
   imageKey,
 }));
 export const mealByCode = (code: string) => MEALS.find(meal => meal.code === code) as Meal;
