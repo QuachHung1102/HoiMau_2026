@@ -1137,7 +1137,7 @@ Luật riêng:
 - **Tick mang id đã có.** Của chính người gọi: lượt gọi là **no-op** trả về trạng thái hiện tại của nhiệm vụ mà tick đó thuộc về (`applied = false`), không xét gì khác: không `QUEST_ALREADY_COMPLETE` cho lần gửi lại của tick thứ tám, không `DAY_CLOSED` cho ngày đã đóng từ đó. Của người khác: `IDEMPOTENCY_KEY_REUSED`. Qua HTTP, lần gửi lại thường được tầng idempotency trả lời trước khi tới đây; nhánh này dành cho khi câu trả lời đã lưu không còn (quá 7 ngày, đổi `JOURNAL_KEY`).
 - **`occurredAt`** (`app._occurred_at`): vắng thì là `app.now()`; đi trước `app.now()` quá 120 giây là `OCCURRED_AT_INVALID`; đi trước ít hơn thì coi là bây giờ (đồng hồ máy chạy nhanh); cũ hơn 48 giờ là `DAY_CLOSED`. Tick được ghi vào ngày của thời điểm đó, không phải ngày của lúc gửi.
 - **Giờ ngủ (AR-13)** xét giờ đồng hồ của thời điểm (đã xử lý như trên) theo múi giờ người dùng: 03:00–17:59 là `BEDTIME_TOO_EARLY`; còn lại thì `bedtime_marked_at` là **thời điểm sớm nhất trong các dấu đã được nhận** (`least(dấu đang có, dấu mới)`: dấu bấm lúc 22:55 mà tới sau dấu bấm lúc 23:10 vẫn là giờ người đó đánh dấu); 18:00–22:59 thì hoàn thành nhiệm vụ ẩn `BEDTIME_BEFORE_23` của ngày đó, một lần, thưởng theo dòng `quests` (30 XP, 15 xu) với `QUEST_COMPLETE` / `BEDTIME_BEFORE_23:<ngày logic>`. Gọi lại không phải lỗi và không được gì. "Một lần" có hai lớp giữ: `completed_at` của dòng tiến độ, và khóa duy nhất của sổ cái. Dấu lúc 02:30 thuộc về ngày logic hôm trước.
-- **Hoàn tác không bao giờ đưa một tổng sổ cái xuống dưới 0.** Nếu số xu của tick đã bị tiêu trước khi lượt hoàn tác tới (mua vật phẩm trong 10 giây đó), hàm từ chối bằng `UNDO_WINDOW_EXPIRED`: hợp đồng ghi `xp` và `coin` có `minimum: 0`, và không gì kẹp một tổng sổ cái.
+- **Hoàn tác không bao giờ đưa một tổng sổ cái xuống dưới 0.** Nếu số xu của tick đã bị tiêu trước khi lượt hoàn tác tới (mua vật phẩm trong 10 giây đó, xem "Cửa hàng, kho đồ và đặc quyền"), hàm từ chối bằng `409 UNDO_COINS_SPENT` (từ Task 37; trước đó là mã tạm `UNDO_WINDOW_EXPIRED`) và không ghi gì: tick vẫn còn, vật phẩm đã mua vẫn là của người dùng. Hợp đồng ghi `xp` và `coin` có `minimum: 0`, và không gì kẹp một tổng sổ cái.
 - `LEVEL_UP` và `PET_STAGE_UP` đi theo `xp_high_water`: tick, hoàn tác rồi tick lại không báo lên cấp lần thứ hai.
 
 ### `app.logical_day_end` và các hàm nội bộ
@@ -1420,6 +1420,7 @@ Kịch bản in tài khoản (`demo-<tên>@hoimau.test`, mật khẩu `matkhau12
 | `streak6` | sáu ngày hoàn thành đã đóng; hôm nay mở, lần đóng sau chạm mốc 7 ngày | 07/03/2027 20:00 |
 | `missed3` | ba ngày bỏ lỡ đã đóng; thú mệt (`GET /pet` mood `TIRED`) | 04/03/2027 09:00 |
 | `broken` | chuỗi 5, hôm qua bỏ lỡ và đã đóng: trong cửa sổ cứu chuỗi, `breakNotice.previous` là 5 | 07/03/2027 09:00 |
+| `rich` | cấp 8, 500 xu, 3 điểm đặc quyền (đã mở `TICKET_CAP_PLUS` và chủ đề `THEME_FOREST`). XP và xu được **cấp thẳng** qua `app._grant` bằng superuser (`ctx.grant`, chỉ cho tài khoản demo), không kiếm bằng cách chơi | 01/03/2027 09:00 |
 
 - **Cách dựng.** Đăng ký, onboarding (Hồ Chí Minh, số đo hợp lý), rồi mỗi ngày: đồng hồ tới 12:00 địa phương, ghi một bữa mà tổng nằm giữa `calorieWindow.min` và `.max` của `GET /day` (không tự tính dải), hoàn thành bài tập ngắn nhất của thư viện thật; đồng hồ tới 04:00 địa phương hôm sau (sau 03:00) và chạy `day-close`. Một ngày bỏ lỡ chỉ bỏ hai bước đầu.
 - **Ngày và giờ chỉ đến từ server.** Giờ địa phương được đặt từ `closesAt` của `GET /day` (03:00 hôm sau), không từ phép tính múi giờ của Node: Node và PostgreSQL lệch nhau ở bốn múi giờ (xem "Ngày và nhiệm vụ"). Cách trừ giờ từ `closesAt` chỉ đúng với múi giờ có độ lệch cố định; tài khoản demo luôn ở `Asia/Ho_Chi_Minh` (không đổi giờ mùa hè). Múi giờ khác thì phải hỏi server từng thời điểm.
@@ -1528,3 +1529,63 @@ Ba hàm gọi được là `SECURITY DEFINER`, chỉ `app_auth`. **Khóa**: `use
 - Ràng buộc "không ghi đè", giới hạn lượt, thứ tự lỗi và chốt nhiệm vụ do test giữ; cổng 1 và 3 không đọc thân hàm.
 
 Sửa `40-nutrition.sql` thì chạy `npm run server:test`, không chỉ `npm run db:verify`.
+
+## Cửa hàng, kho đồ và đặc quyền (`41-shop.sql`, `routes/shop.ts`, `routes/perks.ts`, `readModels/shop.ts`)
+
+Tiêu xu vào vật phẩm thẩm mỹ, mỗi vật phẩm một lần, không bao giờ tiêu quá số dư; trang bị vật phẩm; tiêu điểm đặc quyền vào ba tiện ích. Hợp đồng: `Shop`, `ShopItem`, `PurchaseResult`, `Inventory`, `Perks`, `PerkUnlockRequest` trong `docs/api/openapi.yaml`; giá đặc quyền là `PERKS` của `domain/economy.ts` (F-10, R-03.2, R-D07, AR-31).
+
+### Bảng
+
+Không có bảng mới: `shop_items`, `inventory`, `perk_unlocks`, `coin_ledger` của `20-progression.sql`. Không lưu số dư, cấp hay điểm (AR-04): xu là tổng `coin_ledger`, cấp tính từ tổng XP hiện tại, điểm đặc quyền tính từ `xp_high_water`, chủ đề / trang phục / huy hiệu đang dùng là dòng `inventory` có `equipped`. Vật phẩm mặc định (`THEME_DEFAULT`, `SKIN_DEFAULT`) ai cũng sở hữu và **không bao giờ là một dòng `inventory`** (AR-31): "đang dùng mặc định" nghĩa là loại đó không có dòng nào `equipped`.
+
+### Hàm
+
+| Hàm | Việc |
+|---|---|
+| `app._lock_progression(p_user uuid) → void` (nội bộ) | Khóa dòng `users` (`FOR NO KEY UPDATE`, khóa đầu tiên của mọi thao tác ghi của người dùng) rồi dòng `progression_state` (`FOR UPDATE`). `ONBOARDING_REQUIRED` cho người đã xóa / chưa onboarding. |
+| `shop_purchase(p_item_code text, p_action_id uuid) → jsonb` | Mua bằng xu. Thứ tự lỗi: `ITEM_NOT_FOUND` → `ITEM_NOT_PURCHASABLE` (huy hiệu kiếm được, vật phẩm mặc định) → `ITEM_LOCKED_LEVEL` (`details.minLevel`; cấp của tổng XP hiện tại, `app._level`) → `ALREADY_OWNED` → `INSUFFICIENT_COINS` (`details.price`, `details.coin`). Rồi `app._grant(người gọi, 0, −giá, 'PURCHASE', mã vật phẩm)` và dòng `inventory`, trong cùng transaction (R-10.2). Khóa sổ cái là **mã vật phẩm** (AR-34): một vật phẩm chỉ được trả tiền một lần trong đời tài khoản. Không ghi XP, không chạm chuỗi ngày hay tổ đội (R-10.1). Trả kết quả `app._grant` cộng `reason`, `ref`. `p_action_id` không đặt tên dòng nào: phát lại là việc của tầng idempotency. |
+| `inventory_equip(p_item_code text) → void` | `ITEM_NOT_OWNED` trừ khi vật phẩm là của người gọi hoặc là mặc định (mã không tồn tại cũng là `ITEM_NOT_OWNED`). Bỏ trang bị mọi dòng **cùng loại** của người gọi, rồi trang bị dòng của vật phẩm; vật phẩm mặc định không có dòng, nên trang bị nó để loại đó không còn dòng nào `equipped`. Loại khác không bị đụng tới. |
+| `perk_unlock(p_perk_code text, p_item_code text) → void` | Giá: `MEAL_SWAP_PLUS` 2, `TICKET_CAP_PLUS` 3, `THEME_UNLOCK` 1 (bằng `PERKS`; test đọc cột `cost` sau mỗi lần mở). Mã khác: `VALIDATION_FAILED` (`perkCode` / `enum`). Hai đặc quyền một lần: `PERK_ALREADY_UNLOCKED` ở lần thứ hai. `THEME_UNLOCK` lấy chủ đề `p_item_code` bất kể giá (AR-31): `ITEM_NOT_FOUND` (không phải chủ đề, hoặc là chủ đề mặc định) → `ALREADY_OWNED` → `ITEM_LOCKED_LEVEL` (`details.minLevel`), rồi thêm dòng `inventory`, không chạm xu. Cuối cùng `PERK_POINTS_INSUFFICIENT` nếu điểm còn lại không đủ: (cấp cao nhất có `cumulative_xp ≤ xp_high_water`) − 1 − tổng `perk_unlocks.cost`. |
+
+Ba hàm gọi được là `SECURITY DEFINER`, `EXECUTE` chỉ cho `app_auth`, đăng ký trong `meta`; người dùng luôn là `app.current_user_id()`, không hàm nào nhận id người dùng, giá hay số điểm.
+
+**Vì sao không bao giờ tiêu quá.** Mỗi hàm gọi `app._lock_progression` **trước khi đọc** số dư, cấp, quyền sở hữu hay điểm. Hai request của cùng một người chạy lần lượt: request sau chờ khóa, rồi (READ COMMITTED, mỗi câu lệnh đọc cái đã commit) thấy dòng sổ cái và dòng `inventory` của request trước. Không có `CHECK` nào giữ điều này (số dư không phải một cột): bỏ khóa đi là test đua thấy tiêu quá ngay (xem dưới). Mua cùng một vật phẩm hai lần còn có thêm hai lớp: khóa duy nhất `(user_id, reason, ref_id)` của sổ cái và `(user_id, shop_item_id)` của `inventory`.
+
+**Điểm đặc quyền không bao giờ bị lấy lại.** Điểm tính từ `xp_high_water`, không từ tổng XP: một lượt hoàn tác (hay một bút toán âm) hạ tổng XP và có thể hạ cấp hiện tại (cửa hàng khóa lại vật phẩm cấp cao), nhưng điểm vẫn nguyên.
+
+**Hoàn tác sau khi mua.** Một tick cho 5 xu, người dùng tiêu chúng trong 10 giây rồi bấm Hoàn tác: `quest_undo` từ chối bằng `409 UNDO_COINS_SPENT` (mã mới của Task 37, thay mã tạm `UNDO_WINDOW_EXPIRED` của Task 20) và không ghi gì. Hoàn tác phải đảo đúng các dòng sổ cái của tick, và tổng xu không bao giờ âm; báo "hết thời gian" thì sai sự thật.
+
+### Sáu route
+
+| Route | Auth | Thành công | Lỗi riêng |
+|---|---|---|---|
+| `GET /shop` | `user` | `200 Shop` | – |
+| `POST /shop/{itemCode}/purchase` | `user`, có khóa, không thân | `200 PurchaseResult` | `404 ITEM_NOT_FOUND`, `409 ITEM_NOT_PURCHASABLE`, `409 ITEM_LOCKED_LEVEL` (`minLevel`), `409 ALREADY_OWNED`, `409 INSUFFICIENT_COINS` (`price`, `coin`) |
+| `GET /inventory` | `user` | `200 Inventory` | – |
+| `POST /inventory/{itemCode}/equip` | `user`, có khóa, không thân | `200 Inventory` | `409 ITEM_NOT_OWNED` |
+| `GET /perks` | `user` | `200 Perks` | – |
+| `POST /perks/unlock` | `user`, có khóa | `200 Perks` | `422 VALIDATION_FAILED` (`body`; `perkCode` / `required`, `enum`; `itemCode` / `required` cho `THEME_UNLOCK`, `format`), `404 ITEM_NOT_FOUND`, `409 ALREADY_OWNED`, `409 ITEM_LOCKED_LEVEL` (`minLevel`), `409 PERK_ALREADY_UNLOCKED`, `409 PERK_POINTS_INSUFFICIENT` |
+
+- **`ShopItem`**: `code`, `name`, `kind`, `priceCoin`, `minLevel`, `assetKey`, `purchasable`, `isDefault` (của `shop_items`), `owned` (mặc định, hoặc có dòng `inventory`), `equipped` (dòng `equipped`; vật phẩm mặc định khi loại đó không có dòng nào `equipped`), `locked` (cấp hiện tại < `minLevel`). Thứ tự cố định: loại (`THEME`, `PET_SKIN`, `BADGE`), mặc định trước, rồi cấp, giá, mã.
+- **`GET /shop`**: vật phẩm mua được và vật phẩm mặc định (huy hiệu kiếm được không có trong cửa hàng), `coin` = tổng sổ cái, `level` = cấp của tổng XP hiện tại.
+- **`GET /inventory`**: vật phẩm đã sở hữu: hai mặc định, đồ đã mua, chủ đề mở bằng đặc quyền, huy hiệu kiếm được.
+- **`PurchaseResult`**: `coin` = số dư sau khi mua, `item` = vật phẩm vừa mua (`owned: true`, `equipped: false`). Mua **không** tự trang bị.
+- **`Perks`**: ba đặc quyền theo thứ tự `PERKS`, mỗi cái `{code, cost, unlocked, repeatable}`; `repeatable` chỉ đúng với `THEME_UNLOCK`, và `unlocked` của nó đúng khi đã dùng ít nhất một lần; `pointsAvailable`. Với đặc quyền khác `THEME_UNLOCK`, `itemCode` bị bỏ qua.
+- `GET /me` `appearance` đổi ngay sau khi trang bị (cùng nguồn: dòng `equipped`).
+- Mỗi lần mua ghi một dòng `log.ledger` (`kind: 'coin'`, số âm, `reason: 'PURCHASE'`, `refId` = mã vật phẩm). Trang bị và mở đặc quyền không ghi sổ cái.
+
+### Mồi nhử, ca tấn công, test
+
+- Không có file mồi nhử mới: `80-decoy-base.sql` đã cho `DECOY_1` một dòng `inventory` (`THEME_FOREST`) và một dòng `perk_unlocks` (`THEME_UNLOCK` của `THEME_FOREST`).
+- `server/checks/attacks/shop.ts` (ba ca): `INSERT` trực tiếp vào `inventory`, `coin_ledger`, `perk_unlocks` bằng `app_auth` → `permission denied for table`; A mua và trang bị `THEME_FOREST` trong lúc mồi nhử sở hữu **và đang trang bị** nó (chỉ điều kiện chủ sở hữu ngăn A bị báo `ALREADY_OWNED`, ngăn lượt trang bị của A bỏ trang bị dòng của mồi nhử, và ngăn A trang bị trước khi mua); A mở `THEME_FOREST` bằng điểm đặc quyền duy nhất của mình (chỉ điều kiện chủ sở hữu ngăn điểm đã tiêu và dòng chủ đề của mồi nhử tính vào A). Ca tấn công cấp xu / XP cho A rồi xóa lại mọi thứ đã cho, để các ca sau gặp A như cũ.
+- `server/src/routes/shop.test.ts` (qua HTTP, và qua hai pool `app_conn` với đổi vai thật): cửa hàng; mua (số dư giảm đúng giá, một dòng `inventory`, một dòng sổ cái, không dòng XP, `progression_state` không đổi, dòng log; phát lại cùng khóa → câu trả lời giống hệt, vẫn một dòng); từng lỗi với mã và `details`; hoàn tác sau khi mua → `UNDO_COINS_SPENT`; ba cuộc đua (`Promise.allSettled`, mỗi lời gọi là một transaction, xen kẽ hai pool): hai vật phẩm mỗi cái bằng cả số dư (20 vòng) → đúng một thành công, số dư 0; cùng vật phẩm hai khóa (20 vòng) → một dòng `inventory`, một dòng sổ cái, lượt kia `ALREADY_OWNED`; mười vật phẩm 30 xu với 100 xu → đúng 3 thành công, còn 10; trang bị; kho đồ; đặc quyền; năm `THEME_UNLOCK` song song với 3 điểm (10 vòng) → đúng 3, điểm về 0, không âm; điểm còn nguyên sau khi tổng XP bị hạ dưới ngưỡng cấp.
+- **Test có cắn.** Mỗi luật đã được phá thử một lần và test tương ứng đỏ: bỏ khóa (thêm `pg_sleep` giữa đọc số dư và trừ xu) → ba test đua đỏ; giá lệch 1 xu; bỏ kiểm số dư; bỏ `ALREADY_OWNED`; phát lại không qua tầng idempotency; bỏ khóa của `perk_unlock`; đổi giá đặc quyền; đặc quyền một lần mở lại được; `THEME_UNLOCK` bỏ qua cấp hoặc chủ đề đã có; điểm tính từ tổng XP; trang bị bỏ trang bị mọi loại hoặc không kiểm quyền sở hữu; hoàn tác trả lại mã cũ. Bỏ từng điều kiện chủ sở hữu (sở hữu khi mua, bỏ trang bị, sở hữu khi trang bị, tổng điểm đã tiêu, sở hữu khi mở chủ đề) thì ca tấn công tương ứng đỏ.
+- Kịch bản `rich` (cấp 8, 500 xu, 3 điểm) để thử cửa hàng trên app: xem "Kịch bản phát triển".
+
+### Phần ba cổng không nhìn thấy
+
+- Giá đặc quyền có hai bản: `PERKS` của `domain/economy.ts` và biểu thức `CASE` trong `perk_unlock`; test đọc cột `cost` giữ chúng khớp nhau. Ngưỡng cấp đến từ `level_thresholds` (seed từ domain).
+- Thứ tự lỗi, "mua không ghi XP", khóa trước khi đọc và các điều kiện chủ sở hữu do test và ca tấn công giữ; cổng 1 và 3 không đọc thân hàm.
+- Vật phẩm giá 0 sẽ được mua mà không có dòng sổ cái nào (`amount <> 0`); hiện không có vật phẩm như vậy.
+
+Sửa `41-shop.sql` thì chạy `npm run server:test` và `npm run db:api-check`, không chỉ `npm run db:verify`.
