@@ -1,7 +1,8 @@
 // Nutrition routes: the calorie log. The manual entry hands the user's intent to
 // nutrition_log_manual (31-story.sql), which decides the day, the total and the reward. Every
 // refusal is THROWN: a refused log leaves no row, no calories and no ledger row, and frees its
-// key. The planned meal of a slot (`mealSlot`) is Task 33's: until then it is 409 PLAN_NOT_FOUND.
+// key. The planned meal of a slot (`mealSlot`) goes to nutrition_log_slot (40-nutrition.sql),
+// which logs the kcal of that day's planned meal of the slot, once, with the same latch.
 import type { GameEvent } from '../../../domain/contract/common.ts';
 import type { FieldError } from '../../../domain/validation.ts';
 import type { MealSlot } from '../../../domain/types.ts';
@@ -61,27 +62,31 @@ async function log(ctx: Ctx): Promise<RouteResponse> {
     if (typeof body.mealSlot !== 'string' || !Object.hasOwn(MEAL_SLOTS, body.mealSlot)) {
       throw new AppError('VALIDATION_FAILED', { fields: [{ field: 'mealSlot', rule: 'enum' }] });
     }
-    occurredAtOf(body);
-    // ponytail: no meal plan exists before Task 33, which replaces this line with nutrition_log_slot
-    throw new AppError('PLAN_NOT_FOUND');
   }
 
-  const label = labelOf(body.label);
-  const fields = [
-    kcalProblem(body.kcal),
-    label !== null && typeof label === 'object' ? label : null,
-  ].filter((field): field is Field => field !== null);
-  if (fields.length > 0) {
-    throw new AppError('VALIDATION_FAILED', { fields });
+  let call: [string, unknown[]];
+  if (hasSlot) {
+    call = [
+      'SELECT nutrition_log_slot($1, $2, $3) AS result',
+      [ctx.actionId, body.mealSlot, occurredAtOf(body)],
+    ];
+  } else {
+    const label = labelOf(body.label);
+    const fields = [
+      kcalProblem(body.kcal),
+      label !== null && typeof label === 'object' ? label : null,
+    ].filter((field): field is Field => field !== null);
+    if (fields.length > 0) {
+      throw new AppError('VALIDATION_FAILED', { fields });
+    }
+    call = [
+      'SELECT nutrition_log_manual($1, $2, $3, $4) AS result',
+      [ctx.actionId, body.kcal, label, occurredAtOf(body)],
+    ];
   }
   const { rows } = await ctx.db.query<{
     result: Grant & { completed: boolean; storyAllDone: boolean };
-  }>('SELECT nutrition_log_manual($1, $2, $3, $4) AS result', [
-    ctx.actionId,
-    body.kcal,
-    label,
-    occurredAtOf(body),
-  ]);
+  }>(...call);
   const { result } = rows[0];
   const events: GameEvent[] = [
     ...(result.completed ? [{ type: 'QUEST_COMPLETED', questCode: 'NUTRITION_TARGET' } as const] : []),
