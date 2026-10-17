@@ -50,7 +50,7 @@ function SlotRow({ slot, waiting, onPress }: { slot: Slot; waiting: boolean; onP
           </View>
         ) : null}
       </View>
-      {/* The words "đã ghi" / "đang chờ gửi" are in the line above; the mark is an extra, never the only sign. */}
+      {/* The words in the line above say it; the mark is an extra, never the only sign. */}
       {slot.logged ? <Icon name="CircleCheck" /> : waiting ? <Icon name="Clock" color={palette.muted} /> : null}
       <Icon name="ChevronRight" color={palette.muted} />
     </Touchable>

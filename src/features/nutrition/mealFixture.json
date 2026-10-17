@@ -1,0 +1,243 @@
+[
+  {
+    "code": "YEN_MACH",
+    "name": "Yến mạch và trái cây",
+    "mealSlot": "BREAKFAST",
+    "kcal": 540,
+    "proteinG": 19,
+    "carbsG": 78,
+    "fatG": 17,
+    "tags": [
+      "khong-thit",
+      "it-nau",
+      "co:sua",
+      "co:gluten"
+    ],
+    "portionText": "1 phần của yến mạch và trái cây.",
+    "description": "Mô tả của yến mạch và trái cây.",
+    "imageKey": "e1ZpZ"
+  },
+  {
+    "code": "BANH_MI_TRUNG",
+    "name": "Bánh mì trứng",
+    "mealSlot": "BREAKFAST",
+    "kcal": 560,
+    "proteinG": 24,
+    "carbsG": 70,
+    "fatG": 20,
+    "tags": [
+      "ngoai-hang",
+      "co:trung",
+      "co:gluten"
+    ],
+    "portionText": "1 phần của bánh mì trứng.",
+    "description": "Mô tả của bánh mì trứng.",
+    "imageKey": null
+  },
+  {
+    "code": "XOI_DAU",
+    "name": "Xôi đậu xanh",
+    "mealSlot": "BREAKFAST",
+    "kcal": 580,
+    "proteinG": 16,
+    "carbsG": 100,
+    "fatG": 11,
+    "tags": [
+      "chay",
+      "ngoai-hang"
+    ],
+    "portionText": "1 phần của xôi đậu xanh.",
+    "description": "Mô tả của xôi đậu xanh.",
+    "imageKey": null
+  },
+  {
+    "code": "COM_GA",
+    "name": "Cơm gà, rau củ",
+    "mealSlot": "LUNCH",
+    "kcal": 820,
+    "proteinG": 50,
+    "carbsG": 100,
+    "fatG": 24,
+    "tags": [
+      "ngoai-hang",
+      "co:gia-cam"
+    ],
+    "portionText": "1 phần của cơm gà, rau củ.",
+    "description": "Mô tả của cơm gà, rau củ.",
+    "imageKey": "Fr7yg"
+  },
+  {
+    "code": "COM_CA",
+    "name": "Cơm cá và rau luộc",
+    "mealSlot": "LUNCH",
+    "kcal": 790,
+    "proteinG": 46,
+    "carbsG": 92,
+    "fatG": 26,
+    "tags": [
+      "co:hai-san"
+    ],
+    "portionText": "1 phần của cơm cá và rau luộc.",
+    "description": "Mô tả của cơm cá và rau luộc.",
+    "imageKey": null
+  },
+  {
+    "code": "BUN_GA",
+    "name": "Bún gà rau thơm",
+    "mealSlot": "LUNCH",
+    "kcal": 760,
+    "proteinG": 38,
+    "carbsG": 96,
+    "fatG": 25,
+    "tags": [
+      "ngoai-hang",
+      "co:gia-cam"
+    ],
+    "portionText": "1 phần của bún gà rau thơm.",
+    "description": "Mô tả của bún gà rau thơm.",
+    "imageKey": null
+  },
+  {
+    "code": "DAU_HU_NAM",
+    "name": "Đậu hũ, cơm và nấm",
+    "mealSlot": "LUNCH",
+    "kcal": 745,
+    "proteinG": 30,
+    "carbsG": 100,
+    "fatG": 25,
+    "tags": [
+      "khong-thit",
+      "co:dau-nanh"
+    ],
+    "portionText": "1 phần của đậu hũ, cơm và nấm.",
+    "description": "Mô tả của đậu hũ, cơm và nấm.",
+    "imageKey": null
+  },
+  {
+    "code": "COM_TAM",
+    "name": "Cơm tấm sườn",
+    "mealSlot": "LUNCH",
+    "kcal": 900,
+    "proteinG": 30,
+    "carbsG": 115,
+    "fatG": 35,
+    "tags": [
+      "ngoai-hang",
+      "co:thit-do"
+    ],
+    "portionText": "1 phần của cơm tấm sườn.",
+    "description": "Mô tả của cơm tấm sườn.",
+    "imageKey": null
+  },
+  {
+    "code": "CA_AP_CHAO",
+    "name": "Cá áp chảo, cơm và rau",
+    "mealSlot": "DINNER",
+    "kcal": 720,
+    "proteinG": 45,
+    "carbsG": 90,
+    "fatG": 20,
+    "tags": [
+      "co:hai-san"
+    ],
+    "portionText": "1 phần của cá áp chảo, cơm và rau.",
+    "description": "Mô tả của cá áp chảo, cơm và rau.",
+    "imageKey": "xZxDr"
+  },
+  {
+    "code": "BO_XAO",
+    "name": "Bò xào rau, cơm",
+    "mealSlot": "DINNER",
+    "kcal": 700,
+    "proteinG": 40,
+    "carbsG": 85,
+    "fatG": 22,
+    "tags": [
+      "co:thit-do"
+    ],
+    "portionText": "1 phần của bò xào rau, cơm.",
+    "description": "Mô tả của bò xào rau, cơm.",
+    "imageKey": null
+  },
+  {
+    "code": "CANH_DAU_HU",
+    "name": "Canh đậu hũ, cơm",
+    "mealSlot": "DINNER",
+    "kcal": 690,
+    "proteinG": 28,
+    "carbsG": 100,
+    "fatG": 20,
+    "tags": [
+      "khong-thit",
+      "co:dau-nanh"
+    ],
+    "portionText": "1 phần của canh đậu hũ, cơm.",
+    "description": "Mô tả của canh đậu hũ, cơm.",
+    "imageKey": null
+  },
+  {
+    "code": "GA_LUOC",
+    "name": "Gà luộc, cơm",
+    "mealSlot": "DINNER",
+    "kcal": 730,
+    "proteinG": 48,
+    "carbsG": 90,
+    "fatG": 20,
+    "tags": [
+      "co:gia-cam"
+    ],
+    "portionText": "1 phần của gà luộc, cơm.",
+    "description": "Mô tả của gà luộc, cơm.",
+    "imageKey": null
+  },
+  {
+    "code": "SUA_CHUA",
+    "name": "Sữa chua và hạt",
+    "mealSlot": "SNACK",
+    "kcal": 290,
+    "proteinG": 14,
+    "carbsG": 25,
+    "fatG": 15,
+    "tags": [
+      "khong-thit",
+      "it-nau",
+      "co:sua"
+    ],
+    "portionText": "1 phần của sữa chua và hạt.",
+    "description": "Mô tả của sữa chua và hạt.",
+    "imageKey": null
+  },
+  {
+    "code": "TAO_HAT",
+    "name": "Táo và hạt",
+    "mealSlot": "SNACK",
+    "kcal": 250,
+    "proteinG": 6,
+    "carbsG": 32,
+    "fatG": 11,
+    "tags": [
+      "chay",
+      "it-nau"
+    ],
+    "portionText": "1 phần của táo và hạt.",
+    "description": "Mô tả của táo và hạt.",
+    "imageKey": null
+  },
+  {
+    "code": "TRUNG_LUOC",
+    "name": "Trứng luộc và chuối",
+    "mealSlot": "SNACK",
+    "kcal": 230,
+    "proteinG": 12,
+    "carbsG": 28,
+    "fatG": 8,
+    "tags": [
+      "khong-thit",
+      "it-nau",
+      "co:trung"
+    ],
+    "portionText": "1 phần của trứng luộc và chuối.",
+    "description": "Mô tả của trứng luộc và chuối.",
+    "imageKey": null
+  }
+]

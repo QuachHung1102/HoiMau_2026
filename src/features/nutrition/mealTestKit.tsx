@@ -5,6 +5,7 @@
 import { fireEvent, screen } from '@testing-library/react-native';
 import type { MealSlot } from '../../../domain/types.ts';
 import * as vi from '../../shared/i18n/vi/nutrition';
+import { questTitle, undo } from '../../shared/i18n/vi/quests';
 import { MEALS, openToday, settle, world, writes } from '../dashboard/todayTestKit';
 
 export { act } from '@testing-library/react-native';
@@ -28,7 +29,7 @@ export const plannedMeal = (slot: MealSlot) => MEALS.find(meal => meal.id === wo
 /** Hôm nay, then the nutrition task: S13. */
 export async function openMealPlan(options: Parameters<typeof openToday>[0] = {}) {
   const view = await openToday(options);
-  fireEvent.press(screen.getByRole('button', { name: /^Ăn đủ cho mục tiêu/ }));
+  fireEvent.press(screen.getByRole('button', { name: new RegExp(`^${questTitle.NUTRITION_TARGET}`) }));
   await header(vi.planTitle);
   await landed();
   return view;
@@ -53,4 +54,4 @@ export async function openMealSwap(slot: MealSlot = 'LUNCH', options: Parameters
   return view;
 }
 
-export const noUndo = () => expect(screen.queryByRole('button', { name: 'Hoàn tác', includeHiddenElements: true })).toBeNull();
+export const noUndo = () => expect(screen.queryByRole('button', { name: undo, includeHiddenElements: true })).toBeNull();
