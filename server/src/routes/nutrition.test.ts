@@ -168,7 +168,7 @@ test('kcal and label: 0, 5001, a string, a negative, 1e400, a 61-character label
   assert.equal(byId[keys[1]][0], 'Bữa phở');
 });
 
-test('exactly one of kcal and mealSlot: both or neither is 422; a slot is 409 PLAN_NOT_FOUND until meal plans exist; nothing is written', async () => {
+test('exactly one of kcal and mealSlot: both or neither is 422; a slot without a plan today is 409 PLAN_NOT_FOUND; nothing is written', async () => {
   await clock(NOON);
   const user = await newOnboardedUser(db);
   refusal(await log(user, {}), 422, 'VALIDATION_FAILED', fields(['kcal', 'required']));
