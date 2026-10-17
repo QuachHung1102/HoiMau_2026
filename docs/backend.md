@@ -1279,7 +1279,7 @@ Mọi từ chối đều được **ném**: lượt ghi bị từ chối không 
 | `POST /workout/complete` | `user`, có khóa | `200 WorkoutResult` | `422 VALIDATION_FAILED`, `404 NOT_FOUND`, `409 DAY_CLOSED`, `422 OCCURRED_AT_INVALID`, `409 IDEMPOTENCY_KEY_REUSED` |
 
 - **Thân là một object JSON** và **`occurredAt` là một thời điểm có thật**, như ba route ghi của ngày (dùng chung `objectBody`, `occurredAtOf` của `routes/day.ts`). Thời điểm sau năm 9999 (một độ lệch đẩy `9999-12-31T23:59:59-23:59` sang năm 10000) PostgreSQL không đọc được: `422 VALIDATION_FAILED` (`occurredAt` / `format`) ở cả năm route ghi, không bao giờ `500`.
-- **`POST /nutrition/log`**: đúng một trong `kcal` / `mealSlot`. Không có cái nào: `kcal` / `required`; có cả hai: `mealSlot` / `format`. `mealSlot` hợp lệ là `409 PLAN_NOT_FOUND` cho tới khi có thực đơn (lạ thì `mealSlot` / `enum`). `kcal` là số hữu hạn bất kỳ từ 1 tới 5000 (chuỗi, `null`, `1e400` là `format`). `label` là chuỗi (khác thì `format`), được chuẩn hóa NFC và cắt khoảng trắng hai đầu, tối đa 60 code point (`max`), rỗng thì lưu `NULL`. Thuộc tính lạ bị bỏ qua. `delta.events`: `QUEST_COMPLETED` (`NUTRITION_TARGET`) ở lượt chốt, `STORY_ALL_DONE` ở lượt làm đủ cốt truyện.
+- **`POST /nutrition/log`**: đúng một trong `kcal` / `mealSlot`. Không có cái nào: `kcal` / `required`; có cả hai: `mealSlot` / `format`. `mealSlot` hợp lệ đi tới `nutrition_log_slot` (mục "Thực đơn ngày" bên dưới; lạ thì `mealSlot` / `enum`). `kcal` là số hữu hạn bất kỳ từ 1 tới 5000 (chuỗi, `null`, `1e400` là `format`). `label` là chuỗi (khác thì `format`), được chuẩn hóa NFC và cắt khoảng trắng hai đầu, tối đa 60 code point (`max`), rỗng thì lưu `NULL`. Thuộc tính lạ bị bỏ qua. `delta.events`: `QUEST_COMPLETED` (`NUTRITION_TARGET`) ở lượt chốt, `STORY_ALL_DONE` ở lượt làm đủ cốt truyện.
 - **`GET /workout/catalog`**: `duration` là đúng `5`, `15`, `30` hoặc `45` (phút); `space` là một trong bốn giá trị, so bằng nhau với `space_needed`; `equipment` là danh sách những gì người dùng **có**, cách nhau bằng dấu phẩy, mỗi mã phải là `tham`, `ta-tay` hoặc `day-khang-luc`: bài tập khớp khi nó không cần gì ngoài danh sách đó (`equipment <@ có`). **Vắng tham số là không lọc thiết bị; có mà rỗng (`equipment=`) là không có gì**, chỉ bài không cần thiết bị (app luôn gửi tham số này). `recommended` khi hệ phái của người dùng nằm trong `archetypes`; thứ tự: được đề xuất trước, rồi theo tên (đối chiếu tiếng Việt của cơ sở dữ liệu), rồi theo `code`. `kcalEstimate` = MET × cân nặng của **snapshot mới nhất của chính người gọi** × giờ, làm tròn tới 10; cân nặng được đọc trong cùng câu lệnh và không bao giờ tới Node. Không khớp gì là `items: []`.
 - **`GET /workout/items/{id}`**: tóm tắt như trên cộng `sets` và các bước theo `position`, mỗi bước kèm động tác của nó (`demoCode`, ba dòng hướng dẫn, lưu ý).
 - **`POST /workout/complete`**: `exerciseItemId` là UUID (`required` / `format`), `elapsedSec` là số nguyên ≥ 1 (`format`, `min`; cận trên là của hàm). `WorkoutResult`: `completed`, `xpAwarded`, `coinAwarded` của buổi tập; `day` là hôm nay (`buildDay`); `delta` là thay đổi của chính request (`QUEST_COMPLETED` `WORKOUT_MAIN`, `STORY_ALL_DONE`, `LEVEL_UP`, `PET_STAGE_UP`). **Một buổi tập là một hành động**, gửi lại bao nhiêu lần cũng vậy: cùng khóa, cùng thân thì cùng câu trả lời đã lưu.
@@ -1464,3 +1464,65 @@ type ScenarioCtx = {
 `server/scripts/scenario.test.ts` chạy từng kịch bản trên một app thử (đồng hồ test, job thật) và đọc kết quả lại qua API: `fresh` → `onboarded: false`; `day1` → chuỗi 0, cấp 1; `streak2` → chuỗi 2; `streak6` → chuỗi 6, rồi hoàn thành hôm nay và `day-close` sau 03:00 → chuỗi 7 và một mốc trong `celebrations`; `missed3` → thú `TIRED`; `broken` → `breakNotice.previous` 5. Thêm: chạy hai lần cho cùng kết quả, đồng hồ để đúng chỗ, mồi nhử không đổi, `reset` từ chối email ngoài mẫu (cả chữ hoa, `%`, `_`, xuống dòng cuối), `admin` không ghi được (hai câu lệnh, hàm có ghi, `SELECT … INTO`, `set_config`), `call` ném lỗi theo trạng thái khi thân không phải JSON, `closeDay` / `goTo` ném khi một người bị `skipped`, ngày chưa đóng hay đồng hồ không dời, lệnh từ chối dời đồng hồ khi có người dùng onboarding không phải demo (và chạy với `--include-real-users`), và rào cản cơ sở dữ liệu từ chối cơ sở dữ liệu test.
 
 Không cổng nào đọc các file này (cổng 1 đọc catalog, cổng 2 và 3 gọi hàm): `scripts/` chỉ do `scenario.test.ts` giữ. `scripts/dev.ts` xóa đồng hồ trước `migrate` được kiểm bằng tay (đặt đồng hồ, khởi động lại `server:dev`, thấy dòng thông báo, `npm run db:verify` xanh), không có test tự động.
+
+## Thực đơn ngày (`40-nutrition.sql`, `routes/nutritionPlan.ts`, `readModels/mealPlan.ts`, `seed/meals.ts`)
+
+Mỗi ngày logic người dùng có bốn bữa (sáng, trưa, tối, phụ) khớp đơn kê, đổi được từng bữa trong giới hạn và ghi một bữa trong thực đơn bằng một request. Hợp đồng: `MealPlanState`, `SwapCandidates`, `SwapRequest`, `NutritionLogRequest` trong `docs/api/openapi.yaml`; luật xếp hạng ở `domain/mealPlan.ts` (F-04, AR-15).
+
+### Bảng
+
+| Bảng | Lớp | Ghi chú |
+|---|---|---|
+| `meal_plans` | `content` | Thư viện món. Khóa chính `id`, duy nhất `code`. `kcal > 0`, `protein_g`, `carbs_g`, `fat_g ≥ 0` (`numeric`), `meal_slot` (4 bữa), `tags`, `portion_text`, `description`, `image_key` (`NULL` khi không có ảnh). |
+| `daily_meal_plans` | `own_read` | Khóa chính `(user_id, logical_date, meal_slot)`. `meal_id` (khóa ngoại; `NULL` khi mọi món của bữa bị loại trừ lúc lập thực đơn), `swaps_used ≥ 0`, `shown_meal_ids` (các món bữa này đã hiện trong ngày, không bao giờ được đề xuất lại), `macro_warning`, `logged_action_id` (khóa ngoại tới `nutrition_logs`, có khi bữa đã được ghi). |
+
+`40-nutrition.sql` cũng thêm khóa ngoại `nutrition_logs.meal_id → meal_plans (id)` mà `31-story.sql` để lại.
+
+### Seeder
+
+`server/src/seed/meals.ts`, từ `server/content/meals.ts`: upsert theo `code`, món giữ nguyên `id` (thực đơn và lượt ghi trỏ vào nó). Món không còn trong nội dung thì **không bị xóa** (một thực đơn cũ có thể trỏ vào nó). Chạy lại không ghi lại dòng nào (test so `xmin`).
+
+### Lập thực đơn (trong Node)
+
+`GET /nutrition/plan` đọc thực đơn của **hôm nay** (ngày logic của `app.now()` theo múi giờ đã lưu, do SQL quyết). Chưa có dòng nào thì Node lập: với mỗi bữa `rankMeals(thư viện, slotTarget(đơn kê hiện tại, bữa), bữa, { excludeIds: [], excludedTags: excluded_meal_tags })`, rồi `pickMeal(ranked, Math.random)` (ngẫu nhiên trong 5 món đầu); `macroWarning` lấy từ kết quả xếp hạng. Bốn bữa được lưu bằng `nutrition_plan_save`, rồi đọc lại. Không còn món nào cho một bữa (mọi món bị loại trừ) → `meal: null`, `macroWarning: true`. Không món nào trong ±30 % → món gần nhất theo kcal, `macroWarning: true`. Thay đổi loại trừ nguyên liệu tác động ngay tới ứng viên đổi món và tới thực đơn từ lần lập sau (AR-15); lập lại thực đơn khi đổi cài đặt nằm ngoài phạm vi.
+
+Hai lần đọc đầu tiên chạy song song: cả hai có thể thấy chưa có dòng nào và cùng gọi `nutrition_plan_save`; hàm khóa dòng `users` trước, lượt sau chờ lượt trước commit rồi `ON CONFLICT DO NOTHING`, và câu đọc lại (một câu lệnh mới, READ COMMITTED) thấy thực đơn của lượt trước. Kết quả: một thực đơn, mọi câu trả lời giống nhau.
+
+### Hàm
+
+| Hàm | Việc |
+|---|---|
+| `app._open_today(p_user uuid) → date` (nội bộ) | Hôm nay của người dùng, giữ khóa dòng `users`. `ONBOARDING_REQUIRED` cho người đã xóa / chưa onboarding; `DAY_CLOSED` khi hôm nay không mở (≤ `last_closed_date` hoặc trước ngày đầu tiên). Không tạo dòng `daily_logs`: mở thực đơn không phải là một hoạt động của ngày. |
+| `nutrition_plan_save(p_logical_date date, p_slots jsonb) → void` | Lưu thực đơn Node đã chọn. Chỉ cho hôm nay: ngày trước là `DAY_CLOSED`, ngày sau là `OCCURRED_AT_INVALID`. `p_slots` là mảng `{mealSlot, mealId (món của đúng bữa đó, hoặc null), macroWarning (boolean)}`; khác đi là `VALIDATION_FAILED` (`slots` / `format`). Không bao giờ ghi đè một dòng đã có. |
+| `nutrition_swap(p_meal_slot text, p_meal_id uuid, p_action_id uuid) → void` | Đổi món một bữa của hôm nay. Thứ tự lỗi: `DAY_CLOSED` → `PLAN_NOT_FOUND` (không có dòng của bữa) → `MEAL_ALREADY_LOGGED` → `SWAP_LIMIT_REACHED` (`swaps_used` đã tới 3, hoặc 5 khi người gọi có perk `MEAL_SWAP_PLUS` trong `perk_unlocks`) → `SWAP_CANDIDATE_INVALID` (không phải món của bữa đó, là món đang ở bữa, hoặc đã hiện trong ngày). Món cũ vào `shown_meal_ids`, `swaps_used + 1`. `macro_warning` mới = kcal của món nằm ngoài ±30 % phần của bữa trong mục tiêu calo (`SLOT_SHARE`), đúng điều `rankMeals` nói về chính món đó (có test so). `p_action_id` không đặt tên dòng nào: phát lại là việc của tầng idempotency. |
+| `nutrition_log_slot(p_action_id uuid, p_meal_slot text, p_occurred_at timestamptz) → jsonb` | Ghi bữa trong thực đơn của ngày `p_occurred_at` rơi vào (qua `app._open_log`): một dòng `nutrition_logs` với kcal, bữa, id và **tên món** (`label`, nên lịch sử ngày hiện tên món), đánh dấu `logged_action_id`, rồi `app._add_calories` (chốt `NUTRITION_TARGET` như ghi tay). Trả đúng kết quả của `app._add_calories`. Id đã có: của người gọi là no-op, của người khác `IDEMPOTENCY_KEY_REUSED`. Rồi: `VALIDATION_FAILED` (`mealSlot` / `enum`) → `OCCURRED_AT_INVALID` → `DAY_CLOSED` → `PLAN_NOT_FOUND` (không có dòng, hoặc bữa không có món) → `MEAL_ALREADY_LOGGED`. |
+
+Ba hàm gọi được là `SECURITY DEFINER`, chỉ `app_auth`. **Khóa**: `users`, dòng ngày, dòng thực đơn (`FOR NO KEY UPDATE`), rồi dòng tiến độ nhiệm vụ và `progression_state` (trong `app._add_calories`); dòng `nutrition_logs` chèn sau cùng.
+
+### Ba route mới và nhánh `mealSlot`
+
+| Route | Auth | Thành công | Lỗi riêng |
+|---|---|---|---|
+| `GET /nutrition/plan` | `user` | `200 MealPlanState` | `409 DAY_CLOSED` (chỉ khi phải lập mà hôm nay không mở) |
+| `GET /nutrition/swap-candidates?mealSlot=` | `user` | `200 SwapCandidates` | `422 VALIDATION_FAILED` (`mealSlot` / `required`, `enum`) |
+| `POST /nutrition/swap` | `user`, có khóa | `200 MealPlanState` | `422 VALIDATION_FAILED` (`mealSlot` / `required`, `enum`; `mealId` / `required`, `format`), `409 PLAN_NOT_FOUND`, `409 MEAL_ALREADY_LOGGED`, `409 SWAP_LIMIT_REACHED`, `422 SWAP_CANDIDATE_INVALID`, `409 DAY_CLOSED` |
+| `POST /nutrition/log` với `mealSlot` | `user`, có khóa | `200 ActionResult` | `409 PLAN_NOT_FOUND`, `409 MEAL_ALREADY_LOGGED`, `409 DAY_CLOSED`, `422 OCCURRED_AT_INVALID`, `422 VALIDATION_FAILED` (`mealSlot` cùng `kcal`) |
+
+- **`MealPlanState`**: `logicalDate`, `target` (đơn kê hiện tại: `kcal`, `proteinG`, `carbsG`, `fatG`), `caloriesIn` (của hôm nay, gồm cả ghi tay), `calorieWindow` (`calorieWindow` của `domain/energy.ts`), `slots` luôn đủ bốn theo thứ tự `BREAKFAST`, `LUNCH`, `DINNER`, `SNACK`, mỗi bữa `{mealSlot, meal (Meal hoặc null), logged, swapsUsed, swapsAllowed (3 hoặc 5), macroWarning}`.
+- **Ứng viên**: xếp hạng lại mỗi request với `excludeIds` = `shown_meal_ids` của bữa + món đang ở cả bốn bữa, `excludedTags` = cài đặt hiện tại; trả tối đa 3 món đầu, mỗi món là `Meal` + `kcalDelta` = kcal ứng viên − kcal món hiện tại (0 khi bữa không có món). `swapsRemaining` = `swapsAllowed − swapsUsed`; **bữa đã ghi hoặc hết lượt → `swapsRemaining: 0`, `candidates: []`** (không phải lỗi). Chưa có thực đơn thì route lập trước (như `GET /nutrition/plan`).
+- **Đổi món**: route tính lại ứng viên **trước** khi gọi `nutrition_swap`; lỗi của hàm (không có thực đơn, đã ghi, hết lượt, sai bữa) đi trước; rồi nếu `mealId` không nằm trong 3 ứng viên đã tính thì `422 SWAP_CANDIDATE_INVALID` và transaction bị hoàn tác. Câu trả lời là `MealPlanState` sau khi đổi; cùng khóa, cùng thân → câu trả lời đã lưu, không tính thêm lượt.
+
+### Mồi nhử, ca tấn công, test
+
+- `server/sql/84-decoy-nutrition.sql`: `DECOY_1` có một dòng thực đơn (bữa trưa ngày `2026-01-01`, món `COM_GA_RAU_CU` theo `code`, đã đổi một lần).
+- `server/checks/attacks/nutrition.ts` (năm ca): `nutrition_plan_save` cho hôm qua (`DAY_CLOSED`), ngày mai (`OCCURRED_AT_INVALID`) và ngày của mồi nhử; `nutrition_swap` và `nutrition_log_slot` của A không chạm được dòng của mồi nhử (`PLAN_NOT_FOUND`); `nutrition_log_slot` với id lượt ghi của mồi nhử (`IDEMPOTENCY_KEY_REUSED`); `UPDATE daily_meal_plans` trực tiếp (`permission denied`); đối chứng: lưu và đổi món của A ghi dòng của A, không dòng nào của mồi nhử.
+- `server/src/routes/nutritionPlan.test.ts` (qua HTTP, đồng hồ test): bốn dòng ở lần đọc đầu, lần sau giống hệt, 10 lần đọc song song → bốn dòng; mỗi món là một trong 5 món đầu của `rankMeals` và trong dung sai nó báo; loại trừ nguyên liệu; mục tiêu 1200 và 4000; ứng viên; 3 lượt đổi (2, 1, 0 rồi `SWAP_LIMIT_REACHED`), 5 lượt với perk; ứng viên ngoài danh sách, món của bữa khác, id không tồn tại → 422; ghi bữa, chốt nhiệm vụ, ghi lại → `MEAL_ALREADY_LOGGED`, đổi bữa đã ghi → `MEAL_ALREADY_LOGGED`; `nutrition_swap` gọi thẳng với món bữa khác; `nutrition_plan_save` không ghi đè kể cả khi hai transaction đua nhau; seeder; `macro_warning` sau khi đổi so với `rankMeals`.
+- `server/src/routes/nutritionPlan.reduced.test.ts` (file riêng vì cắt thư viện): thư viện chỉ còn món của mồi nhử → bữa trưa nhận món đó với `macroWarning: true`, ba bữa kia `meal: null`, `macroWarning: true`, không có ứng viên, ghi bữa không có món → `PLAN_NOT_FOUND`.
+
+### Phần ba cổng không nhìn thấy
+
+- Việc chọn món, xếp hạng ứng viên và kiểm "nằm trong 3 ứng viên" chạy trong Node: một client gọi thẳng `nutrition_swap` bằng `app_auth` có thể đổi sang **bất kỳ** món đúng bữa chưa hiện trong ngày (giới hạn lượt, bữa, đã ghi vẫn do SQL giữ). `nutrition_plan_save` cũng nhận bất kỳ món đúng bữa cho hôm nay khi chưa có thực đơn. Cả hai chỉ chạm thực đơn của chính người gọi, không chạm calo hay phần thưởng.
+- `SLOT_SHARE` có hai bản: `domain/mealPlan.ts` và biểu thức `CASE` trong `nutrition_swap`; test `macro_warning` sau khi đổi giữ chúng khớp nhau với nội dung hiện có.
+- Ràng buộc "không ghi đè", giới hạn lượt, thứ tự lỗi và chốt nhiệm vụ do test giữ; cổng 1 và 3 không đọc thân hàm.
+
+Sửa `40-nutrition.sql` thì chạy `npm run server:test`, không chỉ `npm run db:verify`.
