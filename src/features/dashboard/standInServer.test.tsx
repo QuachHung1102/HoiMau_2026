@@ -3,10 +3,10 @@
 // the requests go straight to the stubbed fetch.
 import type { ActionResult } from '../../../domain/contract/common.ts';
 import type { DayState } from '../../../domain/contract/core.ts';
-import type { WorkoutResult } from '../../../domain/contract/content.ts';
+import type { MealPlanState, SwapCandidates, WorkoutResult } from '../../../domain/contract/content.ts';
 import { newActionId } from '../../shared/api/uuid';
 import { catalog, detail, gym, installWorkoutTestEnv, serverCatalog } from '../workout/workoutTestKit';
-import { BEDTIME, dayOf, fetchMock, HIDDEN, meOf, nearLevelUp, NUTRITION, STAND_UP, world } from './todayTestKit';
+import { BEDTIME, dayOf, fetchMock, HIDDEN, mealByCode, meOf, nearLevelUp, NUTRITION, STAND_UP, world } from './todayTestKit';
 
 installWorkoutTestEnv();
 
@@ -193,7 +193,8 @@ describe('POST /nutrition/log (Task 21 §8, nutrition 1-9)', () => {
     expect((await log({ kcal: 100, label: 'x'.repeat(60) })).status).toBe(200);
   });
 
-  test('mealSlot: a valid slot is 409 PLAN_NOT_FOUND (until Task 33), an unknown one 422 enum, with kcal as well 422 format', async () => {
+  test('mealSlot: a valid slot is the planned meal (409 PLAN_NOT_FOUND without one), an unknown one 422 enum, with kcal as well 422 format', async () => {
+    world.plan.planned.LUNCH = null;
     expect(code(await log({ mealSlot: 'LUNCH' }))).toBe('409 PLAN_NOT_FOUND');
     expect(fields(await log({ mealSlot: 'BRUNCH' }))).toEqual([{ field: 'mealSlot', rule: 'enum' }]);
     expect(fields(await log({ mealSlot: 'LUNCH', kcal: 100 }))).toEqual([{ field: 'mealSlot', rule: 'format' }]);
@@ -362,5 +363,79 @@ describe('POST /inbox/read (Task 22 §5)', () => {
     expect((await post('/inbox/read', { ids: [ITEM] }, first.key)).json).toEqual(first.json);
     expect(code(await post('/inbox/read', { ids: [OTHER] }, first.key))).toBe('409 IDEMPOTENCY_KEY_REUSED');
     expect(world.day.celebrations.map(each => each.id)).toEqual([OTHER]);
+  });
+});
+
+describe('the meal plan routes (Task 33 report, "Notes for Task 34")', () => {
+  const plan = async () => (await get('/nutrition/plan')).json as MealPlanState;
+  const slotOf = async (slot: string) => (await plan()).slots.find(item => item.mealSlot === slot) as MealPlanState['slots'][number];
+  const swap = (mealSlot: unknown, mealId: unknown, key?: string) => post('/nutrition/swap', { mealSlot, mealId }, key);
+  const offered = async (slot: string) => (await get(`/nutrition/swap-candidates?mealSlot=${slot}`)).json as SwapCandidates;
+
+  test('the plan: four slots in order, each with a Meal and the limit; the day total and the window are the day\'s', async () => {
+    const state = await plan();
+    expect(state.slots.map(item => item.mealSlot)).toEqual(['BREAKFAST', 'LUNCH', 'DINNER', 'SNACK']);
+    expect(state.slots.map(item => [item.logged, item.swapsUsed, item.swapsAllowed, item.macroWarning])).toEqual(Array(4).fill([false, 0, 3, false]));
+    expect(state.caloriesIn).toBe(world.day.caloriesIn);
+    expect(state.calorieWindow).toEqual(world.day.calorieWindow);
+    expect(Object.keys(state.slots[1].meal ?? {}).sort()).toEqual(['carbsG', 'code', 'description', 'fatG', 'id', 'imageKey', 'kcal', 'mealSlot', 'name', 'portionText', 'proteinG', 'tags']);
+  });
+
+  test('candidates: at most three, ranked, kcalDelta = candidate kcal - the planned meal\'s; no mealSlot 422 required, a bad one 422 enum', async () => {
+    const answer = await offered('LUNCH');
+    expect(answer.swapsRemaining).toBe(3);
+    // frame S15: 790, 760 and 745 against 820
+    expect(answer.candidates.map(item => [item.name, item.kcalDelta])).toEqual([['Cơm cá và rau luộc', -30], ['Bún gà rau thơm', -60], ['Đậu hũ, cơm và nấm', -75]]);
+    expect(fields(await get('/nutrition/swap-candidates'))).toEqual([{ field: 'mealSlot', rule: 'required' }]);
+    expect(fields(await get('/nutrition/swap-candidates?mealSlot=BRUNCH'))).toEqual([{ field: 'mealSlot', rule: 'enum' }]);
+  });
+
+  test('a swap puts the meal in, counts one, and the next candidates leave out what the slot has shown', async () => {
+    const first = (await offered('LUNCH')).candidates[0];
+    const answer = await swap('LUNCH', first.id);
+    expect(answer.status).toBe(200);
+    expect(answer.json.slots[1]).toMatchObject({ meal: { id: first.id }, swapsUsed: 1, logged: false });
+    const next = await offered('LUNCH');
+    expect(next.swapsRemaining).toBe(2);
+    expect(next.candidates.map(item => item.id)).not.toContain(first.id);
+    expect(next.candidates.map(item => item.id)).not.toContain(mealByCode('COM_GA').id);
+  });
+
+  test('refusals: not one of the three 422 SWAP_CANDIDATE_INVALID; bad body 422; the fourth swap 409 SWAP_LIMIT_REACHED (any meal)', async () => {
+    expect(code(await swap('LUNCH', mealByCode('COM_TAM').id))).toBe('422 SWAP_CANDIDATE_INVALID');
+    expect(code(await swap('LUNCH', mealByCode('YEN_MACH').id))).toBe('422 SWAP_CANDIDATE_INVALID');
+    const bad = await swap('BRUNCH', 'x');
+    expect([code(bad), fields(bad)]).toEqual(['422 VALIDATION_FAILED', [{ field: 'mealSlot', rule: 'enum' }, { field: 'mealId', rule: 'format' }]]);
+    for (let n = 0; n < 3; n++) expect((await swap('LUNCH', (await offered('LUNCH')).candidates[0].id)).status).toBe(200);
+    expect(await offered('LUNCH')).toEqual({ mealSlot: 'LUNCH', swapsRemaining: 0, candidates: [] });
+    expect(code(await swap('LUNCH', mealByCode('COM_TAM').id))).toBe('409 SWAP_LIMIT_REACHED');
+    // another slot is not affected
+    expect((await offered('DINNER')).swapsRemaining).toBe(3);
+  });
+
+  test('a logged slot: no candidates and swapsRemaining 0 (like the limit); a swap is 409 MEAL_ALREADY_LOGGED', async () => {
+    expect((await post(NUTRITION.slice(5), { mealSlot: 'LUNCH' })).status).toBe(200);
+    expect(await offered('LUNCH')).toEqual({ mealSlot: 'LUNCH', swapsRemaining: 0, candidates: [] });
+    expect(code(await swap('LUNCH', mealByCode('COM_CA').id))).toBe('409 MEAL_ALREADY_LOGGED');
+  });
+
+  test('excluded tags leave the candidates at once, the planned meals stay (PATCH /settings, AR-15)', async () => {
+    const answer = await send('PATCH', '/settings', JSON.stringify({ excludedMealTags: ['co:hai-san', 'co:gia-cam'] }));
+    expect([answer.status, answer.json.excludedMealTags]).toEqual([200, ['co:hai-san', 'co:gia-cam']]);
+    expect((await offered('LUNCH')).candidates.map(item => item.code)).toEqual(['DAU_HU_NAM', 'COM_TAM']);
+    expect((await slotOf('DINNER')).meal?.code).toBe('CA_AP_CHAO');
+    const bad = await send('PATCH', '/settings', JSON.stringify({ excludedMealTags: ['co:nope'] }));
+    expect([code(bad), fields(bad)]).toEqual(['422 VALIDATION_FAILED', [{ field: 'excludedMealTags', rule: 'enum' }]]);
+  });
+
+  test('POST /nutrition/log with a slot: the planned meal\'s kcal join the total once; the same slot again is 409 MEAL_ALREADY_LOGGED', async () => {
+    const before = world.day.caloriesIn;
+    const logged = await post(NUTRITION.slice(5), { mealSlot: 'DINNER' });
+    expect(logged.json.day.caloriesIn).toBe(before + mealByCode('CA_AP_CHAO').kcal);
+    expect((await slotOf('DINNER')).logged).toBe(true);
+    expect((await plan()).caloriesIn).toBe(before + 720);
+    expect(code(await post(NUTRITION.slice(5), { mealSlot: 'DINNER' }))).toBe('409 MEAL_ALREADY_LOGGED');
+    world.plan.planned.SNACK = null;
+    expect(code(await post(NUTRITION.slice(5), { mealSlot: 'SNACK' }))).toBe('409 PLAN_NOT_FOUND');
   });
 });

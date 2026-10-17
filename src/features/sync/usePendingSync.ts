@@ -8,7 +8,7 @@ import { flushPending, onFlushed, usePendingActions, useWaitingCount } from '../
 const FLUSH_EVERY_MS = 30_000;
 const SYNCED_SHOWN_MS = 4_000;
 // What a delivered record changes on the server.
-const REFRESHED = [['day'], ['me'], ['progression']] as const;
+const REFRESHED = [['day'], ['me'], ['progression'], ['mealPlan']] as const;
 
 /**
  * Keeps the signed-in user's pending queue moving. Mount it once (`PendingBanner` does). It flushes when the

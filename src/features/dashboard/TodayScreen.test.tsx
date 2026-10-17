@@ -178,7 +178,7 @@ describe('S09: links', () => {
     ['button', /^Cấp 5 · Người kiên trì/, 'Levels'],
     ['link', 'Hiểu các chỉ số', 'StatsExplainer'],
     ['button', /^Vận động vừa sức/, 'WorkoutCatalog'],
-    ['button', /^Ăn đủ cho mục tiêu/, 'ManualKcal'],
+    ['button', /^Ăn đủ cho mục tiêu/, 'MealPlan'],
     ['link', 'xem hành trình', 'Journey'],
     ['button', /^Khép lại hôm nay/, 'EndOfDay'],
     ['button', 'Xem tất cả nhiệm vụ', 'QuestBoard'],

@@ -165,9 +165,9 @@ function TickRow({ icon, quest, tick, count, xp, full, tapToRecord, notSaved, ex
   );
 }
 
-const STORY: Partial<Record<string, { icon: IconName; to: 'WorkoutCatalog' | 'ManualKcal' }>> = {
+const STORY: Partial<Record<string, { icon: IconName; to: 'WorkoutCatalog' | 'MealPlan' }>> = {
   WORKOUT_MAIN: { icon: 'Dumbbell', to: 'WorkoutCatalog' },
-  NUTRITION_TARGET: { icon: 'Utensils', to: 'ManualKcal' },
+  NUTRITION_TARGET: { icon: 'Utensils', to: 'MealPlan' },
 };
 
 /** S10 (S11 on the way): the quests of the day, the two the streak depends on apart from the small habits. */

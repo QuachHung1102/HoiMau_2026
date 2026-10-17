@@ -15,6 +15,9 @@ import { ProfileStepScreen } from '../features/onboarding/ProfileStepScreen';
 import { stepOptions } from '../features/onboarding/StepScreen';
 import { OnbTargetsScreen, TargetsScreen } from '../features/onboarding/TargetsScreen';
 import { ManualKcalScreen } from '../features/nutrition/ManualKcalScreen';
+import { MealDetailScreen } from '../features/nutrition/MealDetailScreen';
+import { MealPlanScreen } from '../features/nutrition/MealPlanScreen';
+import { MealSwapScreen } from '../features/nutrition/MealSwapScreen';
 import { DayHistoryScreen } from '../features/progression/DayHistoryScreen';
 import { JourneyScreen } from '../features/progression/JourneyScreen';
 import { LevelsScreen } from '../features/progression/LevelsScreen';
@@ -60,6 +63,9 @@ export const detailScreens: ScreenEntry[] = [
   { name: 'QuestBoard', component: QuestBoardScreen },
   { name: 'EndOfDay', component: EndOfDayScreen },
   { name: 'ManualKcal', component: ManualKcalScreen },
+  { name: 'MealPlan', component: MealPlanScreen },
+  { name: 'MealDetail', component: MealDetailScreen },
+  { name: 'MealSwap', component: MealSwapScreen },
   { name: 'WorkoutCatalog', component: WorkoutCatalogScreen },
   { name: 'WorkoutDetail', component: WorkoutDetailScreen },
   { name: 'Journey', component: JourneyScreen },

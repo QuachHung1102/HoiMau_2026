@@ -116,7 +116,7 @@ describe('S10: the quests of the day', () => {
     view.unmount();
   });
 
-  test('every row goes where it says: the workout to the catalog, the meal to S16, the hidden quest to S45', async () => {
+  test('every row goes where it says: the workout to the catalog, the meal to S13, the hidden quest to S45', async () => {
     const view = await openBoard();
     fireEvent.press(rowOf(/^Buổi tập chính/));
     expect(mockNavigate.mock.calls).toEqual([['WorkoutCatalog']]);
@@ -124,8 +124,8 @@ describe('S10: the quests of the day', () => {
     expect(await screen.findByRole('header', { name: 'Chọn buổi tập' })).toBeTruthy();
     fireEvent.press(screen.getByRole('button', { name: 'Quay lại' }));
     fireEvent.press(await screen.findByRole('button', { name: /^Bữa ăn theo mục tiêu/ }));
-    expect(mockNavigate.mock.calls).toEqual([['WorkoutCatalog'], ['ManualKcal']]);
-    expect(await screen.findByRole('header', { name: 'Ghi bữa ăn' })).toBeTruthy();
+    expect(mockNavigate.mock.calls).toEqual([['WorkoutCatalog'], ['MealPlan']]);
+    expect(await screen.findByRole('header', { name: 'Thực đơn hôm nay' })).toBeTruthy();
     await settle();
     view.unmount();
   });

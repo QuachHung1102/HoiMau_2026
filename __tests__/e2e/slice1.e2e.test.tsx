@@ -131,12 +131,17 @@ suite(BASE ? 'slice 1 through the real app' : 'slice 1 through the real app: SKI
     press('Xem tất cả nhiệm vụ');
     await header('Nhiệm vụ hôm nay');
     fireEvent.press(await screen.findByRole('button', { name: /^Bữa ăn theo mục tiêu/ }));
+    // the meal plan (S13) first; "Ghi món đã ăn" there opens the manual form
+    await header('Thực đơn hôm nay');
+    fireEvent.press(await screen.findByRole('button', { name: 'Ghi món đã ăn' }));
     await header('Ghi bữa ăn');
     const { calorieWindow } = await server<DayState>('/day');
     type(/^Số kcal/, String(Math.round((calorieWindow.min + calorieWindow.max) / 2)));
     press('Ghi món đã ăn');
     expect(await screen.findByText('Bữa ăn theo mục tiêu đã xong', { exact: false })).toBeTruthy();
-    // a confirmed meal takes the person back to the board by itself
+    // a confirmed meal takes the person back to the meal plan by itself; Back leads on to the board
+    await header('Thực đơn hôm nay');
+    fireEvent.press(screen.getByRole('button', { name: 'Quay lại' }));
     await header('Nhiệm vụ hôm nay');
 
     // the workout catalog → detail → a focus session ended through the dialog past half its length

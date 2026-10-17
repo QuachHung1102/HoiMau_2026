@@ -63,7 +63,7 @@ test('session ready: what an earlier run left is sent in order with its ids, the
   ]);
   expect(fetchMock.mock.calls.every(([, init]) => init.headers.Authorization === `Bearer ${TOKEN}`)).toBe(true);
   expect(await idsOnDisk()).toEqual([]);
-  expect(invalidated()).toEqual(['["day"]', '["me"]', '["progression"]']);
+  expect(invalidated()).toEqual(['["day"]', '["me"]', '["progression"]', '["mealPlan"]']);
   // GET /me: the gate's first load, then the refresh after the flush
   expect(requested('/me')).toBe(2);
   view.unmount();
@@ -75,7 +75,7 @@ test('a flush that only refused a record still refreshes day, me and progression
   const invalidated = watchInvalidations();
   const view = await mountApp();
   expect(screen.getByRole('header', { name: 'Ghi nhận không được tính' })).toBeTruthy();
-  expect(invalidated()).toEqual(['["day"]', '["me"]', '["progression"]']);
+  expect(invalidated()).toEqual(['["day"]', '["me"]', '["progression"]', '["mealPlan"]']);
   expect(requested('/me')).toBe(2);
   view.unmount();
 });
@@ -108,7 +108,7 @@ test('first send committed but its answer lost, retry after 61 s answered 409 ID
   expect(screen.queryByRole('header', { name: 'Ghi nhận không được tính' })).toBeNull();
   expect(await idsOnDisk()).toEqual([]);
   expect(await AsyncStorage.getItem(rejectedKey())).toBeNull();
-  expect(invalidated()).toEqual(['["day"]', '["me"]', '["progression"]']);
+  expect(invalidated()).toEqual(['["day"]', '["me"]', '["progression"]', '["mealPlan"]']);
   expect(screen.getByText(synced)).toBeTruthy();
   view.unmount();
 });
