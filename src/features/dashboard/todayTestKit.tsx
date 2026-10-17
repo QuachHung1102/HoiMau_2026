@@ -5,11 +5,14 @@
 // Tasks 20 and 21 do (status, error code, body, what a replay remembers).
 import { configure, screen } from '@testing-library/react-native';
 import type { ActionResult, GameEvent } from '../../../domain/contract/common.ts';
+import type { Meal, MealPlanState, SwapCandidates } from '../../../domain/contract/content.ts';
 import type { DayDetail, DaySummary, DayState, InboxReadResult, Me, QuestState, Settings } from '../../../domain/contract/core.ts';
 import { calorieWindow } from '../../../domain/energy.ts';
 import { addDays, daysBetween } from '../../../domain/logicalDate.ts';
+import { rankMeals, slotTarget } from '../../../domain/mealPlan.ts';
 import { cumulativeXpForLevel, levelForXp, perkPointsEarned, titleKeyForLevel, xpRequiredForLevel } from '../../../domain/progression.ts';
 import { mapStats } from '../../../domain/stats.ts';
+import { INGREDIENT_TAGS, type IngredientTag, type MealSlot } from '../../../domain/types.ts';
 import { tabLabel } from '../../shared/i18n/vi/nav';
 import { clearCelebrations } from '../progression/celebrations';
 import { tickPath, WATER } from '../quests/api';
@@ -136,6 +139,8 @@ export const world = {} as {
   history: Record<string, DayDetail>;
   /** Minutes of the last seven days, behind `stats.str` and `stats.spd`. */
   minutes: { resistance: number; cardio: number };
+  /** Today's meal plan: the meal of each slot, what is logged, the swaps used, the meals each slot has shown. */
+  plan: ReturnType<typeof freshPlan>;
   answer?: (request: string, init: Init) => unknown;
 };
 
@@ -281,6 +286,11 @@ export function serverAnswer(request: string, init: Init): unknown {
   if (request === 'GET /me') return respond(200, world.me);
   if (request === 'GET /day') return respond(200, world.day);
   if (request === 'GET /settings') return respond(200, world.settings);
+  if (request === 'GET /nutrition/plan') return respond(200, planState());
+  const [, mealQuery] = /^GET \/nutrition\/swap-candidates(?:\?(.*))?$/.exec(request) ?? [];
+  if (request.startsWith('GET /nutrition/swap-candidates')) return guard(() => candidates(new URLSearchParams(mealQuery)));
+  if (request === 'POST /nutrition/swap') return keyed(request, init, swapMeal);
+  if (request === 'PATCH /settings') return keyed(request, init, patchSettings);
   if (request === 'GET /progression') return world.me.progression ? respond(200, world.me.progression) : refuse(409, 'ONBOARDING_REQUIRED');
   const [, route, query] = /^GET (\/day\/history(?:\/[^?]*)?)(?:\?(.*))?$/.exec(request) ?? [];
   if (route) return guard(() => history(route, new URLSearchParams(query)));
@@ -391,7 +401,13 @@ function nutritionLog(id: string, body: Record<string, unknown>) {
   if (kcal !== undefined && mealSlot !== undefined) stop(422, 'VALIDATION_FAILED', [{ field: 'mealSlot', rule: 'format' }]);
   if (mealSlot !== undefined) {
     if (typeof mealSlot !== 'string' || !SLOTS.includes(mealSlot)) stop(422, 'VALIDATION_FAILED', [{ field: 'mealSlot', rule: 'enum' }]);
-    stop(409, 'PLAN_NOT_FOUND'); // until Task 33
+    checkOccurredAt(body);
+    // The planned meal of the slot, in the server's order: no meal -> PLAN_NOT_FOUND, logged already -> MEAL_ALREADY_LOGGED.
+    const planned = mealById(world.plan.planned[mealSlot as MealSlot]);
+    if (!planned) stop(409, 'PLAN_NOT_FOUND');
+    if (world.plan.logged[mealSlot as MealSlot]) stop(409, 'MEAL_ALREADY_LOGGED');
+    world.plan.logged[mealSlot as MealSlot] = true;
+    return addCalories(id, planned.kcal);
   }
   const fields: { field: string; rule: string }[] = [];
   if (kcal === undefined) fields.push({ field: 'kcal', rule: 'required' });
@@ -404,8 +420,12 @@ function nutritionLog(id: string, body: Record<string, unknown>) {
   }
   if (fields.length > 0) stop(422, 'VALIDATION_FAILED', fields);
   checkOccurredAt(body);
+  return addCalories(id, kcal as number);
+}
+/** Adds an amount to the day: the total is the sum, the nutrition quest latches inside the window. */
+function addCalories(id: string, amount: number) {
   const wasWhole = storyWhole();
-  const caloriesIn = world.day.caloriesIn + (kcal as number);
+  const caloriesIn = world.day.caloriesIn + amount;
   const { min, max } = world.day.calorieWindow;
   const meal = questOf(NUTRITION_QUEST);
   const reward = meal !== undefined && !meal.completed && caloriesIn >= min && caloriesIn <= max;
@@ -414,6 +434,127 @@ function nutritionLog(id: string, body: Record<string, unknown>) {
   completeQuest(NUTRITION_QUEST);
   const events: GameEvent[] = [{ type: 'QUEST_COMPLETED', questCode: NUTRITION_QUEST }, ...settleStory(wasWhole), ...pay(meal.xpReward, meal.coinReward)];
   return answerOf(id, { xp: meal.xpReward, coin: meal.coinReward, events });
+}
+
+// ---- the meal plan (server Task 33; task-33-report.md "Notes for Task 34") ----
+
+type MealRow = [code: string, name: string, slot: MealSlot, kcal: number, proteinG: number, carbsG: number, fatG: number, tags: string[], imageKey: string | null];
+// Illustrative meals in the shape of server/content/meals.ts (the three pictures are the real keys). The macros are
+// chosen so that, for the target below, the ranking of a lunch swap is the one of frame S15: fish, chicken noodles, tofu.
+const ROWS: MealRow[] = [
+  ['YEN_MACH', 'Yến mạch và trái cây', 'BREAKFAST', 540, 19, 78, 17, ['khong-thit', 'it-nau', 'co:sua', 'co:gluten'], 'e1ZpZ'],
+  ['BANH_MI_TRUNG', 'Bánh mì trứng', 'BREAKFAST', 560, 24, 70, 20, ['ngoai-hang', 'co:trung', 'co:gluten'], null],
+  ['XOI_DAU', 'Xôi đậu xanh', 'BREAKFAST', 580, 16, 100, 11, ['chay', 'ngoai-hang'], null],
+  ['COM_GA', 'Cơm gà, rau củ', 'LUNCH', 820, 50, 100, 24, ['ngoai-hang', 'co:gia-cam'], 'Fr7yg'],
+  ['COM_CA', 'Cơm cá và rau luộc', 'LUNCH', 790, 46, 92, 26, ['co:hai-san'], null],
+  ['BUN_GA', 'Bún gà rau thơm', 'LUNCH', 760, 38, 96, 25, ['ngoai-hang', 'co:gia-cam'], null],
+  ['DAU_HU_NAM', 'Đậu hũ, cơm và nấm', 'LUNCH', 745, 30, 100, 25, ['khong-thit', 'co:dau-nanh'], null],
+  ['COM_TAM', 'Cơm tấm sườn', 'LUNCH', 900, 30, 115, 35, ['ngoai-hang', 'co:thit-do'], null],
+  ['CA_AP_CHAO', 'Cá áp chảo, cơm và rau', 'DINNER', 720, 45, 90, 20, ['co:hai-san'], 'xZxDr'],
+  ['BO_XAO', 'Bò xào rau, cơm', 'DINNER', 700, 40, 85, 22, ['co:thit-do'], null],
+  ['CANH_DAU_HU', 'Canh đậu hũ, cơm', 'DINNER', 690, 28, 100, 20, ['khong-thit', 'co:dau-nanh'], null],
+  ['GA_LUOC', 'Gà luộc, cơm', 'DINNER', 730, 48, 90, 20, ['co:gia-cam'], null],
+  ['SUA_CHUA', 'Sữa chua và hạt', 'SNACK', 290, 14, 25, 15, ['khong-thit', 'it-nau', 'co:sua'], null],
+  ['TAO_HAT', 'Táo và hạt', 'SNACK', 250, 6, 32, 11, ['chay', 'it-nau'], null],
+  ['TRUNG_LUOC', 'Trứng luộc và chuối', 'SNACK', 230, 12, 28, 8, ['khong-thit', 'it-nau', 'co:trung'], null],
+];
+const idOf = (n: number) => `00000000-0000-4000-8000-${String(n + 1).padStart(12, '0')}`;
+/** The meal library of the stand-in, as `Meal`. */
+export const MEALS: Meal[] = ROWS.map(([code, name, mealSlot, kcal, proteinG, carbsG, fatG, tags, imageKey], n) => ({
+  id: idOf(n),
+  code,
+  name,
+  mealSlot,
+  kcal,
+  proteinG,
+  carbsG,
+  fatG,
+  tags,
+  portionText: `1 phần của ${name.toLowerCase()}.`,
+  description: `${name}, một gợi ý cho ${mealSlot.toLowerCase()}.`,
+  imageKey,
+}));
+export const mealByCode = (code: string) => MEALS.find(meal => meal.code === code) as Meal;
+const mealById = (id: string | null | undefined) => MEALS.find(meal => meal.id === id);
+export const PLAN_SLOTS: MealSlot[] = ['BREAKFAST', 'LUNCH', 'DINNER', 'SNACK'];
+const PLAN_TARGET = { kcal: CALORIE_TARGET, proteinG: 150, carbsG: 270, fatG: 66 };
+type PerSlot<T> = Record<MealSlot, T>;
+const perSlot = <T,>(value: (slot: MealSlot) => T) => Object.fromEntries(PLAN_SLOTS.map(slot => [slot, value(slot)])) as PerSlot<T>;
+
+/** Today's plan as the server holds it; `world.plan` is reset to this before every test. */
+export function freshPlan() {
+  const planned: PerSlot<string | null> = { BREAKFAST: mealByCode('YEN_MACH').id, LUNCH: mealByCode('COM_GA').id, DINNER: mealByCode('CA_AP_CHAO').id, SNACK: mealByCode('SUA_CHUA').id };
+  return {
+    planned,
+    logged: perSlot(() => false),
+    used: perSlot(() => 0),
+    shown: perSlot(slot => (planned[slot] ? [planned[slot] as string] : [])),
+    warning: perSlot(() => false),
+    /** 3, or 5 with the perk. */
+    allowed: 3,
+  };
+}
+
+function planState(): MealPlanState {
+  const { planned, logged, used, warning, allowed } = world.plan;
+  return {
+    logicalDate: world.day.logicalDate,
+    target: PLAN_TARGET,
+    caloriesIn: world.day.caloriesIn,
+    calorieWindow: world.day.calorieWindow,
+    slots: PLAN_SLOTS.map(mealSlot => ({ mealSlot, meal: mealById(planned[mealSlot]) ?? null, logged: logged[mealSlot], swapsUsed: used[mealSlot], swapsAllowed: allowed, macroWarning: warning[mealSlot] })),
+  };
+}
+const slotOf = (value: unknown): MealSlot => {
+  if (value === undefined || value === null || value === '') stop(422, 'VALIDATION_FAILED', [{ field: 'mealSlot', rule: 'required' }]);
+  if (typeof value !== 'string' || !PLAN_SLOTS.includes(value as MealSlot)) stop(422, 'VALIDATION_FAILED', [{ field: 'mealSlot', rule: 'enum' }]);
+  return value as MealSlot;
+};
+/** The first three meals of the ranking the server uses (`rankMeals`), whatever swaps are left. */
+function rankedFor(slot: MealSlot): SwapCandidates['candidates'] {
+  const { planned, shown } = world.plan;
+  const current = mealById(planned[slot])?.kcal ?? 0;
+  const planAll = PLAN_SLOTS.flatMap(item => (planned[item] ? [planned[item] as string] : []));
+  const { ranked } = rankMeals(MEALS, slotTarget(PLAN_TARGET, slot), slot, { excludeIds: [...shown[slot], ...planAll], excludedTags: world.settings.excludedMealTags });
+  return ranked.slice(0, 3).map(item => ({ ...(mealById(item.id) as Meal), kcalDelta: (mealById(item.id) as Meal).kcal - current }));
+}
+function candidates(query: URLSearchParams) {
+  const slot = slotOf(query.get('mealSlot'));
+  const { logged, used, allowed } = world.plan;
+  const swapsRemaining = logged[slot] ? 0 : Math.max(0, allowed - used[slot]);
+  return respond(200, { mealSlot: slot, swapsRemaining, candidates: swapsRemaining > 0 ? rankedFor(slot) : [] } satisfies SwapCandidates);
+}
+/** `POST /nutrition/swap`: the 409s of nutrition_swap first (logged, limit), then the route's own 422 (not one of the three offered). */
+function swapMeal(_id: string, body: Record<string, unknown>) {
+  const fields: { field: string; rule: string }[] = [];
+  if (body.mealSlot === undefined) fields.push({ field: 'mealSlot', rule: 'required' });
+  else if (typeof body.mealSlot !== 'string' || !PLAN_SLOTS.includes(body.mealSlot as MealSlot)) fields.push({ field: 'mealSlot', rule: 'enum' });
+  if (body.mealId === undefined) fields.push({ field: 'mealId', rule: 'required' });
+  else if (typeof body.mealId !== 'string' || !UUID.test(body.mealId)) fields.push({ field: 'mealId', rule: 'format' });
+  if (fields.length > 0) stop(422, 'VALIDATION_FAILED', fields);
+  const slot = body.mealSlot as MealSlot;
+  const mealId = body.mealId as string;
+  const { logged, used, allowed } = world.plan;
+  if (logged[slot]) stop(409, 'MEAL_ALREADY_LOGGED');
+  if (used[slot] >= allowed) stop(409, 'SWAP_LIMIT_REACHED');
+  if (!rankedFor(slot).some(item => item.id === mealId)) stop(422, 'SWAP_CANDIDATE_INVALID');
+  const meal = mealById(mealId) as Meal;
+  const { planned, shown, warning } = world.plan;
+  planned[slot] = mealId;
+  shown[slot] = [...shown[slot], mealId];
+  used[slot] += 1;
+  warning[slot] = rankMeals([meal], slotTarget(PLAN_TARGET, slot), slot, { excludeIds: [], excludedTags: [] }).macroWarning;
+  return respond(200, planState());
+}
+/** `PATCH /settings`: only `excludedMealTags` is modelled (a list of the eight tags, replaced as a whole). */
+function patchSettings(_id: string, body: Record<string, unknown>) {
+  const { excludedMealTags } = body;
+  if (excludedMealTags !== undefined) {
+    if (!Array.isArray(excludedMealTags)) stop(422, 'VALIDATION_FAILED', [{ field: 'excludedMealTags', rule: 'format' }]);
+    if (!excludedMealTags.every(tag => (INGREDIENT_TAGS as readonly string[]).includes(tag as string))) stop(422, 'VALIDATION_FAILED', [{ field: 'excludedMealTags', rule: 'enum' }]);
+    world.settings = { ...world.settings, excludedMealTags: [...new Set(excludedMealTags as IngredientTag[])] };
+  }
+  return respond(200, world.settings);
 }
 
 /** Keeps every `request` open until `release`; then the given response, or the server's own answer, comes back. */
@@ -449,7 +590,7 @@ export function installTodayTestEnv() {
   beforeEach(() => {
     replies.clear();
     ledger.clear();
-    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, hour: 19, closedDate: undefined, skew: 0, highWater: undefined, minutes: { resistance: 60, cardio: 45 }, history: {}, answer: undefined });
+    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, hour: 19, closedDate: undefined, skew: 0, highWater: undefined, minutes: { resistance: 60, cardio: 45 }, history: {}, plan: freshPlan(), answer: undefined });
     fetchMock.mockImplementation(async (url, init) => {
       const request = `${init.method} ${url.replace(BASE, '')}`;
       const taken = await world.answer?.(request, init);

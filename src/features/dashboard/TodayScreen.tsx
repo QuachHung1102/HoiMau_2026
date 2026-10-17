@@ -204,7 +204,7 @@ export function TodayScreen({ navigation }: ScreenProps<'Today'>) {
             icon="Utensils"
             quest={nutrition}
             description={view.pending.kcal ? questsVi.withStatus(kcal, common.queued) : kcal}
-            onPress={() => navigation.navigate('ManualKcal')}
+            onPress={() => navigation.navigate('MealPlan')}
           />
         ) : null}
         <View style={styles.streak}>

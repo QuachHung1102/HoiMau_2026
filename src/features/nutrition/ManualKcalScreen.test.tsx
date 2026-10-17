@@ -19,11 +19,22 @@ const type = (field: ReturnType<typeof kcalField>, text: string) => fireEvent.ch
 const save = () => fireEvent.press(screen.getByRole('button', { name: SAVE }));
 const noUndo = () => expect(screen.queryByRole('button', { name: 'Hoàn tác', includeHiddenElements: true })).toBeNull();
 
-/** Today, then the nutrition task: S16 as a person reaches it. */
+/** From the nutrition task on Today through the meal plan (S13) to "Ghi món đã ăn": S16 as a person reaches it. */
+async function toManual() {
+  fireEvent.press(screen.getByRole('button', { name: /^Ăn đủ cho mục tiêu/ }));
+  await screen.findByRole('header', { name: 'Thực đơn hôm nay' });
+  await settle();
+  fireEvent.press(await screen.findByRole('button', { name: SAVE }));
+  await screen.findByRole('header', { name: 'Ghi bữa ăn' });
+}
+/** S16 sits above the meal plan: after a saved record the plan is in front; Back from it is the home tab. */
+async function toToday() {
+  await screen.findByRole('header', { name: 'Thực đơn hôm nay' });
+  fireEvent.press(screen.getByRole('button', { name: 'Quay lại' }));
+}
 async function openManual(options: Parameters<typeof openToday>[0] = {}) {
   const view = await openToday(options);
-  fireEvent.press(screen.getByRole('button', { name: /^Ăn đủ cho mục tiêu/ }));
-  await screen.findByRole('header', { name: 'Ghi bữa ăn' });
+  await toManual();
   return view;
 }
 
@@ -113,6 +124,7 @@ describe('the record is confirmed', () => {
     type(labelField(), '  Bún gà ');
     save();
     expect(await screen.findByText('Đã ghi. Tổng hôm nay: 2.050 kcal')).toBeTruthy();
+    await toToday();
     expect(await screen.findByRole('tab', { name: 'Hôm nay', selected: true })).toBeTruthy();
     expect(logs()).toHaveLength(1);
     expect(logs()[0].body).toEqual({ kcal: 400, label: 'Bún gà' });
@@ -144,6 +156,7 @@ describe('the record is confirmed', () => {
     expect(await screen.findByText('Đã ghi. Tổng hôm nay: 2.100 kcal')).toBeTruthy();
     expect(screen.queryByText(/2\.050/)).toBeNull();
     // and Hôm nay shows it from the answer
+    await toToday();
     expect(await screen.findByText('2.100 / 2.394 kcal · cần trong 2.155–2.633')).toBeTruthy();
     view.unmount();
   });
@@ -204,10 +217,11 @@ describe('the record is confirmed', () => {
     save();
     await settle();
     fireEvent.press(screen.getByRole('button', { name: 'Quay lại' }));
-    expect(await screen.findByRole('tab', { name: 'Hôm nay', selected: true })).toBeTruthy();
+    expect(await screen.findByRole('header', { name: 'Thực đơn hôm nay' })).toBeTruthy();
     await act(async () => answer.release());
     expect(await screen.findByText('Đã ghi. Tổng hôm nay: 2.050 kcal')).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Hôm nay', selected: true })).toBeTruthy();
+    // still on the meal plan, not taken back once more
+    expect(screen.getByRole('header', { name: 'Thực đơn hôm nay' })).toBeTruthy();
     view.unmount();
   });
 });
@@ -227,6 +241,7 @@ describe('the record waits (no network)', () => {
     noUndo();
 
     fireEvent.press(screen.getByRole('button', { name: 'Xong' }));
+    await toToday();
     expect(await screen.findByRole('tab', { name: 'Hôm nay', selected: true })).toBeTruthy();
     expect(screen.getByText('2.250 / 2.394 kcal · cần trong 2.155–2.633 · Đang chờ gửi')).toBeTruthy();
     // no reward until the server says so: the task is not shown as done
@@ -334,8 +349,7 @@ describe('fix round 1', () => {
     await act(async () => {
       await app.send({ path: '/nutrition/log', body: { kcal: 300 } });
     });
-    fireEvent.press(screen.getByRole('button', { name: /^Ăn đủ cho mục tiêu/ }));
-    await screen.findByRole('header', { name: 'Ghi bữa ăn' });
+    await toManual();
     expect(screen.getByLabelText('Hôm nay. 1.950 / 2.394 kcal · cần trong 2.155–2.633 · Đang chờ gửi')).toBeTruthy();
     expect(screen.queryByText(/đang lưu/)).toBeNull();
     view.unmount();
