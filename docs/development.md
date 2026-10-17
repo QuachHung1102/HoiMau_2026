@@ -32,7 +32,7 @@ Repo có ba code base dùng chung một cây thư mục; mỗi code base có cô
 | `domain/` | Logic thuần TypeScript dùng chung cho app và server (không phụ thuộc gói ngoài) | `node --test` (`npm run domain:test`, ngưỡng phủ 90 %), `tsc` gốc, ESLint |
 | `server/` | Backend Node 24 + PostgreSQL (có `package.json` riêng) | `node --test` (`npm run server:test`), `tsc` riêng của server, ESLint |
 
-Jest bỏ qua `server/`, `domain/`, `tools/`, `design/`, `android/`, `ios/`; `tsc` gốc bỏ qua `server/`, `tools/`, `design/` và các tệp `domain/**/*.test.ts`. `npm run lint` kiểm tra `src/`, `domain/`, `server/`, `__tests__/`, `tools/`.
+Jest bỏ qua `server/`, `domain/`, `tools/`, `design/`, `android/`, `ios/` và `__tests__/e2e/` (bộ đầu-cuối chạy bằng `npm run test:e2e`); `tsc` gốc bỏ qua `server/`, `tools/`, `design/` và các tệp `domain/**/*.test.ts`. `npm run lint` kiểm tra `src/`, `domain/`, `server/`, `__tests__/`, `tools/` và các tệp cấu hình `*.js` ở gốc repo.
 
 Lệnh gốc của repo:
 
