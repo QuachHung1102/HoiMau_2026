@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, test } from 'node:test';
 import { calorieWindow } from '../../../domain/energy.ts';
-import { rankMeals, slotTarget } from '../../../domain/mealPlan.ts';
+import { SLOT_SHARE, rankMeals, slotTarget } from '../../../domain/mealPlan.ts';
 import type { MealCandidate } from '../../../domain/mealPlan.ts';
 import type { MealSlot } from '../../../domain/types.ts';
 import { MEALS } from '../../content/meals.ts';
@@ -394,4 +394,98 @@ test('the meal library is the content file, by code; a second seeding rewrites n
     }
   }
   assert.ok(checked >= 4);
+});
+
+test('nutrition_plan_save refuses a malformed plan with VALIDATION_FAILED and stores nothing; a slot with mealId null is accepted', async () => {
+  const meals = await library();
+  const breakfast = meals.find(m => m.mealSlot === 'BREAKFAST')!;
+  const lunch = meals.find(m => m.mealSlot === 'LUNCH')!;
+  const user = await newOnboardedUser(db);
+  const save = (slots: unknown) =>
+    asUser(db.app, user.userId, c =>
+      c.query('SELECT nutrition_plan_save($1, $2)', ['2027-03-10', JSON.stringify(slots)]),
+    );
+  for (const slots of [
+    [{ mealSlot: 'LUNCH', mealId: breakfast.id, macroWarning: false }], // a meal of another slot
+    [{ mealSlot: 'LUNCH', mealId: randomUUID(), macroWarning: false }], // no such meal
+    { mealSlot: 'LUNCH', mealId: lunch.id, macroWarning: false }, // not an array
+    [{ mealSlot: 'LUNCH', mealId: lunch.id, macroWarning: 'false' }], // macroWarning a string
+    [{ mealSlot: 'LUNCH', macroWarning: false }], // no mealId member
+    [{ mealSlot: 'BRUNCH', mealId: lunch.id, macroWarning: false }], // no such slot
+    // one bad element refuses the whole plan
+    [{ mealSlot: 'BREAKFAST', mealId: breakfast.id, macroWarning: false }, { mealSlot: 'LUNCH', mealId: breakfast.id, macroWarning: false }],
+  ]) {
+    await expectPgError(save(slots), { code: 'HM000', messagePrefix: 'VALIDATION_FAILED' });
+    assert.deepEqual(await planRows(user.userId), [], JSON.stringify(slots));
+  }
+  await save([{ mealSlot: 'SNACK', mealId: null, macroWarning: true }]);
+  assert.deepEqual(
+    (await planRows(user.userId)).map(row => [row.meal_slot, row.meal_id]),
+    [['SNACK', null]],
+  );
+});
+
+test('nutrition_swap called directly refuses a meal the slot has shown and the meal it holds: SWAP_CANDIDATE_INVALID', async () => {
+  const user = await newOnboardedUser(db);
+  const first = ok(await getPlan(user)).slots.find((slot: any) => slot.mealSlot === 'DINNER').meal;
+  const { candidates } = ok(await getCandidates(user, 'DINNER'));
+  ok(await swap(user, 'DINNER', candidates[0].id));
+  const held = await planRows(user.userId);
+  assert.deepEqual(held.find(row => row.meal_slot === 'DINNER').shown_meal_ids, [first.id]);
+  for (const mealId of [first.id, candidates[0].id]) {
+    await expectPgError(
+      asUser(db.app, user.userId, c => c.query('SELECT nutrition_swap($1, $2, $3)', ['DINNER', mealId, randomUUID()])),
+      { code: 'HM000', messagePrefix: 'SWAP_CANDIDATE_INVALID' },
+    );
+  }
+  assert.deepEqual(await planRows(user.userId), held);
+});
+
+test('the slot shares of nutrition_swap are SLOT_SHARE of the domain', async () => {
+  const { rows } = await db.admin.query(
+    "SELECT pg_get_functiondef('nutrition_swap(text, uuid, uuid)'::regprocedure) AS def",
+  );
+  // the CASE over the slot (the function has other CASEs)
+  const def = /CASE p_meal_slot ([\s\S]*?) END/.exec(rows[0].def as string)?.[1] ?? '';
+  const shares: Record<string, number> = {};
+  for (const [, slot, share] of def.matchAll(/WHEN '(\w+)' THEN ([\d.]+)/g)) {
+    shares[slot] = Number(share);
+  }
+  const rest = /ELSE ([\d.]+)\s*$/.exec(def);
+  assert.ok(rest, 'no ELSE share');
+  for (const slot of SLOTS.filter(s => !(s in shares))) {
+    shares[slot] = Number(rest[1]);
+  }
+  assert.deepEqual(shares, SLOT_SHARE);
+});
+
+test('logging a planned meal: OCCURRED_AT_INVALID ahead, DAY_CLOSED past 48 hours, and on yesterday while it is open it logs yesterday\'s plan', async () => {
+  const user = await newOnboardedUser(db);
+  const yesterday = ok(await getPlan(user));
+  const lunch = yesterday.slots.find((slot: any) => slot.mealSlot === 'LUNCH').meal;
+  const at = (ms: number) => new Date(Date.parse(NOON) + ms).toISOString();
+  const send = (occurredAt: string) =>
+    app.call('POST', '/nutrition/log', { token: user.token, key: randomUUID(), body: { mealSlot: 'LUNCH', occurredAt } });
+  refusal(await send(at(10 * 60_000)), 422, 'OCCURRED_AT_INVALID');
+  refusal(await send(at(-49 * 3600_000)), 409, 'DAY_CLOSED');
+  assert.equal(yesterday.caloriesIn, 0);
+  try {
+    // the next day at 10:00 local; 2027-03-10 has not been closed
+    await setTestClock(db.admin, at(22 * 3600_000));
+    const today = ok(await getPlan(user));
+    assert.equal(today.logicalDate, '2027-03-11');
+    const answer = ok(await send(NOON));
+    assert.equal(answer.day.logicalDate, '2027-03-11');
+    const { rows } = await db.admin.query(
+      `SELECT p.logical_date::text AS day, p.meal_slot, p.logged_action_id IS NOT NULL AS logged, d.calories_in::float8 AS kcal
+         FROM daily_meal_plans p JOIN daily_logs d ON d.user_id = p.user_id AND d.logical_date = p.logical_date
+        WHERE p.user_id = $1 AND p.meal_slot = 'LUNCH'`,
+      [user.userId],
+    );
+    assert.deepEqual(rows, [{ day: '2027-03-10', meal_slot: 'LUNCH', logged: true, kcal: lunch.kcal }]);
+    // today's lunch is still open
+    assert.equal(ok(await getPlan(user)).slots.find((slot: any) => slot.mealSlot === 'LUNCH').logged, false);
+  } finally {
+    await setTestClock(db.admin, NOON);
+  }
 });

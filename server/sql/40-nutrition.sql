@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS meal_plans (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   code text NOT NULL UNIQUE,
   name text NOT NULL,
-  kcal numeric NOT NULL CHECK (kcal > 0),
+  -- the range of nutrition_logs.kcal: a planned meal can always be logged
+  kcal numeric NOT NULL CONSTRAINT meal_plans_kcal_check CHECK (kcal BETWEEN 1 AND 5000),
   protein_g numeric NOT NULL CHECK (protein_g >= 0),
   carbs_g numeric NOT NULL CHECK (carbs_g >= 0),
   fat_g numeric NOT NULL CHECK (fat_g >= 0),
@@ -47,10 +48,22 @@ CREATE TABLE IF NOT EXISTS daily_meal_plans (
   PRIMARY KEY (user_id, logical_date, meal_slot)
 );
 
--- The meal of a planned-meal log (31-story.sql left this key to the task that made the table).
-ALTER TABLE nutrition_logs DROP CONSTRAINT IF EXISTS nutrition_logs_meal_id_fkey;
-ALTER TABLE nutrition_logs ADD CONSTRAINT nutrition_logs_meal_id_fkey
-  FOREIGN KEY (meal_id) REFERENCES meal_plans (id);
+-- The meal of a planned-meal log (31-story.sql left this key to the task that made the table),
+-- added once; and the kcal range on a table made before it was 1 to 5000.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                  WHERE conrelid = 'nutrition_logs'::regclass AND conname = 'nutrition_logs_meal_id_fkey') THEN
+    ALTER TABLE nutrition_logs ADD CONSTRAINT nutrition_logs_meal_id_fkey
+      FOREIGN KEY (meal_id) REFERENCES meal_plans (id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                  WHERE conrelid = 'meal_plans'::regclass AND conname = 'meal_plans_kcal_check'
+                    AND pg_get_constraintdef(oid) LIKE '%5000%') THEN
+    ALTER TABLE meal_plans DROP CONSTRAINT IF EXISTS meal_plans_kcal_check;
+    ALTER TABLE meal_plans ADD CONSTRAINT meal_plans_kcal_check CHECK (kcal BETWEEN 1 AND 5000);
+  END IF;
+END $$;
 
 ALTER TABLE daily_meal_plans ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS own_select ON daily_meal_plans;
