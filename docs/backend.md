@@ -1128,7 +1128,7 @@ Cả ba là `SECURITY DEFINER`, chỉ `app_auth` gọi được, lấy người 
 Lỗi được ném với `SQLSTATE HM000`, theo thứ tự:
 
 - `quest_tick`: (tick mang id đó đã có: xem dưới) → `QUEST_NOT_FOUND` (không có, không `is_active`, hoặc không thuộc hệ phái của người gọi) → `QUEST_NOT_TICKABLE` (không phải `DAILY`) → `OCCURRED_AT_INVALID` → `DAY_CLOSED` → `QUEST_ALREADY_COMPLETE`.
-- `quest_undo`: `TICK_NOT_FOUND` (không có tick đó, không phải của người gọi, đã hoàn tác, hoặc thuộc nhiệm vụ khác với mã trong đường dẫn; mã nhiệm vụ lạ cũng rơi vào đây) → `UNDO_NOT_LATEST` (còn một tick sống ghi sau nó, cùng nhiệm vụ, cùng ngày) → `UNDO_WINDOW_EXPIRED` (ghi quá 10 giây trước) → `DAY_CLOSED`.
+- `quest_undo`: `TICK_NOT_FOUND` (không có tick đó, không phải của người gọi, đã hoàn tác, hoặc thuộc nhiệm vụ khác với mã trong đường dẫn; mã nhiệm vụ lạ cũng rơi vào đây) → `UNDO_NOT_LATEST` (còn một tick sống ghi sau nó, cùng nhiệm vụ, cùng ngày) → `UNDO_WINDOW_EXPIRED` (ghi quá 10 giây trước) → `DAY_CLOSED` → `UNDO_COINS_SPENT` (xu của tick đã bị tiêu: hoàn tác sẽ đưa tổng xu xuống dưới 0).
 - `day_bedtime`: `OCCURRED_AT_INVALID` → `DAY_CLOSED` → `BEDTIME_TOO_EARLY`.
 - Cả ba: `ONBOARDING_REQUIRED` khi `app.user_id` không chỉ tới một người dùng còn hoạt động và đã onboarding.
 
@@ -1174,7 +1174,7 @@ Mọi từ chối đều được **ném** (`AppError`, hoặc `HM000` từ hàm
 |---|---|---|---|
 | `GET /day` | `user` | `200 DayState` | – |
 | `POST /day/quests/{questCode}/progress` | `user`, có khóa | `200 ActionResult` | `404 QUEST_NOT_FOUND`, `409 QUEST_NOT_TICKABLE`, `409 QUEST_ALREADY_COMPLETE`, `409 DAY_CLOSED`, `422 OCCURRED_AT_INVALID`, `422 VALIDATION_FAILED` (`body`; `occurredAt` / `format`), `409 IDEMPOTENCY_KEY_REUSED` |
-| `POST /day/quests/{questCode}/undo` | `user`, có khóa | `200 ActionResult` | `404 TICK_NOT_FOUND`, `409 UNDO_NOT_LATEST`, `409 UNDO_WINDOW_EXPIRED`, `409 DAY_CLOSED`, `422 VALIDATION_FAILED` (`body`; `tickId` / `required`, `format`) |
+| `POST /day/quests/{questCode}/undo` | `user`, có khóa | `200 ActionResult` | `404 TICK_NOT_FOUND`, `409 UNDO_NOT_LATEST`, `409 UNDO_WINDOW_EXPIRED`, `409 DAY_CLOSED`, `409 UNDO_COINS_SPENT`, `422 VALIDATION_FAILED` (`body`; `tickId` / `required`, `format`) |
 | `POST /day/bedtime` | `user`, có khóa | `200 ActionResult` | `409 BEDTIME_TOO_EARLY`, `409 DAY_CLOSED`, `422 OCCURRED_AT_INVALID`, `422 VALIDATION_FAILED` (`body`; `occurredAt` / `format`) |
 | `GET /day/history?from=&to=` | `user` | `200 DayHistory` | `422 VALIDATION_FAILED` (`from`, `to`) |
 | `GET /day/history/{date}` | `user` | `200 DayDetail` | `422 VALIDATION_FAILED` (`date` / `format`) |
@@ -1564,7 +1564,7 @@ Ba hàm gọi được là `SECURITY DEFINER`, `EXECUTE` chỉ cho `app_auth`, �
 | `GET /inventory` | `user` | `200 Inventory` | – |
 | `POST /inventory/{itemCode}/equip` | `user`, có khóa, không thân | `200 Inventory` | `409 ITEM_NOT_OWNED` |
 | `GET /perks` | `user` | `200 Perks` | – |
-| `POST /perks/unlock` | `user`, có khóa | `200 Perks` | `422 VALIDATION_FAILED` (`body`; `perkCode` / `required`, `enum`; `itemCode` / `required` cho `THEME_UNLOCK`, `format`), `404 ITEM_NOT_FOUND`, `409 ALREADY_OWNED`, `409 ITEM_LOCKED_LEVEL` (`minLevel`), `409 PERK_ALREADY_UNLOCKED`, `409 PERK_POINTS_INSUFFICIENT` |
+| `POST /perks/unlock` | `user`, có khóa | `200 Perks` | `422 VALIDATION_FAILED` (`body`; `perkCode` / `required`, `enum`; `itemCode` / `required`, `format`, chỉ với `THEME_UNLOCK`), `404 ITEM_NOT_FOUND`, `409 ALREADY_OWNED`, `409 ITEM_LOCKED_LEVEL` (`minLevel`), `409 PERK_ALREADY_UNLOCKED`, `409 PERK_POINTS_INSUFFICIENT` |
 
 - **`ShopItem`**: `code`, `name`, `kind`, `priceCoin`, `minLevel`, `assetKey`, `purchasable`, `isDefault` (của `shop_items`), `owned` (mặc định, hoặc có dòng `inventory`), `equipped` (dòng `equipped`; vật phẩm mặc định khi loại đó không có dòng nào `equipped`), `locked` (cấp hiện tại < `minLevel`). Thứ tự cố định: loại (`THEME`, `PET_SKIN`, `BADGE`), mặc định trước, rồi cấp, giá, mã.
 - **`GET /shop`**: vật phẩm mua được và vật phẩm mặc định (huy hiệu kiếm được không có trong cửa hàng), `coin` = tổng sổ cái, `level` = cấp của tổng XP hiện tại.
@@ -1587,5 +1587,6 @@ Ba hàm gọi được là `SECURITY DEFINER`, `EXECUTE` chỉ cho `app_auth`, �
 - Giá đặc quyền có hai bản: `PERKS` của `domain/economy.ts` và biểu thức `CASE` trong `perk_unlock`; test đọc cột `cost` giữ chúng khớp nhau. Ngưỡng cấp đến từ `level_thresholds` (seed từ domain).
 - Thứ tự lỗi, "mua không ghi XP", khóa trước khi đọc và các điều kiện chủ sở hữu do test và ca tấn công giữ; cổng 1 và 3 không đọc thân hàm.
 - Vật phẩm giá 0 sẽ được mua mà không có dòng sổ cái nào (`amount <> 0`); hiện không có vật phẩm như vậy.
+- `app._level` và điểm đặc quyền đọc `level_thresholds`, chỉ được seed tới cấp 200 (khoảng 22,5 triệu XP): trên đó SQL dừng ở 200 còn `levelForXp` của domain vẫn đếm tiếp. Không ai chạm tới được trong thực tế; không cổng nào kiểm điều này.
 
 Sửa `41-shop.sql` thì chạy `npm run server:test` và `npm run db:api-check`, không chỉ `npm run db:verify`.

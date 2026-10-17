@@ -27,15 +27,17 @@ const routes: Route[] = [
       } else if (typeof perkCode !== 'string' || !Object.hasOwn(PERKS, perkCode)) {
         fields.push({ field: 'perkCode', rule: 'enum' });
       }
-      if (perkCode === 'THEME_UNLOCK' && itemCode === undefined) {
-        fields.push({ field: 'itemCode', rule: 'required' });
-      } else if (itemCode !== undefined && typeof itemCode !== 'string') {
-        fields.push({ field: 'itemCode', rule: 'format' });
+      // itemCode is THEME_UNLOCK's only: another perk ignores it, whatever it is
+      if (perkCode === 'THEME_UNLOCK') {
+        if (itemCode === undefined) {
+          fields.push({ field: 'itemCode', rule: 'required' });
+        } else if (typeof itemCode !== 'string') {
+          fields.push({ field: 'itemCode', rule: 'format' });
+        }
       }
       if (fields.length > 0) {
         throw new AppError('VALIDATION_FAILED', { fields });
       }
-      // the theme of THEME_UNLOCK only: another perk ignores an itemCode
       await ctx.db.query('SELECT perk_unlock($1, $2)', [
         perkCode,
         perkCode === 'THEME_UNLOCK' ? itemCode : null,

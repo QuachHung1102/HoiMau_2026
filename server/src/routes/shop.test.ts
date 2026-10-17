@@ -393,3 +393,62 @@ test('perk points survive an XP sum lowered below the level: they come from the 
   ok(await unlock(user, { perkCode: 'MEAL_SWAP_PLUS' }));
   assert.equal(ok(await get(user, '/perks')).pointsAvailable, 0);
 });
+
+test('purchase refusal order: ALREADY_OWNED before INSUFFICIENT_COINS, ITEM_LOCKED_LEVEL before ALREADY_OWNED', async () => {
+  const user = await userWith({ level: FOX.minLevel, coin: FOREST.priceCoin + FOX.priceCoin });
+  ok(await buy(user, 'THEME_FOREST'));
+  ok(await buy(user, 'SKIN_FOX'));
+  const spent = await stored(user.userId);
+  assert.equal(spent.coin, 0);
+  refusal(await buy(user, 'THEME_FOREST'), 409, 'ALREADY_OWNED');
+  assert.deepEqual(await stored(user.userId), spent);
+
+  // the XP sum back to level 1 (the high-water mark stays): the owned skin is locked again
+  await grant(user.userId, -cumulativeXpForLevel(FOX.minLevel), 0);
+  assert.equal(ok(await get(user, '/shop')).level, 1);
+  const lowered = await stored(user.userId);
+  refusal(await buy(user, 'SKIN_FOX'), 409, 'ITEM_LOCKED_LEVEL', { minLevel: FOX.minLevel });
+  assert.deepEqual(await stored(user.userId), lowered);
+});
+
+test('THEME_UNLOCK of a theme bought with coins is 409 ALREADY_OWNED and changes nothing', async () => {
+  const user = await userWith({ level: 3, coin: FOREST.priceCoin });
+  ok(await buy(user, 'THEME_FOREST'));
+  const kept = await stored(user.userId);
+  refusal(await unlock(user, { perkCode: 'THEME_UNLOCK', itemCode: 'THEME_FOREST' }), 409, 'ALREADY_OWNED');
+  assert.deepEqual(await stored(user.userId), kept);
+  assert.equal(ok(await get(user, '/perks')).pointsAvailable, 2);
+});
+
+test('another perk ignores itemCode, whatever its type', async () => {
+  const user = await userWith({ level: 3 });
+  const perks = ok(await unlock(user, { perkCode: 'MEAL_SWAP_PLUS', itemCode: 7 }));
+  assert.equal(perks.perks[0].unlocked, true);
+  assert.deepEqual((await stored(user.userId)).perks, [`MEAL_SWAP_PLUS:${PERKS.MEAL_SWAP_PLUS.cost}`]);
+});
+
+test('race: a purchase and the undo of the tick whose coins it needs, 20 rounds: one of them wins, the balance never goes below 0', async () => {
+  for (let round = 0; round < 20; round++) {
+    const user = await userWith({ coin: FOREST.priceCoin - 5 });
+    const tick = ok(
+      await app.call('POST', '/day/quests/WATER_8/progress', { token: user.token, key: randomUUID(), body: {} }),
+    );
+    assert.equal(tick.delta.coin, 5);
+    const [purchase, undone] = await race(user.userId, [
+      ['SELECT shop_purchase($1, $2)', ['THEME_FOREST', randomUUID()]],
+      ['SELECT quest_undo($1, $2)', ['WATER_8', tick.actionId]],
+    ]);
+    const outcome = [purchase, undone].map(r =>
+      r.status === 'fulfilled' ? 'ok' : (r.reason as { message: string }).message,
+    );
+    const end = await stored(user.userId);
+    assert.ok(end.coin >= 0, `round ${round}: coin ${end.coin}`);
+    if (outcome[0] === 'ok') {
+      assert.deepEqual(outcome, ['ok', 'UNDO_COINS_SPENT'], `round ${round}`);
+      assert.deepEqual([end.coin, end.inventory], [0, ['THEME_FOREST']], `round ${round}`);
+    } else {
+      assert.deepEqual(outcome, ['INSUFFICIENT_COINS', 'ok'], `round ${round}`);
+      assert.deepEqual([end.coin, end.inventory], [FOREST.priceCoin - 5, []], `round ${round}`);
+    }
+  }
+});
