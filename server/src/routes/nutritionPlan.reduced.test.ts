@@ -1,5 +1,5 @@
 // GET /nutrition/plan over a meal library cut down (as the owner) to the one meal the decoy's plan
-// names: a breakfast far from the target of a 1200 kcal day, and no meal for the other slots. In
+// names: a lunch far from the target of a 1200 kcal day, and no meal for the other slots. In
 // a file of its own: the cut is of this file's database only.
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';

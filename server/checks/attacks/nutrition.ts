@@ -87,20 +87,46 @@ export const attacks: Attack[] = [
             [DECOY_MEAL],
           )
         ).rows[0].id as string;
-        // A has no plan today (api-check makes none): the decoy's LUNCH is the only one there is
+        // A has no plan today (api-check makes none). The decoy gets a LUNCH on A's today for
+        // the length of the attack, so that only the owner condition stands between A and it
+        // (the fixed decoy row is on another date, which would refuse A by itself).
         assert.deepEqual(await ownPlan(ctx), []);
-        await ctx.expectPgError(
-          ctx.asUser(ctx.app, ctx.userA, c =>
-            c.query('SELECT nutrition_swap($1, $2, $3)', ['LUNCH', lunch, randomUUID()]),
-          ),
-          { code: HM, messagePrefix: 'PLAN_NOT_FOUND' },
+        const today = await todayOfA(ctx);
+        await ctx.admin.query(
+          `INSERT INTO daily_meal_plans (user_id, logical_date, meal_slot, meal_id, macro_warning)
+           SELECT $1, $2, 'LUNCH', id, false FROM meal_plans WHERE code = $3`,
+          [ctx.decoy, today, DECOY_MEAL],
         );
-        await ctx.expectPgError(
-          ctx.asUser(ctx.app, ctx.userA, c =>
-            c.query('SELECT nutrition_log_slot($1, $2, $3)', [randomUUID(), 'LUNCH', null]),
-          ),
-          { code: HM, messagePrefix: 'PLAN_NOT_FOUND' },
-        );
+        const decoyToday = async () =>
+          (
+            await ctx.admin.query(
+              `SELECT meal_id, swaps_used, logged_action_id FROM daily_meal_plans
+                WHERE user_id = $1 AND logical_date = $2 AND meal_slot = 'LUNCH'`,
+              [ctx.decoy, today],
+            )
+          ).rows;
+        try {
+          const before = await decoyToday();
+          assert.equal(before.length, 1);
+          await ctx.expectPgError(
+            ctx.asUser(ctx.app, ctx.userA, c =>
+              c.query('SELECT nutrition_swap($1, $2, $3)', ['LUNCH', lunch, randomUUID()]),
+            ),
+            { code: HM, messagePrefix: 'PLAN_NOT_FOUND' },
+          );
+          await ctx.expectPgError(
+            ctx.asUser(ctx.app, ctx.userA, c =>
+              c.query('SELECT nutrition_log_slot($1, $2, $3)', [randomUUID(), 'LUNCH', null]),
+            ),
+            { code: HM, messagePrefix: 'PLAN_NOT_FOUND' },
+          );
+          assert.deepEqual(await decoyToday(), before);
+        } finally {
+          await ctx.admin.query(
+            `DELETE FROM daily_meal_plans WHERE user_id = $1 AND logical_date = $2 AND meal_slot = 'LUNCH'`,
+            [ctx.decoy, today],
+          );
+        }
         assert.deepEqual(await ownPlan(ctx), []);
       }),
   },
