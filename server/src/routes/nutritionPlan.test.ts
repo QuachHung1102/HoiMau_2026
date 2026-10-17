@@ -211,10 +211,10 @@ test('swaps: 2, 1, 0 left, then SWAP_LIMIT_REACHED; with MEAL_SWAP_PLUS five; a 
   }
   assert.deepEqual(remaining, [2, 1, 0]);
   assert.deepEqual(ok(await getCandidates(user, 'DINNER')).candidates, []);
-  const before = await planRows(user.userId);
-  const anyDinner = (await library()).find(meal => meal.mealSlot === 'DINNER' && !before.some(row => row.meal_id === meal.id))!;
+  const held = await planRows(user.userId);
+  const anyDinner = (await library()).find(meal => meal.mealSlot === 'DINNER' && !held.some(row => row.meal_id === meal.id))!;
   refusal(await swap(user, 'DINNER', anyDinner.id), 409, 'SWAP_LIMIT_REACHED');
-  assert.deepEqual(await planRows(user.userId), before);
+  assert.deepEqual(await planRows(user.userId), held);
 
   const plus = await newOnboardedUser(db);
   await db.admin.query("INSERT INTO perk_unlocks (user_id, perk_code, cost) VALUES ($1, 'MEAL_SWAP_PLUS', 2)", [plus.userId]);
@@ -274,9 +274,9 @@ test('logging a planned meal adds its kcal, marks it logged, latches NUTRITION_T
   // the same key again: the stored answer
   assert.deepEqual(ok(await logSlot(user, 'LUNCH', key)), answer);
 
-  const after = ok(await getPlan(user));
-  const slot = after.slots.find((s: any) => s.mealSlot === 'LUNCH');
-  assert.deepEqual([slot.logged, slot.meal.id, after.caloriesIn], [true, lunch.id, min]);
+  const later = ok(await getPlan(user));
+  const slot = later.slots.find((s: any) => s.mealSlot === 'LUNCH');
+  assert.deepEqual([slot.logged, slot.meal.id, later.caloriesIn], [true, lunch.id, min]);
   const { rows } = await db.admin.query(
     'SELECT meal_slot, meal_id, label, kcal::float8 AS kcal FROM nutrition_logs WHERE id = $1',
     [key],
@@ -304,12 +304,12 @@ test('nutrition_swap called directly as app_auth with a meal of another slot is 
   const user = await newOnboardedUser(db);
   ok(await getPlan(user));
   const breakfast = (await library()).find(m => m.mealSlot === 'BREAKFAST')!;
-  const before = await planRows(user.userId);
+  const held = await planRows(user.userId);
   await expectPgError(
     asUser(db.app, user.userId, c => c.query('SELECT nutrition_swap($1, $2, $3)', ['LUNCH', breakfast.id, randomUUID()])),
     { code: 'HM000', messagePrefix: 'SWAP_CANDIDATE_INVALID' },
   );
-  assert.deepEqual(await planRows(user.userId), before);
+  assert.deepEqual(await planRows(user.userId), held);
 });
 
 test('nutrition_plan_save never overwrites: a second save, also one racing the first, leaves the first plan', async () => {
@@ -348,4 +348,50 @@ test('nutrition_plan_save never overwrites: a second save, also one racing the f
     ok(await getPlan(user)).slots.map((slot: any) => slot.meal.id),
     SLOTS.map(slot => pick(slot, 0)),
   );
+});
+
+test('the meal library is the content file, by code; a second seeding rewrites no row; a swapped-in meal carries the macroWarning rankMeals gives it', async () => {
+  const { rows } = await db.admin.query(
+    `SELECT code, name, meal_slot AS "mealSlot", kcal::float8 AS kcal, protein_g::float8 AS "proteinG",
+            carbs_g::float8 AS "carbsG", fat_g::float8 AS "fatG", tags, portion_text AS "portionText",
+            description, image_key AS "imageKey", xmin::text AS xmin
+       FROM meal_plans ORDER BY code`,
+  );
+  const byCode = (a: { code: string }, b: { code: string }) => (a.code < b.code ? -1 : 1);
+  assert.deepEqual(rows.map(({ xmin: _xmin, ...meal }) => meal).sort(byCode), [...MEALS].sort(byCode));
+  const { seed } = await import('../seed/meals.ts');
+  const client = await db.admin.connect();
+  try {
+    await seed(client);
+  } finally {
+    client.release();
+  }
+  const again = await db.admin.query('SELECT xmin::text AS xmin FROM meal_plans ORDER BY code');
+  assert.deepEqual(again.rows.map(row => row.xmin), rows.map(row => row.xmin));
+
+  // every swap of a 1200 kcal day: the stored warning is what rankMeals says of that one meal
+  const meals = await library();
+  const user = await newOnboardedUser(db);
+  await db.admin.query('UPDATE prescriptions SET calorie_target = 1200 WHERE user_id = $1', [user.userId]);
+  const target = await dayTarget(user.userId);
+  ok(await getPlan(user));
+  let checked = 0;
+  for (const mealSlot of SLOTS) {
+    for (let i = 0; i < 3; i++) {
+      const { candidates } = ok(await getCandidates(user, mealSlot));
+      if (candidates.length === 0) {
+        break;
+      }
+      const chosen = candidates[candidates.length - 1];
+      const plan = ok(await swap(user, mealSlot, chosen.id));
+      const slot = plan.slots.find((s: any) => s.mealSlot === mealSlot);
+      const alone = rankMeals([meals.find(m => m.id === chosen.id)!], slotTarget(target, mealSlot), mealSlot, {
+        excludeIds: [],
+        excludedTags: [],
+      });
+      assert.equal(slot.macroWarning, alone.macroWarning, `${mealSlot} ${chosen.code}`);
+      checked++;
+    }
+  }
+  assert.ok(checked >= 4);
 });
