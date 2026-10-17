@@ -654,7 +654,7 @@ paths:
           description: '`TICK_NOT_FOUND`'
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
         '409':
-          description: '`ONBOARDING_REQUIRED`, `IDEMPOTENCY_KEY_REUSED`, `DAY_CLOSED`, `UNDO_NOT_LATEST`, `UNDO_WINDOW_EXPIRED`'
+          description: '`ONBOARDING_REQUIRED`, `IDEMPOTENCY_KEY_REUSED`, `DAY_CLOSED`, `UNDO_NOT_LATEST`, `UNDO_WINDOW_EXPIRED`, `UNDO_COINS_SPENT`'
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
         '413':
           description: '`PAYLOAD_TOO_LARGE`'
@@ -1806,6 +1806,7 @@ components:
         - TICK_NOT_FOUND
         - UNDO_NOT_LATEST
         - UNDO_WINDOW_EXPIRED
+        - UNDO_COINS_SPENT
         - BEDTIME_TOO_EARLY
         - SWAP_LIMIT_REACHED
         - SWAP_CANDIDATE_INVALID
