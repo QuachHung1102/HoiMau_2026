@@ -62,10 +62,10 @@ const decoys = async () =>
       ) AS snapshot`)
   ).rows[0].snapshot;
 
-test('every file of scripts/scenarios is found: the six of Task 23', async () => {
+test('every file of scripts/scenarios is found: the six of Task 23 and rich of Task 37', async () => {
   assert.deepEqual(
     (await loadScenarios()).map(scenario => scenario.name),
-    ['broken', 'day1', 'fresh', 'missed3', 'streak2', 'streak6'],
+    ['broken', 'day1', 'fresh', 'missed3', 'rich', 'streak2', 'streak6'],
   );
 });
 
@@ -138,6 +138,16 @@ test('broken: streak 5 broke yesterday, the notice names 5, 09:00 local', async 
   assert.equal(day.logicalDate, '2027-03-07');
   assert.equal(Date.parse(day.closesAt) - Date.parse(day.serverTime), 18 * 3_600_000);
   assert.equal(await clock(), '2027-03-07T02:00:00.000Z');
+});
+
+test('rich: level 8, 500 coins, 3 perk points; the grant is refused for a user that is not a demo one', async () => {
+  const { token } = await run('rich');
+  const progression = await get(token, '/progression');
+  assert.deepEqual([progression.level, progression.coin, progression.perkPointsAvailable], [8, 500, 3]);
+  assert.equal((await get(token, '/perks')).pointsAvailable, 3);
+  assert.equal((await get(token, '/shop')).coin, 500);
+  assert.equal(await clock(), START);
+  await assert.rejects(ctx.grant('decoy-1@decoy.invalid', 0, 1), /grant refuses decoy-1@decoy.invalid/);
 });
 
 test('a scenario twice in a row gives the same outcome, for one account', async () => {

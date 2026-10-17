@@ -25,6 +25,11 @@ export type ScenarioCtx = {
   runJob(name: string): Promise<unknown>;
   /** Hard-deletes the demo user with this email (and everything that cascades from it). */
   reset(email: string): Promise<void>;
+  /**
+   * XP and coins for the demo user with this email, through app._grant as the superuser (reason
+   * SCENARIO): only for a state that playing days cannot reach in a demo. Say so in `describe`.
+   */
+  grant(email: string, xp: number, coin: number): Promise<void>;
 };
 
 export type Scenario = {

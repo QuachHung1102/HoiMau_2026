@@ -185,6 +185,18 @@ export function makeCtx(opts: {
       }
       await admin.query('DELETE FROM users WHERE email = $1', [email]);
     },
+    async grant(email, xp, coin) {
+      if (!DEMO_EMAIL.test(email)) {
+        throw new Error(`grant refuses ${email}: only demo-<name>@hoimau.test`);
+      }
+      const { rowCount } = await admin.query(
+        "SELECT app._grant(u.id, $2, $3, 'SCENARIO', gen_random_uuid()::text) FROM users u WHERE u.email = $1",
+        [email, xp, coin],
+      );
+      if (rowCount !== 1) {
+        throw new Error(`grant: no user ${email}`);
+      }
+    },
   };
 }
 
