@@ -140,14 +140,19 @@ test('broken: streak 5 broke yesterday, the notice names 5, 09:00 local', async 
   assert.equal(await clock(), '2027-03-07T02:00:00.000Z');
 });
 
-test('rich: level 8, 500 coins, 3 perk points; the grant is refused for a user that is not a demo one', async () => {
+test('rich: level 8, 500 coins, 3 perk points, TICKET_CAP_PLUS and THEME_FOREST unlocked', async () => {
   const { token } = await run('rich');
   const progression = await get(token, '/progression');
   assert.deepEqual([progression.level, progression.coin, progression.perkPointsAvailable], [8, 500, 3]);
-  assert.equal((await get(token, '/perks')).pointsAvailable, 3);
+  const perks = await get(token, '/perks');
+  assert.equal(perks.pointsAvailable, 3);
+  assert.deepEqual(
+    perks.perks.map((p: { code: string; unlocked: boolean }) => [p.code, p.unlocked]),
+    [['MEAL_SWAP_PLUS', false], ['TICKET_CAP_PLUS', true], ['THEME_UNLOCK', true]],
+  );
+  assert.ok((await get(token, '/inventory')).items.some((i: { code: string }) => i.code === 'THEME_FOREST'));
   assert.equal((await get(token, '/shop')).coin, 500);
   assert.equal(await clock(), START);
-  await assert.rejects(ctx.grant('decoy-1@decoy.invalid', 0, 1), /grant refuses decoy-1@decoy.invalid/);
 });
 
 test('a scenario twice in a row gives the same outcome, for one account', async () => {
@@ -180,7 +185,7 @@ test('scenarios leave the decoys alone', async () => {
   assert.deepEqual(await decoys(), snapshot);
 });
 
-test('reset deletes demo users only', async () => {
+test('reset and grant touch demo users only', async () => {
   for (const email of [
     'decoy-1@decoy.invalid',
     'demo-x@decoy.invalid',
@@ -197,6 +202,7 @@ test('reset deletes demo users only', async () => {
     'demo-x@hoimau.test ',
   ]) {
     await assert.rejects(ctx.reset(email), /reset refuses/, email);
+    await assert.rejects(ctx.grant(email, 0, 1), /grant refuses/, email);
   }
   await ctx.reset('demo-nobody@hoimau.test'); // nothing to delete is not an error
 });
