@@ -128,9 +128,9 @@ export function MealDetailScreen({ route, navigation }: ScreenProps<'MealDetail'
         </AppText>
         <AppText variant="secondary">{vi.detailKicker(mealSlot, slot.logged)}</AppText>
         {picture ? (
-          <Image source={picture} style={styles.picture} accessible={false} resizeMode="cover" />
+          <Image testID="meal-picture" source={picture} style={styles.picture} accessible={false} resizeMode="cover" />
         ) : (
-          <View style={[styles.picture, styles.iconBox, { backgroundColor: palette.soft }]}>
+          <View testID="meal-icon" style={[styles.picture, styles.iconBox, { backgroundColor: palette.soft }]}>
             <Icon name={slotIcon[mealSlot]} size={48} />
           </View>
         )}
