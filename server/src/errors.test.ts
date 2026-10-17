@@ -34,7 +34,7 @@ test('every error code has the status docs/api/openapi.yaml gives it', () => {
   const actual = Object.fromEntries(
     Object.entries(STATUS).map(([code, value]) => [code, [value]]),
   );
-  assert.equal(Object.keys(actual).length, 57);
+  assert.equal(Object.keys(actual).length, 58); // 57 + UNDO_COINS_SPENT (Task 37)
   assert.deepEqual(
     actual,
     Object.fromEntries(Object.keys(actual).map(c => [c, expected[c]])),

@@ -347,8 +347,9 @@ END $$;
 --   + {progress, completed}
 -- TICK_NOT_FOUND: no such tick of the caller for that quest, or it is undone already.
 -- UNDO_NOT_LATEST: a later live tick of that quest exists in its log. UNDO_WINDOW_EXPIRED: it
--- was recorded more than 10 s ago (UNDO_WINDOW_SERVER_MS), or what it earned is spent already (a
--- sum would go below zero). DAY_CLOSED: its day is closed.
+-- was recorded more than 10 s ago (UNDO_WINDOW_SERVER_MS). DAY_CLOSED: its day is closed.
+-- UNDO_COINS_SPENT: the coins it earned are spent already (a purchase in between, 41-shop.sql):
+-- taking them back would put the coin sum below zero, and a ledger sum is never negative.
 CREATE OR REPLACE FUNCTION quest_undo(p_quest_code text, p_tick_id uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $$
@@ -404,8 +405,12 @@ BEGIN
   SELECT coalesce(sum(x.amount), 0) INTO v_coin
     FROM coin_ledger x WHERE x.user_id = v_user AND x.reason = 'QUEST_TICK' AND x.ref_id = t.id::text;
   v_grant := app._grant(v_user, -v_xp, -v_coin, 'QUEST_TICK_UNDO', t.id::text);
-  IF (v_grant ->> 'xpAfter')::bigint < 0 OR (v_grant ->> 'coinAfter')::bigint < 0 THEN
-    -- a ledger sum is never negative (the contract: xp and coin have minimum 0)
+  -- a ledger sum is never negative (the contract: xp and coin have minimum 0)
+  IF (v_grant ->> 'coinAfter')::bigint < 0 THEN
+    RAISE EXCEPTION 'UNDO_COINS_SPENT' USING ERRCODE = 'HM000', DETAIL = '{}';
+  END IF;
+  IF (v_grant ->> 'xpAfter')::bigint < 0 THEN
+    -- XP is never spent: only a ledger edited by hand gets here (unchanged since Task 20)
     RAISE EXCEPTION 'UNDO_WINDOW_EXPIRED' USING ERRCODE = 'HM000', DETAIL = '{}';
   END IF;
   RETURN v_grant || jsonb_build_object(

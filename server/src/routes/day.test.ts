@@ -630,7 +630,7 @@ test('undo of the eighth tick: the quest is open again, and the tick after it co
   });
 });
 
-test('undo on a closed day is 409 DAY_CLOSED; an undo that would take a sum below zero is refused', async () => {
+test('undo on a closed day is 409 DAY_CLOSED; an undo whose coins are spent is 409 UNDO_COINS_SPENT', async () => {
   await clock(NOON);
   const user = await newOnboardedUser(db);
   const a = key();
@@ -646,7 +646,7 @@ test('undo on a closed day is 409 DAY_CLOSED; an undo that would take a sum belo
     "INSERT INTO coin_ledger (user_id, amount, reason, ref_id) VALUES ($1, -5, 'TEST_SPEND', 'undo-test')",
     [user.userId],
   );
-  refusal(await undo(user, 'WATER_8', a), 409, 'UNDO_WINDOW_EXPIRED');
+  refusal(await undo(user, 'WATER_8', a), 409, 'UNDO_COINS_SPENT');
   assert.deepEqual(await stored(user.userId), { ...kept, coin_rows: 2, coin: 0 });
 });
 

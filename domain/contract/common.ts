@@ -37,6 +37,7 @@ export type ErrorCode =
   | 'TICK_NOT_FOUND'
   | 'UNDO_NOT_LATEST'
   | 'UNDO_WINDOW_EXPIRED'
+  | 'UNDO_COINS_SPENT'
   | 'BEDTIME_TOO_EARLY'
   // nutrition
   | 'SWAP_LIMIT_REACHED'
