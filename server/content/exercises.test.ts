@@ -37,16 +37,15 @@ const PREFERRED: Record<Modality, Archetype> = {
   MOBILITY: 'SUPPORTER',
   BREATHING: 'SUPPORTER',
 };
-// The only moves that have a rigged demo (PLAN Task 21); every other move has none.
-const DEMO: Record<string, string> = {
-  XOAY_VAI: 'exercise-xoay-vai',
-  SQUAT_TAY_TRUOC_NGUC: 'exercise-squat',
-  CHONG_DAY_TUA_BAN: 'exercise-chong-day-tua-ban',
-  CHUNG_CHAN_LUI: 'exercise-chung-chan-lui',
-  PLANK_TUA_GOI: 'exercise-plank-tua-goi',
-  THA_LONG_VAI: 'exercise-tha-long-vai',
-  THO_4_4: 'focus-breathe',
-};
+// Demonstrations live in the design motion catalog (Task 8A, Task 31A).
+const CATALOG: { id: string; kind: string }[] = JSON.parse(
+  readFileSync(
+    new URL('../../design/motion/catalog.json', import.meta.url),
+    'utf8',
+  ),
+);
+// THO_4_4 is guided by the Focus Mode breathing circle, not by a rigged figure.
+const NOT_RIGGED: Record<string, string> = { THO_4_4: 'focus-breathe' };
 const CODE = /^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$/;
 const unique = (values: string[]) => new Set(values).size === values.length;
 const phaseSeconds = (w: Workout, phase: string) =>
@@ -83,15 +82,18 @@ test('every move has a name, exactly 3 short steps and one caution that says whe
   }
 });
 
-test('demoCode: exactly the seven rigged moves carry one, each its own', () => {
-  for (const m of MOVES) assert.equal(m.demoCode, DEMO[m.code] ?? null, m.code);
-  for (const code of Object.keys(DEMO))
-    assert.ok(
-      MOVES.some(m => m.code === code),
-      `${code} missing`,
-    );
-  const used = MOVES.map(m => m.demoCode).filter(d => d !== null);
-  assert.deepEqual([...used].sort(), Object.values(DEMO).sort());
+test('demoCode: every move has one, an exercise demo of the motion catalog, each its own', () => {
+  const kind = new Map(CATALOG.map(a => [a.id, a.kind]));
+  for (const m of MOVES) {
+    assert.ok(m.demoCode, `${m.code} has no demoCode`);
+    if (m.code in NOT_RIGGED) {
+      assert.equal(m.demoCode, NOT_RIGGED[m.code], m.code);
+      assert.ok(kind.has(m.demoCode), `${m.code}: ${m.demoCode} not in catalog`);
+    } else
+      assert.equal(kind.get(m.demoCode), 'exercise', `${m.code}: ${m.demoCode}`);
+  }
+  // no two moves share a demo: each move has its own drawing
+  assert.ok(unique(MOVES.map(m => m.demoCode as string)));
 });
 
 test('every moveCode resolves, and every move is used by some workout', () => {

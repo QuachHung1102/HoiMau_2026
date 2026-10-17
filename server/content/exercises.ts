@@ -10,7 +10,8 @@ import type {
 // NOT reviewed by a fitness or medical professional (R-D10): the content is general guidance for
 // beginners, makes no promise of results and no medical claim, and must stay worded as such.
 // Every move has exactly 3 short instruction steps and one caution line that says when to stop or
-// ease off. Only the seven rigged moves (the starter set of PLAN Task 21) carry a `demoCode`.
+// ease off. Every move carries a `demoCode`: an `exercise-*` entry of design/motion/catalog.json (Task 31A),
+// except THO_4_4, whose guide is the `focus-breathe` animation of Focus Mode.
 // Timing rule for every workout: sum WARMUP + `sets` x sum MAIN + sum COOLDOWN seconds = `durationSec`,
 // each step at least 20 s. A step's text is honest for its seconds: a hold or a count that is shorter
 // than the step says what fills the rest ("lặp lại đến hết giờ", "nghỉ ..."), and a count of breaths
@@ -114,7 +115,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'NGHIENG_CO',
     name: 'Nghiêng cổ nhẹ',
-    demoCode: null,
+    demoCode: 'exercise-nghieng-co-nhe',
     steps: [
       'Ngồi hoặc đứng thẳng, vai thả lỏng.',
       'Nghiêng tai về phía vai phải đến khi thấy giãn nhẹ, rồi trở về giữa.',
@@ -126,7 +127,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'MO_NGUC',
     name: 'Mở ngực',
-    demoCode: null,
+    demoCode: 'exercise-mo-nguc',
     steps: [
       'Ngồi hoặc đứng thẳng, đan tay sau lưng, hoặc nắm hai bên ghế nếu không với tới.',
       'Nâng ngực lên, kéo nhẹ hai vai ra sau, không ưỡn lưng dưới.',
@@ -138,7 +139,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'GIAN_CO_TAY',
     name: 'Giãn cổ tay',
-    demoCode: null,
+    demoCode: 'exercise-gian-co-tay',
     steps: [
       'Duỗi một tay ra trước, lòng bàn tay hướng lên.',
       'Dùng tay kia kéo nhẹ các ngón tay xuống phía sàn, khuỷu tay thẳng nhưng không khóa cứng.',
@@ -149,7 +150,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'XOAY_THAN_NGOI',
     name: 'Xoay thân khi ngồi',
-    demoCode: null,
+    demoCode: 'exercise-xoay-than-khi-ngoi',
     steps: [
       'Ngồi thẳng trên ghế, hai bàn chân đặt vững trên sàn.',
       'Đặt tay lên vai hoặc đùi, xoay thân từ từ sang một bên.',
@@ -161,7 +162,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'GIAN_LUNG_NGOI',
     name: 'Cúi người giãn lưng',
-    demoCode: null,
+    demoCode: 'exercise-cui-nguoi-gian-lung',
     steps: [
       'Ngồi trên ghế, hai chân đặt vững trên sàn, rộng bằng hông.',
       'Thở ra và cúi người từ từ, để hai tay thả xuống phía đùi hoặc sàn.',
@@ -173,7 +174,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'MEO_BO',
     name: 'Cong và võng lưng',
-    demoCode: null,
+    demoCode: 'exercise-cong-va-vong-lung',
     steps: [
       'Chống hai tay và hai đầu gối trên sàn, trải thảm hoặc khăn gấp bên dưới.',
       'Thở ra, cong nhẹ lưng lên và cúi đầu.',
@@ -185,7 +186,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'GIAN_DUI_TRUOC',
     name: 'Giãn đùi trước',
-    demoCode: null,
+    demoCode: 'exercise-gian-dui-truoc',
     steps: [
       'Đứng thẳng, một tay vịn vào tường, cây, hàng rào hoặc ghế.',
       'Gập một đầu gối, nắm nhẹ cổ chân và đưa gót về phía mông.',
@@ -197,7 +198,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'GIAN_BAP_CHAN',
     name: 'Giãn bắp chân',
-    demoCode: null,
+    demoCode: 'exercise-gian-bap-chan',
     steps: [
       'Đứng đối diện tường, cây hoặc hàng rào, hai tay chạm lên đó ngang vai.',
       'Bước một chân ra sau, giữ gót chân sau chạm sàn.',
@@ -209,7 +210,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'XOAY_HONG',
     name: 'Xoay hông',
-    demoCode: null,
+    demoCode: 'exercise-xoay-hong',
     steps: [
       'Đứng hai chân rộng hơn vai một chút, hai tay chống hông.',
       'Xoay hông thành vòng tròn vừa, chậm rãi.',
@@ -222,7 +223,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'DUNG_LEN_NGOI_XUONG',
     name: 'Đứng lên ngồi xuống ghế',
-    demoCode: null,
+    demoCode: 'exercise-dung-len-ngoi-xuong-ghe',
     steps: [
       'Ngồi ở mép một chiếc ghế vững, hai chân rộng bằng hông, hai tay khoanh trước ngực.',
       'Nghiêng người ra trước và đứng lên bằng sức hai chân.',
@@ -234,7 +235,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'CHONG_DAY_TUONG',
     name: 'Chống đẩy tựa tường',
-    demoCode: null,
+    demoCode: 'exercise-chong-day-tua-tuong',
     steps: [
       'Đứng cách tường một bước chân, đặt hai tay lên tường ngang vai.',
       'Gập khuỷu tay, đưa ngực lại gần tường, người giữ thẳng.',
@@ -246,7 +247,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'NHON_GOT',
     name: 'Nhón gót',
-    demoCode: null,
+    demoCode: 'exercise-nhon-got',
     steps: [
       'Đứng thẳng, vịn nhẹ vào ghế hoặc tường.',
       'Nhón hai gót lên từ từ, thở ra.',
@@ -258,7 +259,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'CAU_MONG',
     name: 'Cầu mông',
-    demoCode: null,
+    demoCode: 'exercise-cau-mong',
     steps: [
       'Nằm ngửa trên thảm hoặc khăn gấp, gập hai đầu gối, hai bàn chân đặt trên sàn.',
       'Thở ra và nhấc hông lên đến khi người gần thẳng từ vai đến đầu gối.',
@@ -270,7 +271,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'TAY_CHAN_DOI_DIEN',
     name: 'Tay chân đối diện',
-    demoCode: null,
+    demoCode: 'exercise-tay-chan-doi-dien',
     steps: [
       'Chống hai tay và hai đầu gối trên thảm hoặc khăn gấp, lưng thẳng.',
       'Duỗi tay phải ra trước và chân trái ra sau, giữ hông cân bằng.',
@@ -283,7 +284,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'SQUAT_TA_TAY',
     name: 'Squat cầm tạ tay',
-    demoCode: null,
+    demoCode: 'exercise-squat-cam-ta-tay',
     steps: [
       'Đứng hai chân rộng bằng vai, hai tay ôm một quả tạ trước ngực.',
       'Đẩy hông ra sau và hạ người xuống, lưng thẳng, đầu gối hướng theo mũi chân.',
@@ -295,7 +296,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'DAY_VAI_TA_TAY',
     name: 'Đẩy vai với tạ tay',
-    demoCode: null,
+    demoCode: 'exercise-day-vai-voi-ta-tay',
     steps: [
       'Đứng hoặc ngồi thẳng, hai tay cầm tạ ngang vai.',
       'Thở ra, đẩy tạ lên phía trên đầu đến khi tay gần thẳng.',
@@ -307,7 +308,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'CHEO_TA_TAY',
     name: 'Chèo tạ tay',
-    demoCode: null,
+    demoCode: 'exercise-cheo-ta-tay',
     steps: [
       'Một tay và một đầu gối chống lên ghế hoặc mép sofa thật vững, lưng thẳng; tay kia cầm tạ.',
       'Kéo khuỷu tay lên sát sườn, khép nhẹ bả vai.',
@@ -319,7 +320,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'GAP_HONG_TA_TAY',
     name: 'Gập hông với tạ tay',
-    demoCode: null,
+    demoCode: 'exercise-gap-hong-voi-ta-tay',
     steps: [
       'Đứng hai chân rộng bằng hông, hai tay cầm tạ trước đùi, đầu gối chùng nhẹ.',
       'Đẩy hông ra sau, gập từ hông chứ không cúi lưng; hạ tạ tối đa đến ngang đầu gối.',
@@ -331,7 +332,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'CUON_TAY_TA',
     name: 'Cuộn tạ tay trước',
-    demoCode: null,
+    demoCode: 'exercise-cuon-ta-tay-truoc',
     steps: [
       'Đứng thẳng, hai tay cầm tạ buông dọc người, lòng bàn tay hướng ra trước.',
       'Gập khuỷu tay, đưa tạ lên gần vai, khuỷu tay giữ sát sườn.',
@@ -343,7 +344,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'KEO_DAY_NGANG',
     name: 'Kéo dây kháng lực',
-    demoCode: null,
+    demoCode: 'exercise-keo-day-khang-luc',
     steps: [
       'Ngồi hoặc đứng, móc dây quanh chân ghế nặng hoặc điểm móc chắc phía trước, hai tay nắm dây.',
       'Kéo hai tay về phía thân, khuỷu tay sát sườn, khép nhẹ bả vai.',
@@ -355,7 +356,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'BUOC_NGANG_DAY',
     name: 'Bước ngang với dây kháng lực',
-    demoCode: null,
+    demoCode: 'exercise-buoc-ngang-voi-day-khang-luc',
     steps: [
       'Đặt vòng dây quanh hai đùi, phía trên đầu gối; đứng hai chân rộng bằng hông.',
       'Bước một chân sang ngang, giữ dây căng vừa phải.',
@@ -368,7 +369,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'DI_TAI_CHO',
     name: 'Đi bộ tại chỗ',
-    demoCode: null,
+    demoCode: 'exercise-di-bo-tai-cho',
     steps: [
       'Đứng thẳng, hai tay thả lỏng hai bên.',
       'Nhấc từng chân lên nhẹ nhàng như đang đi, hai tay vung nhịp nhàng.',
@@ -380,7 +381,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'NANG_GOI',
     name: 'Nâng đầu gối',
-    demoCode: null,
+    demoCode: 'exercise-nang-dau-goi',
     steps: [
       'Đứng thẳng, hai tay co ở ngang hông.',
       'Nâng một đầu gối lên ngang hông, tay đối diện vung nhẹ lên.',
@@ -392,7 +393,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'GOT_CHAM_MONG',
     name: 'Gót chạm mông',
-    demoCode: null,
+    demoCode: 'exercise-got-cham-mong',
     steps: [
       'Đứng thẳng, hai tay thả lỏng.',
       'Gập một đầu gối, đưa gót chân lên phía sau.',
@@ -404,7 +405,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'DANG_TAY_BUOC_NGANG',
     name: 'Dang tay bước ngang',
-    demoCode: null,
+    demoCode: 'exercise-dang-tay-buoc-ngang',
     steps: [
       'Đứng hai chân khép, hai tay buông dọc người.',
       'Bước một chân sang ngang, đồng thời đưa hai tay lên cao.',
@@ -416,7 +417,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'DI_BO_NHANH',
     name: 'Đi bộ nhanh',
-    demoCode: null,
+    demoCode: 'exercise-di-bo-nhanh',
     steps: [
       'Chọn đoạn đường phẳng, an toàn; ngực mở, mắt nhìn phía trước.',
       'Đi nhanh hơn bình thường, hai tay vung nhịp nhàng.',
@@ -428,7 +429,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'CHAY_BO_NHE',
     name: 'Chạy bộ nhẹ',
-    demoCode: null,
+    demoCode: 'exercise-chay-bo-nhe',
     steps: [
       'Chọn đoạn đường phẳng, an toàn và mang giày êm.',
       'Chạy chậm, bước ngắn, thân hơi nghiêng ra trước.',
@@ -440,7 +441,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'NHUN_NHE',
     name: 'Nhún nhẹ tại chỗ',
-    demoCode: null,
+    demoCode: 'exercise-nhun-nhe-tai-cho',
     steps: [
       'Đứng hai chân rộng bằng vai, đầu gối chùng nhẹ.',
       'Nhún nhẹ trên nửa bàn chân, gót chỉ rời sàn một chút.',
@@ -452,7 +453,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'LEO_NUI_TUA_BAN',
     name: 'Leo núi tựa bàn',
-    demoCode: null,
+    demoCode: 'exercise-leo-nui-tua-ban',
     steps: [
       'Đặt hai tay lên mép bàn vững, người thẳng từ đầu đến gót.',
       'Kéo một đầu gối về phía ngực, siết bụng nhẹ.',
@@ -464,7 +465,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'DI_BO_CHAM',
     name: 'Đi bộ chậm',
-    demoCode: null,
+    demoCode: 'exercise-di-bo-cham',
     steps: [
       'Chọn chỗ đi bằng phẳng, an toàn; thả lỏng hai tay.',
       'Đi với tốc độ chậm, bước đều, hít vào bằng mũi và thở ra từ từ.',
@@ -477,7 +478,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'THO_BUNG',
     name: 'Thở bụng',
-    demoCode: null,
+    demoCode: 'exercise-tho-bung',
     steps: [
       'Ngồi hoặc nằm thoải mái, một tay đặt lên bụng.',
       'Hít vào bằng mũi, để bụng phồng nhẹ dưới tay.',
@@ -489,7 +490,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'THO_RA_DAI',
     name: 'Thở ra dài',
-    demoCode: null,
+    demoCode: 'exercise-tho-ra-dai',
     steps: [
       'Ngồi thoải mái, vai thả lỏng.',
       'Hít vào bằng mũi trong 4 giây.',
@@ -501,7 +502,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'THO_VUONG',
     name: 'Thở vuông',
-    demoCode: null,
+    demoCode: 'exercise-tho-vuong',
     steps: [
       'Ngồi thoải mái, lưng thẳng.',
       'Hít vào 4 giây, giữ hơi nhẹ 4 giây, thở ra 4 giây, nghỉ nhẹ 4 giây.',
@@ -513,7 +514,7 @@ export const MOVES: MoveSeed[] = [
   {
     code: 'QUET_CO_THE',
     name: 'Thả lỏng từng vùng',
-    demoCode: null,
+    demoCode: 'exercise-tha-long-tung-vung',
     steps: [
       'Ngồi hoặc nằm thoải mái ở nơi an toàn.',
       'Chú ý lần lượt từ trán, vai, tay, bụng đến chân.',
