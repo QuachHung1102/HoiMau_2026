@@ -141,7 +141,9 @@ function quadruped(P, hx, tau) {
   for (const s of ['f', 'b']) legAngles(P, s, 0, 90, 140);
   return P;
 }
-const QUAD_HAND = hx => [hx + 37.75, 146.4];
+// shoulders straight above the hands, arms straight (hand centre 36.42 px from the shoulder: elbow < 10 deg)
+const QUAD_TAU = deg(Math.acos((116.25 - (146.4 - 36.42)) / 38));
+const QUAD_HAND = hx => [hx + 38 * Math.sin(rad(QUAD_TAU)), 146.4];
 
 // treadmill gait (side): legs alternate, the stance foot slides back at constant speed on the floor
 function gait(P, t, { stance, reach, lift, arm, elbow, lean, bounce = 0 }) {
@@ -194,9 +196,9 @@ move('MO_NGUC', 'Mở ngực', {
   pose: t => {
     const u = hold(t), P = side();
     legSide(P, 'f', [100, 146]); legSide(P, 'b', [100, 146]);
-    P.aim('torso', -3 * u).aim('head', -4 * u);
-    // hands clasped behind, shoulders extend 35 deg (normal 60), elbows soft
-    for (const s of ['f', 'b']) armAngles(P, s, -3 * u + 2 + 33 * u, -3 * u - 2 + 33 * u);
+    P.aim('torso', 2 * u).aim('head', -6 * u).set('belly', { sx: 1 + 0.5 * u }); // chest lifts, no lean back
+    // hands clasped behind, shoulders extend 35 deg (normal 60), elbows soft; far arm 3 deg apart so both read
+    for (const s of ['f', 'b']) { const k = s === 'b' ? 3 : 0; armAngles(P, s, 2 * u + 2 + 33 * u + k, 2 * u - 2 + 33 * u + k); }
     return P;
   },
   contacts: feetSide.map(p => ({ fixed: p })),
@@ -220,13 +222,13 @@ move('GIAN_CO_TAY', 'Giãn cổ tay', {
 move('XOAY_THAN_NGOI', 'Xoay thân khi ngồi', {
   rig: 'front', prop: ['chair'], durationToken: 'sideHoldCycle', poster: 0.25,
   pose: t => {
-    const P = front().hip(100, 118);
-    // thighs point at the viewer: drawn foreshortened, shins undo the scale
-    for (const s of ['r', 'l']) P.set(`thigh-${s}`, { rot: 0, sy: 0.1 }).set(`shin-${s}`, { rot: 0, sy: 10 }).set(`foot-${s}`, { rot: 0 });
+    const P = front().hip(100, 121 - 29 * 0.35);
+    // thighs point at the viewer: drawn at 0.35 so the knees sit in front of the seat; shins undo the scale
+    for (const s of ['r', 'l']) P.set(`thigh-${s}`, { rot: 0, sy: 0.35 }).set(`shin-${s}`, { rot: 0, sy: 1 / 0.35 }).set(`foot-${s}`, { rot: 0 });
     const a = t < 0.5 ? -hold(2 * t) : hold(2 * t - 1); // -1 = turned to the right
-    // 35 deg trunk rotation reads as shoulders narrowing to cos 35; the head turns with it
-    const sx = 1 - (1 - Math.cos(rad(35))) * Math.abs(a);
-    P.set('torso', { rot: 0, sx }).set('head', { rot: 0, sx: 1 / sx }).set('face', { tx: 5 * a, ty: 0 });
+    // the turn reads as the shoulders narrowing (0.7) and shifting 4 px toward the turn, face and hair part 7 px
+    const sx = 1 - 0.3 * Math.abs(a);
+    P.set('torso', { tx: 4 * a, ty: 0, rot: 0, sx }).set('head', { rot: 0, sx: 1 / sx }).set('face', { tx: 7 * a, ty: 0, sx: 1 - 0.2 * Math.abs(a) });
     // arms crossed, hands toward the shoulders
     P.set('arm-r', { rot: -35 }).set('forearm-r', { rot: -120 }).set('hand-r', { rot: 0 });
     return P.set('arm-l', { rot: 35 }).set('forearm-l', { rot: 120 }).set('hand-l', { rot: 0 });
@@ -253,14 +255,17 @@ move('MEO_BO', 'Cong và võng lưng', {
   rig: 'side', prop: ['mat'], durationToken: 'breathCycle', poster: 0.75,
   pose: t => {
     const a = t < 0.5 ? -hold(2 * t) : hold(2 * t - 1); // -1 cat (exhale), +1 cow (inhale)
-    const P = quadruped(side(), QX, 83.4 + (a < 0 ? 2.4 : 2.5) * a);
-    P.aim('head', P.angle('torso') - 10 + (a < 0 ? -35 : -30) * a).set('belly', { sx: 1 + 0.8 * Math.max(0, a) });
+    // shoulders stay put over straight arms; the back rounds up (cat) or the belly drops (cow)
+    const P = quadruped(side(), QX, QUAD_TAU);
+    P.aim('head', QUAD_TAU - 10 + (a < 0 ? -35 : -30) * a);
+    P.set('back', { sx: 1 + 1.3 * Math.max(0, -a) }).set('belly', { sx: 1 + 1.2 * Math.max(0, a) });
     armSide(P, 'f', QUAD_HAND(QX)); return armSide(P, 'b', QUAD_HAND(QX));
   },
   contacts: [...['f', 'b'].map(s => ({ fixed: SP.hand(s) })), ...['f', 'b'].map(s => ({ fixed: SP.knee(s) })), ...feetSide.map(p => ({ fixed: p }))],
+  straight: ['f', 'b'],
 });
 
-const GRIP = ['shin-b', [91.6, 141]]; // front of the far ankle, hand touching it
+const GRIP = ['shin-b', [91.6, 142.6]]; // front of the far ankle, hand touching it
 const WALL = 146.4; // hand centre against the wall
 let quadGrip;
 move('GIAN_DUI_TRUOC', 'Giãn đùi trước', {
@@ -296,7 +301,9 @@ const HIPHAND = { r: ['hips', [85.5, 86]], l: ['hips', [114.5, 86]] };
 move('XOAY_HONG', 'Xoay hông', {
   rig: 'front', prop: ['mat'], durationToken: 'repCycle', poster: 0.25,
   pose: t => {
-    const dx = 7 * Math.sin(2 * Math.PI * t), P = front().hip(100 + dx, 95); // knees gently bent
+    // the pelvis traces an ellipse: side to side, and forward (lower, nearer: larger) / back
+    const c = Math.cos(2 * Math.PI * t), dx = 7 * Math.sin(2 * Math.PI * t), P = front().hip(100 + dx, 96 + 1.5 * c); // knees gently bent
+    P.set('pelvis', { sx: 1 + 0.06 * c, sy: 1 + 0.06 * c });
     legFront(P, 'r', [86, 146]); legFront(P, 'l', [114, 146]);
     const tilt = -0.55 * dx; // upper body stays over the feet
     P.aim('torso', tilt).aim('head', 0);
@@ -313,7 +320,7 @@ move('DUNG_LEN_NGOI_XUONG', 'Đứng lên ngồi xuống ghế', {
     legSide(P, 'f', [117, 146]); legSide(P, 'b', [117, 146]);
     const lean = 42 * bump(u ** 0.8); // lean forward to rise, upright when standing and seated
     P.aim('torso', lean).aim('head', lean * 0.5);
-    for (const s of ['f', 'b']) armAngles(P, s, lean - 25, lean - 145); // arms crossed on the chest
+    for (const s of ['f', 'b']) armAngles(P, s, lean - 25, lean - 100); // arms crossed on the chest
     return P;
   },
   contacts: feetSide.map(p => ({ fixed: p })),
@@ -364,15 +371,16 @@ let quadArm;
 move('TAY_CHAN_DOI_DIEN', 'Tay chân đối diện', {
   rig: 'side', prop: ['mat'], durationToken: 'holdCycle', poster: 0.5,
   pose: t => {
-    const u = hold(t), P = quadruped(side(), QX, 83.4);
-    P.aim('head', 73.4);
+    const u = hold(t), P = quadruped(side(), QX, QUAD_TAU);
+    P.aim('head', QUAD_TAU - 18 * u); // the head lifts a little so the reaching arm shows below it
     armSide(P, 'f', QUAD_HAND(QX));
-    quadArm ??= (() => { const Q = quadruped(side(), QX, 83.4); armSide(Q, 'b', QUAD_HAND(QX)); return worldArm(Q, 'b'); })();
-    // far arm forward and near leg back, both to about level with the floor
-    armAngles(P, 'b', lerp(quadArm[0], -95, u), lerp(quadArm[1], -95, u));
+    quadArm ??= (() => { const Q = quadruped(side(), QX, QUAD_TAU); armSide(Q, 'b', QUAD_HAND(QX)); return worldArm(Q, 'b'); })();
+    // far arm forward (a little below level, so it shows under the head) and near leg back
+    armAngles(P, 'b', lerp(quadArm[0], -80, u), lerp(quadArm[1], -80, u));
     return legAngles(P, 'f', 92 * u, lerp(90, 92, u), lerp(140, 102, u));
   },
   contacts: [{ fixed: SP.hand('f') }, { fixed: SP.knee('b') }, { fixed: SP.toe('b') }, { fixed: SP.heel('b') }],
+  straight: ['f'],
 });
 
 move('SQUAT_TA_TAY', 'Squat cầm tạ tay', {
@@ -393,9 +401,9 @@ move('DAY_VAI_TA_TAY', 'Đẩy vai với tạ tay', {
   pose: t => {
     const u = rep(t, 0.4, 0.5), P = front().hip(100, 92.5);
     legFront(P, 'r', [92, 146]); legFront(P, 'l', [108, 146]);
-    // from elbows ~90 deg at shoulder level to arms nearly straight overhead
-    armAngles(P, 'r', lerp(80, 162, u), lerp(180, 188, u));
-    return armAngles(P, 'l', lerp(-80, -162, u), lerp(-180, -188, u));
+    // from weights at shoulder level (shoulder 68) to arms nearly straight overhead
+    armAngles(P, 'r', lerp(68, 162, u), lerp(180, 188, u));
+    return armAngles(P, 'l', lerp(-68, -162, u), lerp(-180, -188, u));
   },
   contacts: feetFront.map(p => ({ fixed: p })),
 });
@@ -419,7 +427,7 @@ move('GAP_HONG_TA_TAY', 'Gập hông với tạ tay', {
     const u = rep(t, 0.45, 0.5), P = side().hip(lerp(99, 86, u), lerp(93, 95, u));
     legSide(P, 'f', [100, 146]); legSide(P, 'b', [100, 146]);
     const lean = 60 * u; // hinge at the hips, knees stay soft, weights to knee height
-    P.aim('torso', lean).aim('head', lean * 0.7);
+    P.aim('torso', lean).aim('head', lean * 0.95);
     for (const s of ['f', 'b']) armAngles(P, s, 0, 0);
     return P;
   },
@@ -457,7 +465,7 @@ move('BUOC_NGANG_DAY', 'Bước ngang với dây kháng lực', {
     const q = Math.min(3, Math.floor(t * 4)), e = ease(t * 4 - q), lift = 4 * bump(t * 4 - q);
     // left out, right follows, right out, left follows: the figure goes 14 px and back
     const L = [[lerp(106, 120, e), 146 - lift], [120, 146], [120, 146], [lerp(120, 106, e), 146 - lift]][q];
-    const Rr = [[94, 146], [lerp(94, 108, e), 146 - lift], [lerp(108, 94, e), 146 - lift], [94, 146]][q];
+    const Rr = [[94, 146], [lerp(94, 104, e), 146 - lift], [lerp(104, 94, e), 146 - lift], [94, 146]][q]; // follow foot stops short: band stays taut
     const P = front().hip((L[0] + Rr[0]) / 2, 95); // quarter squat held: knees bent toward the viewer
     legFront(P, 'r', Rr); legFront(P, 'l', L);
     armAngles(P, 'r', 12, -10); armAngles(P, 'l', -12, 10);
@@ -494,7 +502,7 @@ move('NANG_GOI', 'Nâng đầu gối', {
 
 move('GOT_CHAM_MONG', 'Gót chạm mông', {
   rig: 'side', prop: ['mat'], durationToken: 'stepCycle', poster: 0.25,
-  pose: t => march(t, l => [6 * l, 126 * l, 156 * l * l], (own, other) => [-15 + 6 * other - 6 * own, -140 + 6 * other - 6 * own]),
+  pose: t => march(t, l => [6 * l, 126 * l, 156 * l * l], (own, other) => [10 * other - 10 * own, 10 * other - 10 * own - 45]),
   contacts: marchContacts,
 });
 
@@ -548,9 +556,11 @@ move('LEO_NUI_TUA_BAN', 'Leo núi tựa bàn', {
     legSide(P, swing === 'f' ? 'b' : 'f', ankle, 30);
     legSide(P, swing, add(mix(ankle, [hip[0] + 4, 127], l), [0, -6 * bump(l)])); // knee drives toward the chest
     P.aim(`foot-${swing}`, lerp(30, P.angle(`shin-${swing}`) + 20, l * l));
-    armSide(P, 'f', BENCH); return armSide(P, 'b', BENCH);
+    const sh = P.pivot('arm-f'), hand = [sh[0] + Math.sqrt(36.42 ** 2 - (BENCH[1] - sh[1]) ** 2), BENCH[1]]; // straight arms onto the bench
+    armSide(P, 'f', hand); return armSide(P, 'b', hand);
   },
   contacts: [...['f', 'b'].map(s => ({ fixed: SP.hand(s) })), { fixed: SP.toe('f'), during: [0.5, 1] }, { fixed: SP.toe('b'), during: [0, 0.5] }],
+  straight: ['f', 'b'],
 });
 
 move('DI_BO_CHAM', 'Đi bộ chậm', {
@@ -560,9 +570,9 @@ move('DI_BO_CHAM', 'Đi bộ chậm', {
 });
 
 // breathing: seated, the belly fills on the in-breath; `level` 0..1 follows the phases
-const BELLY_HAND = ['belly', [114.1, 78]];
+const BELLY_HAND = ['belly', [113.5, 71]]; // mid-abdomen
 function seatedBreath(level, handOnBelly) {
-  const P = seatedSide(side()).aim('torso', -1.5 * level).aim('head', 0).set('belly', { sx: 1 + level }); // belly fills forward on the in-breath
+  const P = seatedSide(side()).aim('torso', -1.5 * level).aim('head', 0).set('belly', { sx: 1 + level, sy: 1 + 0.12 * level }); // belly fills forward on the in-breath
   armSide(P, 'b', [108, 112]);
   return armSide(P, 'f', handOnBelly ? P.pt(...BELLY_HAND) : [108, 112]);
 }
@@ -581,7 +591,7 @@ move('THO_VUONG', 'Thở vuông', {
   rig: 'side', prop: ['chair'], durationToken: 'boxBreath', poster: 0.375, demo: 'breath', reducedMotion: RM_BREATH,
   breath: [{ label: 'Hít vào', ms: 4000, to: 1 }, { label: 'Giữ', ms: 4000, to: 1 }, { label: 'Thở ra', ms: 4000, to: 0 }, { label: 'Nghỉ', ms: 4000, to: 0 }],
 });
-const SCAN = [['Thả lỏng trán', 'head'], ['Thả lỏng vai', 'arm-f'], ['Thả lỏng tay', 'forearm-f'], ['Thả lỏng bụng', 'belly'], ['Thả lỏng chân', 'thigh-f']];
+const SCAN = [['Thả lỏng trán', 'head'], ['Thả lỏng vai', 'shoulder-f'], ['Thả lỏng tay', 'forearm-f'], ['Thả lỏng bụng', 'belly'], ['Thả lỏng chân', 'thigh-f']];
 move('QUET_CO_THE', 'Thả lỏng từng vùng', {
   rig: 'side', prop: ['chair'], durationToken: 'bodyScan', poster: 0.1, demo: 'breath',
   reducedMotion: 'Nhân vật ngồi yên; tên từng vùng cơ thể hiện lần lượt bằng chữ, kèm 3 bước hướng dẫn bằng chữ.',
@@ -637,7 +647,7 @@ function sample(m, n) {
     const vals = poses.map(p => ({ ...p.get(id) }));
     // keep rotations continuous so the browser never spins the long way round
     for (let i = 1; i < vals.length; i++) vals[i].rot = (vals[i - 1].rot ?? 0) + norm((vals[i].rot ?? 0) - (vals[i - 1].rot ?? 0));
-    const withT = TRANSLATED.has(id), withS = vals.some(v => (v.sx ?? 1) !== 1 || (v.sy ?? 1) !== 1);
+    const withT = TRANSLATED.has(id) || vals.some(v => (v.tx ?? 0) !== 0 || (v.ty ?? 0) !== 0), withS = vals.some(v => (v.sx ?? 1) !== 1 || (v.sy ?? 1) !== 1);
     const frames = vals.map((v, i) => ({ transform: formatValue({ ...v, withT }, withS), ...(m.breath ? { offset: f3(ts[i]) } : {}) }));
     if (m.breath) { frames[0].offset = 0; frames.at(-1).offset = 1; }
     if (frames.at(-1).transform !== frames[0].transform) throw new Error(`${m.id} ${id}: loop does not close (${frames[0].transform} vs ${frames.at(-1).transform})`);
@@ -678,7 +688,7 @@ function checkRanges(m, P, where) {
     if (leg < 0.85 - 1e-6 || leg > 1.0001) errs.push(`${m.id} ${where}: leg ${s} drawn at ${leg.toFixed(3)} of its length`);
   }
   within('neck', g('head').rot ?? 0);
-  if (m.rig === 'front') { within('trunk', g('torso').rot ?? 0); const sx = g('torso').sx ?? 1; if (sx < 0.8 || sx > 1) errs.push(`${m.id}: torso width ${sx}`); }
+  if (m.rig === 'front') { within('trunk', g('torso').rot ?? 0); const sx = g('torso').sx ?? 1; if (sx < 0.7 - 1e-6 || sx > 1) errs.push(`${m.id}: torso width ${sx}`); }
   for (const id of ['arm-f', 'arm-b']) { const sy = g(id).sy ?? 1; if (sy < 0.8 || sy > 1.23 + 1e-6) errs.push(`${m.id}: ${id} drawn at ${sy}`); }
   return errs;
 }
@@ -686,11 +696,14 @@ function checkRanges(m, P, where) {
 const inWindow = (t, [a, b]) => t >= a - 1e-9 && t <= b + 1e-9;
 function verify(m, tracks, ts) {
   const errs = [], feet = m.rig === 'side' ? feetSide : feetFront;
-  for (const [i, t] of ts.entries()) errs.push(...checkRanges(m, replay(m, tracks, t), `key ${i}`));
   const samples = [];
   for (let i = 0; i < ts.length - 1; i++) for (let j = 0; j < 8; j++) samples.push(lerp(ts[i], ts[i + 1], j / 8));
   samples.push(1);
   const poses = samples.map(t => [t, replay(m, tracks, t)]);
+  // ranges on every interpolated sample, not only the keys: scales multiply between keys
+  for (const [t, P] of poses) errs.push(...checkRanges(m, P, `t ${t.toFixed(3)}`));
+  // supporting arms the steps want straight (hands planted on the floor or a bench): elbow <= 10 deg
+  for (const s of m.straight ?? []) for (const [t, P] of poses) { const e = Math.abs(P.get(`forearm-${s}`).rot ?? 0); if (e > 10) errs.push(`${m.id}: support arm ${s} elbow bent ${e.toFixed(1)} deg at t ${t.toFixed(3)}`); }
   let worst = 0;
   const drift = (d, what) => { worst = Math.max(worst, d); if (d > DRIFT) errs.push(`${m.id}: ${what} drifts ${d.toFixed(2)} px`); };
   for (const c of m.contacts ?? breathContactsOf(m)) {

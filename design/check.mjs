@@ -103,11 +103,11 @@ const rigs = { side: rigFile('side'), front: rigFile('front') };
 const rig = rigs.side, rigFront = rigs.front;
 const RIG_PARTS = {
   side: {
-    joints: ['rig', 'hips', 'torso', 'head', 'belly', 'arm-f', 'forearm-f', 'hand-f', 'arm-b', 'forearm-b', 'hand-b', 'thigh-f', 'shin-f', 'foot-f', 'thigh-b', 'shin-b', 'foot-b', 'prop-band'],
+    joints: ['rig', 'hips', 'torso', 'head', 'belly', 'back', 'shoulder-f', 'arm-f', 'forearm-f', 'hand-f', 'arm-b', 'forearm-b', 'hand-b', 'thigh-f', 'shin-f', 'foot-f', 'thigh-b', 'shin-b', 'foot-b', 'prop-band'],
     props: ['prop-mat', 'prop-bench', 'prop-chair', 'prop-sofa', 'prop-wall', 'prop-anchor', 'prop-band', 'prop-palm-f', 'prop-dumbbell-f', 'prop-dumbbell-b'],
   },
   front: {
-    joints: ['rig', 'hips', 'torso', 'head', 'face', 'arm-l', 'forearm-l', 'hand-l', 'arm-r', 'forearm-r', 'hand-r', 'thigh-l', 'shin-l', 'foot-l', 'thigh-r', 'shin-r', 'foot-r', 'prop-miniband'],
+    joints: ['rig', 'hips', 'pelvis', 'torso', 'head', 'face', 'arm-l', 'forearm-l', 'hand-l', 'arm-r', 'forearm-r', 'hand-r', 'thigh-l', 'shin-l', 'foot-l', 'thigh-r', 'shin-r', 'foot-r', 'prop-miniband'],
     props: ['prop-mat', 'prop-chair', 'prop-miniband', 'prop-dumbbell-l', 'prop-dumbbell-r'],
   },
 };
