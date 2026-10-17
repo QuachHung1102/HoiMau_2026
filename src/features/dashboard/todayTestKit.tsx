@@ -14,6 +14,7 @@ import { cumulativeXpForLevel, levelForXp, perkPointsEarned, titleKeyForLevel, x
 import { mapStats } from '../../../domain/stats.ts';
 import { INGREDIENT_TAGS, type IngredientTag, type MealSlot } from '../../../domain/types.ts';
 import { tabLabel } from '../../shared/i18n/vi/nav';
+import fixture from '../nutrition/mealFixture.json';
 import { clearCelebrations } from '../progression/celebrations';
 import { tickPath, WATER } from '../quests/api';
 import { fetchMock, installSyncTestEnv, mountApp, refuse, respond, settle, tabsSettled, USER, writes } from '../sync/syncTestKit';
@@ -438,42 +439,12 @@ function addCalories(id: string, amount: number) {
 
 // ---- the meal plan (server Task 33; task-33-report.md "Notes for Task 34") ----
 
-type MealRow = [code: string, name: string, slot: MealSlot, kcal: number, proteinG: number, carbsG: number, fatG: number, tags: string[], imageKey: string | null];
-// Illustrative meals in the shape of server/content/meals.ts (the three pictures are the real keys). The macros are
-// chosen so that, for the target below, the ranking of a lunch swap is the one of frame S15: fish, chicken noodles, tofu.
-const ROWS: MealRow[] = [
-  ['YEN_MACH', 'Yến mạch và trái cây', 'BREAKFAST', 540, 19, 78, 17, ['khong-thit', 'it-nau', 'co:sua', 'co:gluten'], 'e1ZpZ'],
-  ['BANH_MI_TRUNG', 'Bánh mì trứng', 'BREAKFAST', 560, 24, 70, 20, ['ngoai-hang', 'co:trung', 'co:gluten'], null],
-  ['XOI_DAU', 'Xôi đậu xanh', 'BREAKFAST', 580, 16, 100, 11, ['chay', 'ngoai-hang'], null],
-  ['COM_GA', 'Cơm gà, rau củ', 'LUNCH', 820, 50, 100, 24, ['ngoai-hang', 'co:gia-cam'], 'Fr7yg'],
-  ['COM_CA', 'Cơm cá và rau luộc', 'LUNCH', 790, 46, 92, 26, ['co:hai-san'], null],
-  ['BUN_GA', 'Bún gà rau thơm', 'LUNCH', 760, 38, 96, 25, ['ngoai-hang', 'co:gia-cam'], null],
-  ['DAU_HU_NAM', 'Đậu hũ, cơm và nấm', 'LUNCH', 745, 30, 100, 25, ['khong-thit', 'co:dau-nanh'], null],
-  ['COM_TAM', 'Cơm tấm sườn', 'LUNCH', 900, 30, 115, 35, ['ngoai-hang', 'co:thit-do'], null],
-  ['CA_AP_CHAO', 'Cá áp chảo, cơm và rau', 'DINNER', 720, 45, 90, 20, ['co:hai-san'], 'xZxDr'],
-  ['BO_XAO', 'Bò xào rau, cơm', 'DINNER', 700, 40, 85, 22, ['co:thit-do'], null],
-  ['CANH_DAU_HU', 'Canh đậu hũ, cơm', 'DINNER', 690, 28, 100, 20, ['khong-thit', 'co:dau-nanh'], null],
-  ['GA_LUOC', 'Gà luộc, cơm', 'DINNER', 730, 48, 90, 20, ['co:gia-cam'], null],
-  ['SUA_CHUA', 'Sữa chua và hạt', 'SNACK', 290, 14, 25, 15, ['khong-thit', 'it-nau', 'co:sua'], null],
-  ['TAO_HAT', 'Táo và hạt', 'SNACK', 250, 6, 32, 11, ['chay', 'it-nau'], null],
-  ['TRUNG_LUOC', 'Trứng luộc và chuối', 'SNACK', 230, 12, 28, 8, ['khong-thit', 'it-nau', 'co:trung'], null],
-];
+// Illustrative meals in the shape of server/content/meals.ts (the three pictures are the real keys; names and numbers are in
+// the fixture file). The macros are chosen so that, for the target below, the ranking of a lunch swap is the one of frame S15:
+// fish, chicken noodles, tofu.
 const idOf = (n: number) => `00000000-0000-4000-8000-${String(n + 1).padStart(12, '0')}`;
 /** The meal library of the stand-in, as `Meal`. */
-export const MEALS: Meal[] = ROWS.map(([code, name, mealSlot, kcal, proteinG, carbsG, fatG, tags, imageKey], n) => ({
-  id: idOf(n),
-  code,
-  name,
-  mealSlot,
-  kcal,
-  proteinG,
-  carbsG,
-  fatG,
-  tags,
-  portionText: `1 phần của ${name.toLowerCase()}.`,
-  description: `Mô tả của ${name.toLowerCase()}.`,
-  imageKey,
-}));
+export const MEALS: Meal[] = (fixture as Omit<Meal, 'id'>[]).map((meal, n) => ({ ...meal, id: idOf(n) }));
 export const mealByCode = (code: string) => MEALS.find(meal => meal.code === code) as Meal;
 const mealById = (id: string | null | undefined) => MEALS.find(meal => meal.id === id);
 export const PLAN_SLOTS: MealSlot[] = ['BREAKFAST', 'LUNCH', 'DINNER', 'SNACK'];
