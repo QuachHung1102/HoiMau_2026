@@ -16,7 +16,7 @@ const LIMIT_DEFAULT = 20;
 const LIMIT_MAX = 50;
 
 /** `limit`: absent is the default; otherwise a whole number from 1 to LIMIT_MAX. */
-function limitOf(value: string | null): number {
+export function limitOf(value: string | null): number {
   if (value === null) {
     return LIMIT_DEFAULT;
   }
