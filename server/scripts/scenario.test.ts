@@ -62,10 +62,10 @@ const decoys = async () =>
       ) AS snapshot`)
   ).rows[0].snapshot;
 
-test('every file of scripts/scenarios is found: the six of Task 23 and rich of Task 37', async () => {
+test('every file of scripts/scenarios is found: the six of Task 23, rich of Task 37 and guild4 of Task 39', async () => {
   assert.deepEqual(
     (await loadScenarios()).map(scenario => scenario.name),
-    ['broken', 'day1', 'fresh', 'missed3', 'rich', 'streak2', 'streak6'],
+    ['broken', 'day1', 'fresh', 'guild4', 'missed3', 'rich', 'streak2', 'streak6'],
   );
 });
 
@@ -153,6 +153,37 @@ test('rich: level 8, 500 coins, 3 perk points, TICKET_CAP_PLUS and THEME_FOREST 
   assert.ok((await get(token, '/inventory')).items.some((i: { code: string }) => i.code === 'THEME_FOREST'));
   assert.equal((await get(token, '/shop')).coin, 500);
   assert.equal(await clock(), START);
+});
+
+test('guild4: four in one guild, three active this week with different completion, the fourth muted; a second run replaces the guild', async () => {
+  const outcome = async () => {
+    const { token } = await run('guild4');
+    const { guild } = await get(token, '/guilds/me');
+    const dung = await app.call('POST', '/auth/login', { body: { email: 'demo-guild4d@hoimau.test', password: PASSWORD } });
+    assert.equal(dung.status, 200, JSON.stringify(dung.body));
+    return {
+      name: guild.name,
+      myRole: guild.myRole,
+      // the four joined at one frozen instant: same joined_at, so the order after the leader is by user id
+      members: guild.members
+        .map((m: any) => [m.displayName, m.role, m.daysCompletedThisWeek, m.storyDoneToday])
+        .sort((a: any, b: any) => (a[1] === b[1] ? a[0].localeCompare(b[0]) : a[1] === 'LEADER' ? -1 : 1)),
+      weekCompletion: guild.weekCompletion,
+      dungNudges: (await get(dung.body.token, '/settings')).nudgesEnabled,
+      guilds: (await db.admin.query("SELECT count(*)::int AS n FROM guilds WHERE name = 'Tổ Bốn Mùa'")).rows[0].n,
+      day: (await get(token, '/day')).logicalDate,
+    };
+  };
+  const first = await outcome();
+  assert.deepEqual(first.members, [
+    ['An', 'LEADER', 2, true],
+    ['Bình', 'MEMBER', 1, false],
+    ['Chi', 'MEMBER', 0, false],
+    ['Dũng', 'MEMBER', 0, false],
+  ]);
+  assert.deepEqual([first.myRole, first.dungNudges, first.guilds, first.day], ['LEADER', false, 1, '2027-03-02']);
+  assert.ok(first.weekCompletion > 0 && first.weekCompletion < 1);
+  assert.deepEqual(await outcome(), first);
 });
 
 test('a scenario twice in a row gives the same outcome, for one account', async () => {

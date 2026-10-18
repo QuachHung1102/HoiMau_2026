@@ -9,7 +9,7 @@ import type { Pool } from 'pg';
 import { GUILD_INACTIVE_DAYS, GUILD_MAX_MEMBERS, memberWeek, scoreGuildWeek } from '../../../domain/guild.ts';
 import type { MemberWeek } from '../../../domain/guild.ts';
 import { BANNED_TERMS } from '../../../domain/language.ts';
-import { addDays, daysBetween, localParts, weekStartOf } from '../../../domain/logicalDate.ts';
+import { addDays, daysBetween, localParts, logicalDateOf, weekStartOf } from '../../../domain/logicalDate.ts';
 import { asUser, setTestClock } from '../../test/helpers.ts';
 import { newOnboardedUser, serverPool, startTestApp } from '../../test/http.ts';
 import type { CallResult, TestApp } from '../../test/http.ts';
@@ -568,6 +568,32 @@ test('week numbers equal memberWeek and scoreGuildWeek on the same inputs: joine
     // A: three full days and a half; B, joined Thursday, is counted from Thursday
     assert.equal(counts[0][0], 3);
     assert.equal(expected[1][1], daysBetween(day(3), today) + 1);
+  } finally {
+    await setTestClock(db.admin, NOON);
+  }
+});
+
+test("storyDoneToday follows the member's own logical day also when that day is in the previous Asia/Ho_Chi_Minh week", async () => {
+  const monday = '2027-03-15T05:00:00.000Z';
+  await setTestClock(db.admin, monday);
+  try {
+    const today = await ictToday();
+    const theirs = logicalDateOf(Date.parse(monday), 'America/Los_Angeles');
+    assert.ok(theirs < weekStartOf(today), 'Los Angeles is still in the previous week');
+    const { leader } = await guildOf(1);
+    const la = await newOnboardedUser(db, { timezone: 'America/Los_Angeles' });
+    ok(await join(la, (await mine(leader)).guild.inviteCode));
+    const log = (
+      await db.admin.query('INSERT INTO daily_logs (user_id, logical_date) VALUES ($1, $2) RETURNING id', [la.userId, theirs])
+    ).rows[0].id;
+    await db.admin.query(
+      `INSERT INTO quest_completions (user_id, daily_log_id, quest_id, progress, completed_at)
+       SELECT $1, $2, q.id, q.target_count, app.now() FROM quests q
+        WHERE q.category = 'STORY' AND q.is_active AND 'SUPPORTER' = ANY (q.archetypes)`,
+      [la.userId, log],
+    );
+    const member = (await mine(leader)).guild.members.find((m: any) => m.userId === la.userId);
+    assert.deepEqual([member.storyDoneToday, member.daysCompletedThisWeek], [true, 0]);
   } finally {
     await setTestClock(db.admin, NOON);
   }
