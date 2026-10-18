@@ -37,7 +37,7 @@ const quiet = createLogger(() => {});
 
 const at = (date: string, hhmm: string) => new Date(`${date}T${hhmm}:00+07:00`).toISOString();
 const clock = (date: string, hhmm: string) => setTestClock(db.admin, at(date, hhmm));
-const use = (user: { token: string }, date: unknown, key: string = randomUUID()) =>
+const spend = (user: { token: string }, date: unknown, key: string = randomUUID()) =>
   app.call('POST', '/freeze-tickets/use', { token: user.token, key, body: { date } });
 const tickets = async (user: User) => ok(await app.call('GET', '/freeze-tickets', { token: user.token }));
 function ok(result: CallResult): any {
@@ -147,7 +147,7 @@ async function wouldUse(user: User, date: string): Promise<string> {
 test('today, streak 4, STORY not done: the ticket is used, and the next day-close keeps 4 with the day FROZEN', async () => {
   await clock(TODAY, '12:00');
   const user = await userWith({ streakCurrent: 4, lastClosed: YESTERDAY, lastOutcome: 'COMPLETED' });
-  const answer = ok(await use(user, TODAY));
+  const answer = ok(await spend(user, TODAY));
   assert.equal(answer.available, 0);
   assert.deepEqual(
     answer.eligible.map((e: { target: string; alreadyUsed: boolean }) => [e.target, e.alreadyUsed]),
@@ -167,10 +167,10 @@ test('today, streak 4, STORY not done: the ticket is used, and the next day-clos
 test('TICKET_NOT_NEEDED: today with streak 0; today with the STORY done', async () => {
   await clock(TODAY, '12:00');
   const zero = await userWith({ streakCurrent: 0, lastClosed: YESTERDAY });
-  assert.equal(code(await use(zero, TODAY)), 'TICKET_NOT_NEEDED');
+  assert.equal(code(await spend(zero, TODAY)), 'TICKET_NOT_NEEDED');
   const done = await userWith({ streakCurrent: 4, lastClosed: YESTERDAY });
   await completeStory(done);
-  assert.equal(code(await use(done, TODAY)), 'TICKET_NOT_NEEDED');
+  assert.equal(code(await spend(done, TODAY)), 'TICKET_NOT_NEEDED');
   assert.deepEqual(await ticketRows(done), [{ week: '2027-03-08', used_for: null }]);
 });
 
@@ -186,7 +186,7 @@ test('rescue at 09:00 of yesterday that broke a streak of 5: streak 5 again, mis
     lastClosed: YESTERDAY,
   });
   const { lastClosed: closedBefore, ...was } = await stateOf(user);
-  const answer = ok(await use(user, YESTERDAY));
+  const answer = ok(await spend(user, YESTERDAY));
   const { lastClosed, ...now } = await stateOf(user);
   assert.deepEqual(now, rescueWithTicket(was, YESTERDAY));
   assert.deepEqual([now.streakCurrent, now.streakBest, now.missedRun, now.lastOutcome], [5, 7, 0, 'FROZEN']);
@@ -203,12 +203,12 @@ test('eligible dates: yesterday until 14:59 local, not at 15:00 nor before 03:00
   const early = await broken();
   const late = await broken();
   await clock(TODAY, '14:59');
-  assert.equal(code(await use(early, YESTERDAY)), 'ok');
+  assert.equal(code(await spend(early, YESTERDAY)), 'ok');
   await clock(TODAY, '15:00');
-  assert.equal(code(await use(late, YESTERDAY)), 'TICKET_DATE_NOT_ELIGIBLE');
+  assert.equal(code(await spend(late, YESTERDAY)), 'TICKET_DATE_NOT_ELIGIBLE');
   // 02:59 on the 11th is still the logical 10th: its yesterday is the 9th, and the hour is before 03:00
   await clock('2027-03-11', '02:59');
-  assert.equal(code(await use(late, YESTERDAY)), 'TICKET_DATE_NOT_ELIGIBLE');
+  assert.equal(code(await spend(late, YESTERDAY)), 'TICKET_DATE_NOT_ELIGIBLE');
   await clock(TODAY, '09:00');
   const old = await userWith({
     streakCurrent: 0,
@@ -218,9 +218,9 @@ test('eligible dates: yesterday until 14:59 local, not at 15:00 nor before 03:00
     lastOutcome: 'MISSED',
     lastClosed: YESTERDAY,
   });
-  assert.equal(code(await use(old, '2027-03-08')), 'TICKET_DATE_NOT_ELIGIBLE');
+  assert.equal(code(await spend(old, '2027-03-08')), 'TICKET_DATE_NOT_ELIGIBLE');
   const live = await userWith({ streakCurrent: 4, lastClosed: YESTERDAY });
-  assert.equal(code(await use(live, '2027-03-11')), 'TICKET_DATE_NOT_ELIGIBLE');
+  assert.equal(code(await spend(live, '2027-03-11')), 'TICKET_DATE_NOT_ELIGIBLE');
   assert.deepEqual(await ticketRows(late), [{ week: '2027-03-08', used_for: null }]);
 });
 
@@ -228,17 +228,17 @@ test('one ticket per date; NO_TICKET without one; a replay of the same key consu
   await clock(TODAY, '12:00');
   const user = await userWith({ streakCurrent: 4, lastClosed: YESTERDAY }, 2);
   const key = randomUUID();
-  const first = ok(await use(user, TODAY, key));
-  assert.deepEqual(ok(await use(user, TODAY, key)), first);
+  const first = ok(await spend(user, TODAY, key));
+  assert.deepEqual(ok(await spend(user, TODAY, key)), first);
   assert.equal(first.available, 1);
-  assert.equal(code(await use(user, TODAY)), 'TICKET_ALREADY_USED_FOR_DATE');
+  assert.equal(code(await spend(user, TODAY)), 'TICKET_ALREADY_USED_FOR_DATE');
   // the oldest ticket goes first
   assert.deepEqual(await ticketRows(user), [
     { week: '2027-03-01', used_for: TODAY },
     { week: '2027-03-08', used_for: null },
   ]);
   const none = await userWith({ streakCurrent: 4, lastClosed: YESTERDAY }, 0);
-  assert.equal(code(await use(none, TODAY)), 'NO_TICKET');
+  assert.equal(code(await spend(none, TODAY)), 'NO_TICKET');
 });
 
 test('the refusal order, each adjacent pair: DATE_NOT_ELIGIBLE > ALREADY_USED_FOR_DATE > NO_TICKET > NOT_NEEDED; and before them 401, 400 key, 409 onboarding, 422 date', async () => {
@@ -249,26 +249,26 @@ test('the refusal order, each adjacent pair: DATE_NOT_ELIGIBLE > ALREADY_USED_FO
     "INSERT INTO freeze_tickets (user_id, grant_week, used_at, used_for_date) VALUES ($1, '2027-03-01', app.now(), '2027-03-08')",
     [a.userId],
   );
-  assert.equal(code(await use(a, '2027-03-08')), 'TICKET_DATE_NOT_ELIGIBLE');
+  assert.equal(code(await spend(a, '2027-03-08')), 'TICKET_DATE_NOT_ELIGIBLE');
   // already used for today, and no unused ticket left
   const b = await userWith({ streakCurrent: 4, lastClosed: YESTERDAY }, 0);
   await db.admin.query(
     "INSERT INTO freeze_tickets (user_id, grant_week, used_at, used_for_date) VALUES ($1, '2027-03-01', app.now(), $2)",
     [b.userId, TODAY],
   );
-  assert.equal(code(await use(b, TODAY)), 'TICKET_ALREADY_USED_FOR_DATE');
+  assert.equal(code(await spend(b, TODAY)), 'TICKET_ALREADY_USED_FOR_DATE');
   // no ticket, and nothing to protect
   const c = await userWith({ streakCurrent: 0, lastClosed: YESTERDAY }, 0);
-  assert.equal(code(await use(c, TODAY)), 'NO_TICKET');
+  assert.equal(code(await spend(c, TODAY)), 'NO_TICKET');
   // a ticket, nothing to protect
   const d = await userWith({ streakCurrent: 0, lastClosed: YESTERDAY }, 1);
-  assert.equal(code(await use(d, TODAY)), 'TICKET_NOT_NEEDED');
+  assert.equal(code(await spend(d, TODAY)), 'TICKET_NOT_NEEDED');
 
   // the route: no session, no key, not onboarded, then the date, all before the function
   assert.equal((await app.call('POST', '/freeze-tickets/use', { key: randomUUID(), body: {} })).status, 401);
   assert.equal(code(await app.call('POST', '/freeze-tickets/use', { token: c.token, body: {} })), 'IDEMPOTENCY_KEY_REQUIRED');
   const fresh = await newUser(db);
-  assert.equal(code(await use(fresh, 'x')), 'ONBOARDING_REQUIRED');
+  assert.equal(code(await spend(fresh, 'x')), 'ONBOARDING_REQUIRED');
   for (const [date, rule] of [
     [undefined, 'required'],
     ['', 'required'],
@@ -276,13 +276,13 @@ test('the refusal order, each adjacent pair: DATE_NOT_ELIGIBLE > ALREADY_USED_FO
     ['2027-02-30', 'format'],
     ['10/03/2027', 'format'],
   ] as const) {
-    const result = await use(c, date);
+    const result = await spend(c, date);
     assert.deepEqual([result.status, result.body.error.details?.fields], [422, [{ field: 'date', rule }]], String(date));
   }
   // in the function: a caller who is not onboarded is ONBOARDING_REQUIRED before any date rule
   await assert.rejects(
     asUser(db.app, fresh.userId, cl => cl.query("SELECT ticket_use('1999-01-01', $1)", [randomUUID()])),
-    /^error: ONBOARDING_REQUIRED$|ONBOARDING_REQUIRED/,
+    { message: 'ONBOARDING_REQUIRED' },
   );
 });
 
@@ -338,13 +338,13 @@ test('GET /freeze-tickets: previews equal ticketPreview, deadlines are 15:00 loc
       ['YESTERDAY', false],
     ],
   );
-  assert.equal(code(await use(user, TODAY)), 'TICKET_NOT_NEEDED');
+  assert.equal(code(await spend(user, TODAY)), 'TICKET_NOT_NEEDED');
 });
 
 test('a ticket applied to yesterday between 03:00 and the day-close run is honoured by the run: FROZEN, streak kept', async () => {
   await clock(TODAY, '03:05');
   const user = await userWith({ streakCurrent: 3, lastClosed: '2027-03-08', lastOutcome: 'COMPLETED' });
-  const answer = ok(await use(user, YESTERDAY));
+  const answer = ok(await spend(user, YESTERDAY));
   assert.deepEqual(
     answer.eligible.map((e: Eligible) => [e.target, e.alreadyUsed, e.needed]),
     [
@@ -393,9 +393,12 @@ test('two uses with one ticket at the same moment: one goes through (same date: 
     // streak 2 today and a break of 5 yesterday: both dates need a ticket
     const user = await userWith({ streakCurrent: 2, streakBeforeBreak: 5, breakDate: YESTERDAY, missedRun: 1, lastOutcome: 'MISSED', lastClosed: YESTERDAY });
     const release = await hold(HOLD_USER, user.userId);
-    const both = Promise.all(dates.map(date => use(user, date)));
-    await until(2);
-    await release();
+    const both = Promise.all(dates.map(date => spend(user, date)));
+    try {
+      await until(2);
+    } finally {
+      await release();
+    }
     assert.deepEqual((await both).map(code).sort(), ['ok', loser].sort());
     const rows = await ticketRows(user);
     assert.equal(rows.length, 1);
@@ -425,11 +428,15 @@ test('a use of yesterday against the day-close of yesterday, both lock orders an
   // the use first in line, the close behind it
   await round(async user => {
     const release = await hold(HOLD_STATE, user.userId);
-    const used = use(user, YESTERDAY);
-    await until(1);
-    const closed = job();
-    await until(2);
-    await release();
+    const used = spend(user, YESTERDAY);
+    let closed: Promise<unknown> = Promise.resolve();
+    try {
+      await until(1);
+      closed = job();
+      await until(2);
+    } finally {
+      await release();
+    }
     return [used, closed];
   }, 1);
   // the close first in line, the use behind it (then a rescue of the day the close broke). The
@@ -439,13 +446,17 @@ test('a use of yesterday against the day-close of yesterday, both lock orders an
   await round(async user => {
     const release = await hold(HOLD_STATE, user.userId);
     const closed = job();
-    await until(1);
-    const used = use(user, YESTERDAY);
-    await until(2);
-    await release();
+    let used: Promise<CallResult> = Promise.resolve({ status: 0, body: undefined, headers: new Headers() });
+    try {
+      await until(1);
+      used = spend(user, YESTERDAY);
+      await until(2);
+    } finally {
+      await release();
+    }
     return [used, closed];
   }, 0);
   for (let i = 0; i < 5; i++) {
-    await round(async user => [use(user, YESTERDAY), job()]);
+    await round(async user => [spend(user, YESTERDAY), job()]);
   }
 });

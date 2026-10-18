@@ -383,8 +383,11 @@ test(`two entries of one fresh day at the same moment: both stored, +${JOURNAL_X
     const user = await newOnboardedUser(db);
     const release = await holdUser(user.userId);
     const both = Promise.all([write(user, 'Song song một'), write(user, 'Song song hai')]);
-    await until(2);
-    await release();
+    try {
+      await until(2);
+    } finally {
+      await release();
+    }
     const results = (await both).map(ok);
     assert.deepEqual(results.map(r => r.xpAwarded).sort(), [0, JOURNAL_XP]);
     assert.deepEqual(results.map(r => r.ticket.outcome).sort(), ['ALREADY_DECIDED', 'GRANTED']);
