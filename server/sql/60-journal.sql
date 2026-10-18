@@ -78,7 +78,8 @@ DECLARE
 BEGIN
   INSERT INTO ticket_grant_weeks (user_id, week_start, granted)
   SELECT p_user, p_week_start,
-         (SELECT count(*) FROM freeze_tickets t WHERE t.user_id = p_user AND t.used_at IS NULL) < app._ticket_cap(p_user)
+         EXISTS (SELECT 1 FROM freeze_tickets t WHERE t.user_id = p_user AND t.grant_week = p_week_start)
+         OR (SELECT count(*) FROM freeze_tickets t WHERE t.user_id = p_user AND t.used_at IS NULL) < app._ticket_cap(p_user)
   ON CONFLICT (user_id, week_start) DO NOTHING
   RETURNING granted INTO v_granted;
   IF NOT FOUND THEN
@@ -87,7 +88,9 @@ BEGIN
   IF NOT v_granted THEN
     RETURN 'AT_CAP';
   END IF;
-  INSERT INTO freeze_tickets (user_id, grant_week) VALUES (p_user, p_week_start);
+  -- a decision row lost while the week's ticket stayed (restored by hand): that ticket is the grant
+  INSERT INTO freeze_tickets (user_id, grant_week) VALUES (p_user, p_week_start)
+  ON CONFLICT (user_id, grant_week) DO NOTHING;
   RETURN 'GRANTED';
 END $$;
 
