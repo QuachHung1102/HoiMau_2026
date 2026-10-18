@@ -14,6 +14,11 @@ import { ArchetypeStepScreen } from '../features/onboarding/ArchetypeStepScreen'
 import { ProfileStepScreen } from '../features/onboarding/ProfileStepScreen';
 import { stepOptions } from '../features/onboarding/StepScreen';
 import { OnbTargetsScreen, TargetsScreen } from '../features/onboarding/TargetsScreen';
+import { PetScreen } from '../features/pet/PetScreen';
+import { PetStagesScreen } from '../features/pet/PetStagesScreen';
+import { InventoryScreen } from '../features/shop/InventoryScreen';
+import { ShopItemScreen } from '../features/shop/ShopItemScreen';
+import { ShopScreen } from '../features/shop/ShopScreen';
 import { ManualKcalScreen } from '../features/nutrition/ManualKcalScreen';
 import { MealDetailScreen } from '../features/nutrition/MealDetailScreen';
 import { MealPlanScreen } from '../features/nutrition/MealPlanScreen';
@@ -72,6 +77,11 @@ export const detailScreens: ScreenEntry[] = [
   { name: 'Journey', component: JourneyScreen },
   { name: 'DayHistory', component: DayHistoryScreen },
   { name: 'Levels', component: LevelsScreen },
+  { name: 'Pet', component: PetScreen },
+  { name: 'PetStages', component: PetStagesScreen },
+  { name: 'Shop', component: ShopScreen },
+  { name: 'ShopItem', component: ShopItemScreen },
+  { name: 'Inventory', component: InventoryScreen },
 ];
 
 /** Full-screen modal flow above the tabs; the tab bar cannot interrupt it. */

@@ -51,7 +51,7 @@ describe('S46: levels', () => {
     view.unmount();
   });
 
-  test('the three perks are explanations with their cost from PERKS; nothing here unlocks them', async () => {
+  test('the three perks are rows with their cost from PERKS; each one opens its sheet (the unlock itself is in PerkSheet.test.tsx)', async () => {
     const view = await openLevels();
     const rows: [string, string, string][] = [
       ['Thêm lựa chọn đổi món', `Mỗi bữa đổi được ${SWAPS_PER_SLOT.withPerk} lần thay vì ${SWAPS_PER_SLOT.base}`, `${PERKS.MEAL_SWAP_PLUS.cost} điểm`],
@@ -65,7 +65,7 @@ describe('S46: levels', () => {
     }
     // the costs are the ones of the economy: 2, 3 and 1 points
     expect([PERKS.MEAL_SWAP_PLUS.cost, PERKS.TICKET_CAP_PLUS.cost, PERKS.THEME_UNLOCK.cost]).toEqual([2, 3, 1]);
-    expect(screen.queryByRole('button', { name: /Thêm lựa chọn đổi món/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Thêm lựa chọn đổi món/ })).toBeTruthy();
     expect(screen.getByText('Điểm tiện ích không cộng vào chỉ số cơ thể hoặc điểm tổ đội.')).toBeTruthy();
     view.unmount();
   });

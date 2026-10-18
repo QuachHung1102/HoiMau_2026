@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as Keychain from 'react-native-keychain';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { MeTheme } from '../../src/app/MeTheme';
 import { AppNavigation, stateForRoute } from '../../src/app/navigation';
 import type { RouteName } from '../../src/app/routes';
 import { SessionProvider } from '../../src/shared/api/session';
@@ -47,13 +48,13 @@ export function withApp(node: ReactElement | null, opts: EntryOptions = {}): Rea
       <ThemeProvider theme={opts.theme}>
         <MotionPreferenceProvider value={opts.motion ?? 'FULL'}>
           <QueryClientProvider client={client}>
-            <SessionProvider>
+            <SessionProvider><MeTheme fallback={opts.theme}>
               {route ? (
                 <AppNavigation initialState={stateForRoute(route.name, route.params)}>{node}</AppNavigation>
               ) : (
                 <SnackbarProvider>{node}</SnackbarProvider>
               )}
-            </SessionProvider>
+            </MeTheme></SessionProvider>
           </QueryClientProvider>
         </MotionPreferenceProvider>
       </ThemeProvider>

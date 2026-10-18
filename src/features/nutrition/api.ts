@@ -173,7 +173,7 @@ export function useSwapCandidates(mealSlot: MealSlot) {
 }
 
 /** One action id per distinct request: the same request again after a lost answer repeats the key, a new one gets a new key. */
-function useAttemptKey() {
+export function useAttemptKey() {
   const held = useRef<{ tag: string; id: string } | null>(null);
   return useMemo(
     () => ({
@@ -185,9 +185,9 @@ function useAttemptKey() {
     [],
   );
 }
-const answered = (error: unknown) => !(error instanceof ApiError && (error.code === 'NETWORK' || error.code === 'TIMEOUT'));
+export const answered = (error: unknown) => !(error instanceof ApiError && (error.code === 'NETWORK' || error.code === 'TIMEOUT'));
 export type CallOutcome = { state: 'done' } | { state: 'failed'; code: string; details?: Record<string, unknown> };
-const failure = (error: unknown): CallOutcome => (error instanceof ApiError ? { state: 'failed', code: error.code, details: error.details } : { state: 'failed', code: 'INTERNAL' });
+export const failure = (error: unknown): CallOutcome => (error instanceof ApiError ? { state: 'failed', code: error.code, details: error.details } : { state: 'failed', code: 'INTERNAL' });
 
 /**
  * `POST /nutrition/swap` (needs the network, never queued). Nothing changes on screen until the server has answered:
