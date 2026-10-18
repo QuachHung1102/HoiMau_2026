@@ -63,10 +63,10 @@ const decoys = async () =>
       ) AS snapshot`)
   ).rows[0].snapshot;
 
-test('every file of scripts/scenarios is found: the six of Task 23, rich of Task 37 and guild4 of Task 39', async () => {
+test('every file of scripts/scenarios is found: the six of Task 23, rich of Task 37, guild4 of Task 39 and ticket of Task 44', async () => {
   assert.deepEqual(
     (await loadScenarios()).map(scenario => scenario.name),
-    ['broken', 'day1', 'fresh', 'guild4', 'missed3', 'rich', 'streak2', 'streak6'],
+    ['broken', 'day1', 'fresh', 'guild4', 'missed3', 'rich', 'streak2', 'streak6', 'ticket'],
   );
 });
 
@@ -139,6 +139,23 @@ test('broken: streak 5 broke yesterday, the notice names 5, 09:00 local', async 
   assert.equal(day.logicalDate, '2027-03-07');
   assert.equal(Date.parse(day.closesAt) - Date.parse(day.serverTime), 18 * 3_600_000);
   assert.equal(await clock(), '2027-03-07T02:00:00.000Z');
+});
+
+test('ticket: broken plus one unused ticket; the rescue of yesterday restores 5', async () => {
+  const { token } = await run('ticket');
+  const tickets = await get(token, '/freeze-tickets');
+  assert.equal(tickets.available, 1);
+  assert.deepEqual(
+    tickets.eligible.map((e: { date: string; target: string; needed: boolean; withTicket: number }) => [e.date, e.target, e.needed, e.withTicket]),
+    [
+      ['2027-03-07', 'TODAY', false, 0],
+      ['2027-03-06', 'YESTERDAY', true, 5],
+    ],
+  );
+  assert.equal(await clock(), '2027-03-07T02:00:00.000Z');
+  const used = await app.call('POST', '/freeze-tickets/use', { token, key: randomUUID(), body: { date: '2027-03-06' } });
+  assert.equal(used.status, 200, JSON.stringify(used.body));
+  assert.deepEqual([used.body.available, used.body.progression.streakCurrent], [0, 5]);
 });
 
 test('rich: level 8, 500 coins, 3 perk points, TICKET_CAP_PLUS and THEME_FOREST unlocked', async () => {
@@ -242,7 +259,7 @@ test('a scenario twice in a row gives the same outcome, for one account', async 
 test('scenarios leave the decoys alone', async () => {
   const snapshot = await decoys();
   assert.ok(snapshot.users.length === 2, 'the template carries both decoys');
-  for (const name of ['broken', 'streak6']) {
+  for (const name of ['broken', 'streak6', 'ticket']) {
     await run(name);
   }
   assert.deepEqual(await decoys(), snapshot);
