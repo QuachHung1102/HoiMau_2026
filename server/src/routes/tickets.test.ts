@@ -125,8 +125,8 @@ async function completeStory(user: User) {
       body: { exerciseItemId: workout.id, elapsedSec: workout.durationSec },
     }),
   );
-  const after = ok(await app.call('GET', '/day', { token: user.token }));
-  assert.equal(after.story.done, after.story.total);
+  const done = ok(await app.call('GET', '/day', { token: user.token }));
+  assert.equal(done.story.done, done.story.total);
 }
 
 /** Whether ticket_use(date) would succeed now, in a transaction that is rolled back. */
@@ -185,13 +185,12 @@ test('rescue at 09:00 of yesterday that broke a streak of 5: streak 5 again, mis
     lastOutcome: 'MISSED',
     lastClosed: YESTERDAY,
   });
-  const before = await stateOf(user);
+  const { lastClosed: closedBefore, ...was } = await stateOf(user);
   const answer = ok(await use(user, YESTERDAY));
-  const { lastClosed, ...after } = await stateOf(user);
-  const { lastClosed: _, ...was } = before;
-  assert.deepEqual(after, rescueWithTicket(was, YESTERDAY));
-  assert.deepEqual([after.streakCurrent, after.streakBest, after.missedRun, after.lastOutcome], [5, 7, 0, 'FROZEN']);
-  assert.equal(lastClosed, YESTERDAY);
+  const { lastClosed, ...now } = await stateOf(user);
+  assert.deepEqual(now, rescueWithTicket(was, YESTERDAY));
+  assert.deepEqual([now.streakCurrent, now.streakBest, now.missedRun, now.lastOutcome], [5, 7, 0, 'FROZEN']);
+  assert.deepEqual([closedBefore, lastClosed], [YESTERDAY, YESTERDAY]);
   assert.equal(answer.progression.streakCurrent, 5);
   assert.equal(answer.progression.breakNotice, null);
   assert.equal(await outcomeOf(user, YESTERDAY), 'FROZEN');
@@ -331,9 +330,9 @@ test('GET /freeze-tickets: previews equal ticketPreview, deadlines are 15:00 loc
   const user = await userWith({ streakCurrent: 4, lastClosed: YESTERDAY, lastOutcome: 'COMPLETED' });
   assert.equal((await tickets(user)).eligible[0].needed, true);
   await completeStory(user);
-  const after = await tickets(user);
+  const later = await tickets(user);
   assert.deepEqual(
-    after.eligible.map((e: Eligible) => [e.target, e.needed]),
+    later.eligible.map((e: Eligible) => [e.target, e.needed]),
     [
       ['TODAY', false],
       ['YESTERDAY', false],
@@ -405,12 +404,14 @@ test('two uses with one ticket at the same moment: one goes through (same date: 
 });
 
 test('a use of yesterday against the day-close of yesterday, both lock orders and free rounds: the day ends FROZEN with the streak kept, the use answers 200', async () => {
-  const round = async (setup: (user: User) => Promise<[Promise<CallResult>, Promise<unknown>]>) => {
+  const round = async (setup: (user: User) => Promise<[Promise<CallResult>, Promise<unknown>]>, retried?: number) => {
     await clock(TODAY, '03:10');
     const user = await userWith({ streakCurrent: 3, lastClosed: '2027-03-08', lastOutcome: 'COMPLETED' });
     const [used, closed] = await setup(user);
     assert.equal(code(await used), 'ok');
-    await closed;
+    const counts = (await closed) as { retried: number };
+    // the use first: the close finds the day changed under it and reads it again; the close first: no retry
+    if (retried !== undefined) assert.equal(counts.retried, retried);
     // a run that found the user changed under it leaves the day for the next run
     await runJob('day-close', db.app, new Date(at(TODAY, '03:30')), quiet);
     const state = await stateOf(user);
@@ -430,17 +431,20 @@ test('a use of yesterday against the day-close of yesterday, both lock orders an
     await until(2);
     await release();
     return [used, closed];
-  });
-  // the close first in line, the use behind it (then a rescue of the day the close broke)
+  }, 1);
+  // the close first in line, the use behind it (then a rescue of the day the close broke). The
+  // owner holds progression_state in both orders: the first to start takes the users row and waits
+  // there, the second waits for the users row (an HTTP request already holding a key-share lock on
+  // the users row would not queue behind a waiter on that row itself)
   await round(async user => {
-    const release = await hold(HOLD_USER, user.userId);
+    const release = await hold(HOLD_STATE, user.userId);
     const closed = job();
     await until(1);
     const used = use(user, YESTERDAY);
     await until(2);
     await release();
     return [used, closed];
-  });
+  }, 0);
   for (let i = 0; i < 5; i++) {
     await round(async user => [use(user, YESTERDAY), job()]);
   }

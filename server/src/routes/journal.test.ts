@@ -27,8 +27,6 @@ after(async () => {
   await db.drop();
 });
 
-type User = Awaited<ReturnType<typeof newOnboardedUser>>;
-
 /** The instant of local time `hhmm` on calendar date `date` in Asia/Ho_Chi_Minh. */
 const at = (date: string, hhmm: string) => new Date(`${date}T${hhmm}:00+07:00`).toISOString();
 const clock = (date: string, hhmm: string) => setTestClock(db.admin, at(date, hhmm));
@@ -80,13 +78,13 @@ test('round trip: create, list preview (80 characters), read back the trimmed te
   const otherBlob = await blobOf(otherId);
   await db.admin.query('UPDATE journal_entries SET body_encrypted = $2 WHERE id = $1', [id, otherBlob]);
   await db.admin.query('UPDATE journal_entries SET body_encrypted = $2 WHERE id = $1', [otherId, blob]);
-  const before = app.logs.length;
+  const mark = app.logs.length;
   assert.deepEqual(refused(await get(user, `/journal/${id}`)), [500, 'INTERNAL', undefined]);
   assert.deepEqual(refused(await get(other, `/journal/${otherId}`)), [500, 'INTERNAL', undefined]);
   assert.deepEqual(refused(await get(user, '/journal')), [500, 'INTERNAL', undefined]);
-  const failures = app.logs.slice(before).filter(line => line.evt === 'journal_decrypt_failed');
+  const failures = app.logs.slice(mark).filter(line => line.evt === 'journal_decrypt_failed');
   assert.deepEqual(
-    failures.map(({ ts, ...rest }) => rest),
+    failures.map(({ ts: _ts, ...rest }) => rest),
     [
       { level: 'error', evt: 'journal_decrypt_failed', entryId: id },
       { level: 'error', evt: 'journal_decrypt_failed', entryId: otherId },
@@ -97,7 +95,7 @@ test('round trip: create, list preview (80 characters), read back the trimmed te
   await db.admin.query('UPDATE journal_entries SET body_encrypted = $2 WHERE id = $1', [id, blob]);
   assert.equal(ok(await get(user, `/journal/${id}`)).body, trimmed);
   const tampered = Buffer.from(blob);
-  tampered[20] ^= 0x01;
+  tampered[20] = 255 - tampered[20];
   await db.admin.query('UPDATE journal_entries SET body_encrypted = $2 WHERE id = $1', [id, tampered]);
   assert.deepEqual(refused(await get(user, `/journal/${id}`)), [500, 'INTERNAL', undefined]);
 });
@@ -115,7 +113,7 @@ test('the sentinel sentence is in no log line (also of a 422, a 429 and a failed
   // a decryption failure of this very entry
   const blob = await blobOf(id);
   const broken = Buffer.from(blob);
-  broken[broken.length - 1] ^= 0x01;
+  broken[broken.length - 1] = 255 - broken[broken.length - 1];
   await db.admin.query('UPDATE journal_entries SET body_encrypted = $2 WHERE id = $1', [id, broken]);
   assert.equal((await get(user, `/journal/${id}`)).status, 500);
   await db.admin.query('UPDATE journal_entries SET body_encrypted = $2 WHERE id = $1', [id, blob]);
@@ -294,14 +292,14 @@ test('GET /journal pages newest first by (created_at, id) with nextBefore; limit
   // three share one instant: the id breaks the tie, descending
   const expected = [ids[4], ids[3], ...ids.slice(0, 3).sort().reverse()];
   const seen: string[] = [];
-  let before: string | null = null;
-  for (let page = 0; page < 4 && (page === 0 || before !== null); page++) {
-    const body: any = ok(await get(user, `/journal?limit=2${before === null ? '' : `&before=${before}`}`));
+  let cursor: string | null = null;
+  for (let page = 0; page < 4 && (page === 0 || cursor !== null); page++) {
+    const body: any = ok(await get(user, `/journal?limit=2${cursor === null ? '' : `&before=${cursor}`}`));
     seen.push(...body.entries.map((e: { id: string }) => e.id));
-    before = body.nextBefore;
+    cursor = body.nextBefore;
   }
   assert.deepEqual(seen, expected);
-  assert.equal(before, null);
+  assert.equal(cursor, null);
   assert.equal(ok(await get(user, '/journal')).entries.length, 5);
   for (const [query, rule] of [
     ['limit=0', 'min'],
