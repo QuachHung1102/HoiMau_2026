@@ -57,7 +57,9 @@ export const kcalEstimate = (kcal: number) => `khoảng ${formatNumber(kcal)} kc
 /** "3 hiệp · 6 động tác · khoảng 70 kcal (ước tính)": the energy is always named as an estimate. */
 export const summary = (sets: number, moves: number, kcal: number) => `${sets} hiệp · ${moves} động tác · ${kcalEstimate(kcal)}`;
 export const firstMove = 'Động tác đầu tiên';
-export const demoCaption = (moves: number) => `${moves} động tác · không có âm thanh`;
+export const demoCaption = (moves: number) => `Xem động tác mẫu · ${moves} động tác · không có âm thanh`;
+/** The play affordance on the demo of the first move. */
+export const watchDemo = (move: string) => `Xem động tác mẫu: ${move}`;
 export const phasesTitle = 'Đi theo nhịp của bạn';
 export const phaseTitle: Record<Phase, string> = { WARMUP: 'Khởi động', MAIN: 'Phần tập chính', COOLDOWN: 'Thả lỏng' };
 export const phaseHint: Record<Phase, string> = { WARMUP: 'Chuyển động chậm, có kiểm soát', MAIN: 'Theo hướng dẫn từng động tác', COOLDOWN: 'Kết thúc nhẹ nhàng' };
@@ -90,6 +92,21 @@ export const sound = 'Âm thanh';
 export const soundUnavailable = 'Bản này chưa có âm thanh';
 export const breathe = 'Hít thở đều. Bạn không cần cố theo nhịp của ai khác.';
 export const endSession = 'Kết thúc buổi tập';
+
+// ---- S82, one move's demo ----
+export const demoPause = 'Tạm dừng';
+export const demoPlay = 'Phát tiếp';
+export const slowMotion = 'Xem chậm 0,5×';
+export const noSound = 'Không có âm thanh';
+export const stepsTitle = 'Cách làm';
+export const cautionTitle = 'Lưu ý';
+export const backToSession = 'Quay lại buổi tập';
+export const moveMissing = 'Không tìm thấy động tác này trong buổi tập.';
+/** `focus-breathe` (Thở 4-4): the phases of its guide, one 8-second cycle. */
+export const fourFourBreath = [
+  { label: 'Hít vào 4 giây', ms: 4000 },
+  { label: 'Thở ra 4 giây', ms: 4000 },
+] as const;
 
 // ---- S63, leaving ----
 export const exitTitle = 'Thoát buổi tập?';
