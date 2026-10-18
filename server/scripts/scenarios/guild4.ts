@@ -9,24 +9,6 @@ const MEMBERS = [
   { name: 'guild4d', displayName: 'Dũng' },
 ];
 
-/**
- * The guild of a previous run is deleted through the API before its accounts are: deleting the
- * accounts alone would leave an empty guild holding the name. The members' accounts go first,
- * then the leader, alone by then, leaves, which deletes the guild. One sign-in: the auth
- * endpoints are limited per address.
- */
-async function removePreviousGuild(ctx: ScenarioCtx) {
-  const leader = await ctx
-    .call('POST', '/auth/login', { body: { email: demoEmail('guild4'), password: PASSWORD } })
-    .catch(() => null);
-  for (const { name } of MEMBERS) {
-    await ctx.reset(demoEmail(name));
-  }
-  if (leader !== null && (await ctx.call('GET', '/guilds/me', { token: leader.token })).guild?.myRole === 'LEADER') {
-    await ctx.call('POST', '/guilds/me/leave', { token: leader.token, key: randomUUID() });
-  }
-}
-
 async function logMealOnly(ctx: ScenarioCtx, token: string) {
   const { calorieWindow } = await getDay(ctx, token);
   await ctx.call('POST', '/nutrition/log', {
@@ -41,7 +23,9 @@ export default {
   describe:
     'a guild of four (An leads; Bình, Chi, Dũng); Monday: An and Bình complete the story, Chi half; Tuesday 12:00 local: An completes it again; Dũng records nothing and has nudges muted',
   async run(ctx) {
-    await removePreviousGuild(ctx);
+    // the guild of a previous run, whole, leaderless or empty (deleting the accounts alone would
+    // leave it holding the name); refused, loudly, if anyone but a demo account is in it
+    await ctx.removeGuild(GUILD);
     const leader = await begin(ctx, 'guild4', true);
     const members: string[] = [];
     for (const { name, displayName } of MEMBERS) {

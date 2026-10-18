@@ -2,6 +2,7 @@
 // real jobs, the test clock) and its outcome is read back through the API. Dates are
 // Asia/Ho_Chi_Minh (UTC+7): the scenarios start at 2027-03-01 09:00 local.
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, mock, test } from 'node:test';
@@ -184,6 +185,37 @@ test('guild4: four in one guild, three active this week with different completio
   assert.deepEqual([first.myRole, first.dungNudges, first.guilds, first.day], ['LEADER', false, 1, '2027-03-02']);
   assert.ok(first.weekCompletion > 0 && first.weekCompletion < 1);
   assert.deepEqual(await outcome(), first);
+});
+
+test('guild4 recovers the guild a hard-deleted leader left, leaderless or empty, and refuses loudly when a non-demo account is in it', async () => {
+  const guilds = async () =>
+    (await db.admin.query("SELECT count(*)::int AS n FROM guilds WHERE name = 'Tổ Bốn Mùa'")).rows[0].n;
+  const members = async () =>
+    (await get((await run('guild4')).token, '/guilds/me')).guild.members.length;
+  assert.equal(await members(), 4);
+  await ctx.reset('demo-guild4@hoimau.test'); // leaderless, three members
+  assert.equal(await members(), 4);
+  for (const name of ['guild4', 'guild4b', 'guild4c', 'guild4d']) {
+    await ctx.reset(`demo-${name}@hoimau.test`); // empty
+  }
+  assert.equal(await guilds(), 1);
+  assert.equal(await members(), 4);
+  assert.equal(await guilds(), 1);
+
+  // someone who is not a demo account in a guild of that name: refused, nothing deleted
+  await ctx.removeGuild('Tổ Bốn Mùa');
+  const real = await newOnboardedUser(db);
+  try {
+    const made = await app.call('POST', '/guilds', { token: real.token, key: randomUUID(), body: { name: 'tổ bốn mùa' } });
+    assert.equal(made.status, 200, JSON.stringify(made.body));
+    const guild4 = (await loadScenarios()).find(scenario => scenario.name === 'guild4')!;
+    await assert.rejects(guild4.run(ctx), /^Error: removeGuild refuses "Tổ Bốn Mùa": it has a member who is not a demo/);
+    assert.equal((await db.admin.query('SELECT count(*)::int AS n FROM guild_memberships WHERE user_id = $1', [real.userId])).rows[0].n, 1);
+  } finally {
+    await db.admin.query('DELETE FROM users WHERE id = $1', [real.userId]);
+    await ctx.removeGuild('Tổ Bốn Mùa');
+  }
+  assert.equal(await guilds(), 0);
 });
 
 test('a scenario twice in a row gives the same outcome, for one account', async () => {
