@@ -205,8 +205,10 @@ export function checkOccurredAt(body: Record<string, unknown>) {
     if (at > now + 120_000) stop(422, 'OCCURRED_AT_INVALID');
     if (at < now - 48 * HOUR) stop(409, 'DAY_CLOSED');
   }
-  if (world.closedDate !== undefined && world.day.logicalDate <= world.closedDate) stop(409, 'DAY_CLOSED');
+  if (dayClosed()) stop(409, 'DAY_CLOSED');
 }
+/** Today is not open: at or before the last closed date. (Not modelled: a day before the first one.) */
+const dayClosed = () => world.closedDate !== undefined && world.day.logicalDate <= world.closedDate;
 
 // ---- what a write changes ----
 
@@ -287,10 +289,13 @@ export function serverAnswer(request: string, init: Init): unknown {
   if (request === 'GET /me') return respond(200, world.me);
   if (request === 'GET /day') return respond(200, world.day);
   if (request === 'GET /settings') return respond(200, world.settings);
-  if (request === 'GET /nutrition/plan') return respond(200, planState());
+  if (request === 'GET /nutrition/plan') return guard(readPlan);
   const [, mealQuery] = /^GET \/nutrition\/swap-candidates(?:\?(.*))?$/.exec(request) ?? [];
   if (request.startsWith('GET /nutrition/swap-candidates')) return guard(() => candidates(new URLSearchParams(mealQuery)));
-  if (request === 'POST /nutrition/swap') return keyed(request, init, swapMeal);
+  if (request === 'POST /nutrition/swap') return guard(() => {
+    onboarded();
+    return keyed(request, init, swapMeal);
+  });
   if (request === 'PATCH /settings') return keyed(request, init, patchSettings);
   if (request === 'GET /progression') return world.me.progression ? respond(200, world.me.progression) : refuse(409, 'ONBOARDING_REQUIRED');
   const [, route, query] = /^GET (\/day\/history(?:\/[^?]*)?)(?:\?(.*))?$/.exec(request) ?? [];
@@ -463,9 +468,27 @@ export function freshPlan() {
     warning: perSlot(() => false),
     /** 3, or 5 with the perk. */
     allowed: 3,
+    /** Whether the server has stored today's plan: a first read on a closed day is DAY_CLOSED, a swap without one PLAN_NOT_FOUND. */
+    stored: true,
   };
 }
 
+/** What every user route does first (the sign-in is not modelled): 409 ONBOARDING_REQUIRED until onboarded, as `/progression`. */
+function onboarded() {
+  if (!world.me.progression) stop(409, 'ONBOARDING_REQUIRED');
+}
+/** The first read stores the plan (`nutrition_plan_save`), which only an open day takes. */
+function ensurePlan() {
+  if (world.plan.stored) return;
+  if (dayClosed()) stop(409, 'DAY_CLOSED');
+  world.plan.stored = true;
+}
+
+function readPlan() {
+  onboarded();
+  ensurePlan();
+  return respond(200, planState());
+}
 function planState(): MealPlanState {
   const { planned, logged, used, warning, allowed } = world.plan;
   return {
@@ -490,12 +513,14 @@ function rankedFor(slot: MealSlot): SwapCandidates['candidates'] {
   return ranked.slice(0, 3).map(item => ({ ...(mealById(item.id) as Meal), kcalDelta: (mealById(item.id) as Meal).kcal - current }));
 }
 function candidates(query: URLSearchParams) {
+  onboarded();
   const slot = slotOf(query.get('mealSlot'));
+  ensurePlan();
   const { logged, used, allowed } = world.plan;
   const swapsRemaining = logged[slot] ? 0 : Math.max(0, allowed - used[slot]);
   return respond(200, { mealSlot: slot, swapsRemaining, candidates: swapsRemaining > 0 ? rankedFor(slot) : [] } satisfies SwapCandidates);
 }
-/** `POST /nutrition/swap`: the 409s of nutrition_swap first (logged, limit), then the route's own 422 (not one of the three offered). */
+/** `POST /nutrition/swap`: the body, then the 409s of nutrition_swap (closed day, no plan, logged, limit), then the route's own 422 (not one of the three offered). */
 function swapMeal(_id: string, body: Record<string, unknown>) {
   const fields: { field: string; rule: string }[] = [];
   if (body.mealSlot === undefined) fields.push({ field: 'mealSlot', rule: 'required' });
@@ -506,6 +531,8 @@ function swapMeal(_id: string, body: Record<string, unknown>) {
   const slot = body.mealSlot as MealSlot;
   const mealId = body.mealId as string;
   const { logged, used, allowed } = world.plan;
+  if (dayClosed()) stop(409, 'DAY_CLOSED');
+  if (!world.plan.stored) stop(409, 'PLAN_NOT_FOUND');
   if (logged[slot]) stop(409, 'MEAL_ALREADY_LOGGED');
   if (used[slot] >= allowed) stop(409, 'SWAP_LIMIT_REACHED');
   if (!rankedFor(slot).some(item => item.id === mealId)) stop(422, 'SWAP_CANDIDATE_INVALID');
@@ -517,14 +544,35 @@ function swapMeal(_id: string, body: Record<string, unknown>) {
   warning[slot] = rankMeals([meal], slotTarget(PLAN_TARGET, slot), slot, { excludeIds: [], excludedTags: [] }).macroWarning;
   return respond(200, planState());
 }
-/** `PATCH /settings`: only `excludedMealTags` is modelled (a list of the eight tags, replaced as a whole). */
+const isFlag = (value: unknown) => typeof value === 'boolean';
+const REMINDER_WINDOWS: unknown[] = ['MORNING', 'NOON', 'EVENING'];
+const MOTIONS: unknown[] = ['SYSTEM', 'REDUCED', 'FULL'];
+/** The members of PATCH /settings in the order the route checks them; `soundEnabled` is known and read-only, so sending it at all is refused. */
+const SETTINGS_CHECKS: [string, 'format' | 'enum', (value: unknown) => boolean][] = [
+  ['nudgesEnabled', 'format', isFlag],
+  ['reminderEnabled', 'format', isFlag],
+  ['reminderWindow', 'enum', value => REMINDER_WINDOWS.includes(value)],
+  ['hideStreak', 'format', isFlag],
+  ['soundEnabled', 'format', () => false],
+  ['motion', 'enum', value => MOTIONS.includes(value)],
+];
+/**
+ * `PATCH /settings` as server/src/routes/settings.ts: a member that is present must be valid (every wrong one is named, 422),
+ * the valid ones replace the saved values, a member the server does not know is ignored, the tags are kept once each in the
+ * order of the list of eight.
+ */
 function patchSettings(_id: string, body: Record<string, unknown>) {
-  const { excludedMealTags } = body;
-  if (excludedMealTags !== undefined) {
-    if (!Array.isArray(excludedMealTags)) stop(422, 'VALIDATION_FAILED', [{ field: 'excludedMealTags', rule: 'format' }]);
-    if (!excludedMealTags.every(tag => (INGREDIENT_TAGS as readonly string[]).includes(tag as string))) stop(422, 'VALIDATION_FAILED', [{ field: 'excludedMealTags', rule: 'enum' }]);
-    world.settings = { ...world.settings, excludedMealTags: [...new Set(excludedMealTags as IngredientTag[])] };
+  const problems: { field: string; rule: string }[] = SETTINGS_CHECKS.filter(([field, , valid]) => body[field] !== undefined && !valid(body[field])).map(([field, rule]) => ({ field, rule }));
+  const sent = body.excludedMealTags;
+  let tags: IngredientTag[] | undefined;
+  if (sent !== undefined) {
+    if (!Array.isArray(sent)) problems.push({ field: 'excludedMealTags', rule: 'format' });
+    else if (!sent.every(tag => (INGREDIENT_TAGS as readonly unknown[]).includes(tag))) problems.push({ field: 'excludedMealTags', rule: 'enum' });
+    else tags = INGREDIENT_TAGS.filter(tag => sent.includes(tag));
   }
+  if (problems.length > 0) stop(422, 'VALIDATION_FAILED', problems);
+  const given = SETTINGS_CHECKS.filter(([field]) => body[field] !== undefined).map(([field]) => [field, body[field]]);
+  world.settings = { ...world.settings, ...Object.fromEntries(given), ...(tags && { excludedMealTags: tags }) };
   return respond(200, world.settings);
 }
 
