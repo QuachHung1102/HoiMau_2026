@@ -70,7 +70,7 @@ function counting(name: string, due: Job['due']) {
 }
 
 test('the jobs are the files of src/jobs, except the scheduler, run.ts and tests', async () => {
-  assert.deepEqual((await loadJobs()).map(job => job.name), ['day-close']);
+  assert.deepEqual((await loadJobs()).map(job => job.name), ['day-close', 'leaderboard-refresh', 'weekly-rollover']);
 });
 
 test('day-close is due once per hour from minute 15', () => {
