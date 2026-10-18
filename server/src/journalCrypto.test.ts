@@ -29,7 +29,7 @@ test('another user, another entry, another key, one flipped byte anywhere, anoth
   fails(() => decryptJournal(Buffer.alloc(32, 8), user, entry, blob));
   for (const at of [0, 1, 13, blob.length - 1]) {
     const tampered = Buffer.from(blob);
-    tampered[at] ^= 0x01;
+    tampered[at] = 255 - tampered[at];
     fails(() => decryptJournal(KEY, user, entry, tampered));
   }
   fails(() => decryptJournal(KEY, user, entry, blob.subarray(0, 28)));
