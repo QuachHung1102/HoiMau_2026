@@ -1594,7 +1594,7 @@ Sửa `41-shop.sql` thì chạy `npm run server:test` và `npm run db:api-check`
 
 ## Tổ đội (`50-guild.sql`, `routes/guild.ts`, `readModels/guild.ts`)
 
-Tổ đội 3–8 người, vào bằng mã mời, mỗi người tối đa một tổ đội, mỗi tổ đội đúng một tổ trưởng. Thành viên thấy nhau ở mức tên hiển thị, cấp, vai trò, số ngày hoàn thành trong tuần và nhiệm vụ chính hôm nay đã xong chưa, **không gì khác** (F-11, R-D08, R-P.1, AR-17, AR-18). Hợp đồng: `GuildState`, `GuildMember`, `GuildCreateRequest`, `GuildJoinRequest`, `TransferRequest` trong `docs/api/openapi.yaml`. Bảng xếp hạng và thưởng tuần (Task 40), nhắc nhở (Task 41) chưa có; không có kick, không có chat.
+Tổ đội 3–8 người, vào bằng mã mời, mỗi người tối đa một tổ đội, mỗi tổ đội đúng một tổ trưởng. Thành viên thấy nhau ở mức tên hiển thị, cấp, vai trò, số ngày hoàn thành trong tuần và nhiệm vụ chính hôm nay đã xong chưa, **không gì khác** (F-11, R-D08, R-P.1, AR-17, AR-18). Hợp đồng: `GuildState`, `GuildMember`, `GuildCreateRequest`, `GuildJoinRequest`, `TransferRequest` trong `docs/api/openapi.yaml`. Bảng xếp hạng và thưởng tuần: xem "Bảng xếp hạng và thưởng tuần"; nhắc nhở (Task 41) chưa có; không có kick, không có chat.
 
 ### Bảng
 
@@ -1613,13 +1613,13 @@ Mã mời theo AR-18: 8 ký tự từ `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (`app._
 | `guild_join(p_invite_code text) → uuid` | Mã được cắt khoảng trắng và viết hoa. `INVITE_CODE_INVALID` (không tổ đội nào có mã đó, hoặc mã không phải 8 ký tự của bảng chữ AR-18) → `ALREADY_IN_GUILD` (ở bất kỳ tổ đội nào, kể cả chính tổ đội này) → `GUILD_FULL` (đã 8, đếm sau khi khóa dòng tổ đội). |
 | `guild_leave() → void` | `NOT_IN_GUILD` → `LEADER_MUST_TRANSFER` (tổ trưởng còn thành viên khác). Tổ trưởng một mình: xóa dòng tổ đội (dòng thành viên và mã mời đi theo, tên được giải phóng). Thành viên: xóa dòng của mình. |
 | `guild_transfer(p_user_id uuid) → void` | `NOT_LEADER` (không ở tổ đội nào, hoặc không phải tổ trưởng) → `TRANSFER_TARGET_INVALID` (chính mình, hoặc người không thuộc tổ đội này, kể cả id không tồn tại). Hai câu lệnh: hạ người gọi xuống `MEMBER` rồi mới nâng người nhận lên `LEADER` (chỉ mục một-tổ-trưởng được kiểm từng dòng). |
-| `guild_overview() → jsonb` | Không có tham số: chỉ tổ đội của người gọi, `{"guild": null}` khi không có. Trả `id`, `name`, `motto`, `inviteCode`, `createdAt`, `myRole`, `today` (ngày lịch `Asia/Ho_Chi_Minh` của `app.now()`), `weekStart` (thứ Hai của nó), `lastLogDate` (ngày logic mới nhất trong mọi nhật ký ngày của các thành viên, `null` nếu chưa có), và mỗi thành viên: `userId`, `displayName`, `role`, `joinedDate` (ngày logic của `joined_at` theo múi giờ của thành viên), `xp` (tổng sổ cái), `days` (mỗi ngày của tuần hiện tại có nhật ký: `date`, `storyDone`, `storyTotal`, `frozen`), `today` (ngày logic **của chính thành viên**: `date`, `storyDone`, `storyTotal`). Tổ trưởng đứng đầu, rồi theo `joined_at`, rồi `user_id` (người vào cùng một thời điểm, như khi đồng hồ test đứng yên). |
+| `guild_overview() → jsonb` | Không có tham số: chỉ tổ đội của người gọi, `{"guild": null}` khi không có. Trả `id`, `name`, `motto`, `inviteCode`, `createdAt`, `myRole`, `today` (ngày lịch `Asia/Ho_Chi_Minh` của `app.now()`), `weekStart` (thứ Hai của nó), `lastLogDate` (ngày logic mới nhất trong mọi nhật ký ngày của các thành viên, `null` nếu chưa có), và mỗi thành viên: `userId`, `displayName`, `role`, `joinedDate` (ngày logic của `joined_at` theo múi giờ của thành viên), `xp` (tổng sổ cái), `days` (mỗi ngày của tuần hiện tại có nhật ký: `date`, `storyDone`, `storyTotal`, `frozen`; đọc qua `app._member_days`, bản duy nhất của luật này, dùng chung với `job_guild_week_inputs`), `today` (ngày logic **của chính thành viên**: `date`, `storyDone`, `storyTotal`). Tổ trưởng đứng đầu, rồi theo `joined_at`, rồi `user_id` (người vào cùng một thời điểm, như khi đồng hồ test đứng yên). |
 
 - `frozen` = có vé dùng cho ngày đó **và** chưa xong hết nhiệm vụ STORY (AR-10: ngày có vé mà xong hết là ngày hoàn thành, không phải ngày đóng băng).
 - `storyTotal` đếm nhiệm vụ STORY đang bật của archetype của thành viên, như `app._story_check`.
 - Năm hàm là `SECURITY DEFINER`, `EXECUTE` chỉ cho `app_auth`, đăng ký trong `meta`; người gọi luôn là `app.current_user_id()`. `app._lock_member` (khóa dòng `users`; `ONBOARDING_REQUIRED` cho người đã xóa hoặc chưa onboarding) và `app._invite_code` là nội bộ, không vai trò nào gọi được.
 
-**Thứ tự khóa.** Mọi hàm ghi: dòng `users` của người gọi (`FOR NO KEY UPDATE`, khóa đầu tiên của mọi thao tác ghi của một người, như `30-day.sql` và `41-shop.sql`) → dòng `guilds` (`FOR UPDATE`) → các dòng `guild_memberships`. Không bao giờ khóa `progression_state` ở đây. Dòng tổ đội là mutex của danh sách thành viên: ai đếm thành viên, đọc vai trò hay đổi một trong hai đều giữ nó, và **đọc lại sau khi khóa** điều đã đọc trước đó. Ví dụ: tổ trưởng chuyển quyền cho M đúng lúc M rời đi; M đọc lại vai trò sau khi khóa, thấy mình đã là tổ trưởng và nhận `LEADER_MUST_TRANSFER`, thay vì rời đi để lại một tổ đội không ai đứng đầu. `FOR UPDATE` an toàn dù `guild_memberships` tham chiếu `guilds`: dòng thành viên chỉ được chèn dưới chính khóa đó (hoặc cho tổ đội vừa tạo trong cùng transaction), nên không transaction nào khác giữ khóa key-share mà nó xung đột.
+**Thứ tự khóa.** Mọi hàm ghi: dòng `users` của người gọi (`FOR NO KEY UPDATE`, khóa đầu tiên của mọi thao tác ghi của một người, như `30-day.sql` và `41-shop.sql`) → dòng `guilds` (`FOR UPDATE`) → các dòng `guild_memberships`. Không bao giờ khóa `progression_state` ở đây. Dòng tổ đội là mutex của danh sách thành viên: ai đếm thành viên, đọc vai trò hay đổi một trong hai đều giữ nó, và **đọc lại sau khi khóa** điều đã đọc trước đó. Ví dụ: tổ trưởng chuyển quyền cho M đúng lúc M rời đi; M đọc lại vai trò sau khi khóa, thấy mình đã là tổ trưởng và nhận `LEADER_MUST_TRANSFER`, thay vì rời đi để lại một tổ đội không ai đứng đầu. `FOR UPDATE` an toàn dù `guild_memberships` và `guild_weekly_scores` tham chiếu `guilds`: dòng thành viên chỉ được chèn dưới chính khóa đó (hoặc cho tổ đội vừa tạo trong cùng transaction); nơi duy nhất khác giữ khóa key-share trên tổ đội là `job_apply_guild_week`, và nó khóa **mọi dòng `users` nó cần trước** khi chạm tới tổ đội, nên không bao giờ vừa giữ tổ đội vừa chờ một dòng `users`: không có vòng chờ (deadlock) với thứ tự ở đây.
 
 **Một người một tổ đội** nhờ khóa chính `user_id` và việc kiểm `ALREADY_IN_GUILD` dưới khóa dòng `users` (hai lượt tạo hoặc tham gia của cùng một người chạy lần lượt). **Tối đa 8** nhờ đếm dưới khóa dòng tổ đội: năm người tham gia một tổ đội 7 người cùng lúc thì đúng một người vào.
 
@@ -1659,3 +1659,68 @@ Mã mời theo AR-18: 8 ký tự từ `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (`app._
 - "Hôm nay" của tuần tổ đội là ngày **lịch** ở Hồ Chí Minh (tuần bắt đầu thứ Hai 00:00, R-D08), không phải ngày logic bắt đầu lúc 03:00: từ 00:00 tới 03:00 thứ Hai, tuần mới đã bắt đầu trong khi ngày Chủ nhật của người dùng ở Hồ Chí Minh vẫn đang mở.
 
 Sửa `50-guild.sql` thì chạy `npm run server:test` và `npm run db:api-check`, không chỉ `npm run db:verify`.
+
+## Bảng xếp hạng và thưởng tuần (`51-guild-week.sql`, `leaderboardCache.ts`, `jobs/leaderboardRefresh.ts`, `jobs/weeklyRollover.ts`, `routes/leaderboard.ts`)
+
+Xếp hạng tổ đội theo tỉ lệ hoàn thành trung bình của tuần, gần như tức thời trong tuần, rồi chốt mỗi tuần một lần và trả thưởng **đúng một lần** (F-11, R-D07, R-D08, AR-03, AR-17). Hợp đồng: `Leaderboard` và `GET /leaderboard` trong `docs/api/openapi.yaml`; thông báo `GUILD_WEEKLY_RESULT`.
+
+### Tuần và cách tính
+
+- Tuần là tuần bắt đầu thứ Hai của `Asia/Ho_Chi_Minh`, **khớp theo nhãn `logical_date`** của nhật ký ngày (R-D08): nhật ký mang nhãn Chủ nhật là của Chủ nhật, dù người dùng ở múi giờ nào và ghi lúc nào. Ví dụ: người ở New York ghi lúc 20:00 Chủ nhật giờ của họ (07:00 thứ Hai ở Hồ Chí Minh) → nhật ký mang nhãn Chủ nhật, tính cho tuần vừa qua; nhật ký mang nhãn thứ Hai thì không.
+- Bảng tức thời tính tới **ngày lịch hôm nay ở Hồ Chí Minh** (như `GuildState`, AR-17); tuần chốt tính đủ bảy ngày.
+- Số liệu do domain tính, không do SQL: `scoreGuildWeek` (trung bình của các thành viên hoạt động; ngày đóng băng và ngày không có nhật ký là 0; người vào giữa tuần tính từ ngày vào; ≥ 3 thành viên hoạt động mới được xếp hạng), `rankGuilds` (`avgCompletion` giảm dần, `activeMembers` giảm dần, `createdAt` tăng dần), `guildWeeklyReward`. Đầu vào của `rankGuilds` được sắp theo id tổ đội trước, nên khi ba tiêu chí bằng nhau thì id quyết định, không phụ thuộc thứ tự dòng.
+- `scoreWeek` (`leaderboardCache.ts`) là đường duy nhất: job làm mới, job chốt tuần và route đều đi qua nó, nên không thể đếm lệch nhau.
+
+### Bảng
+
+| Bảng | Lớp | Ghi chú |
+|---|---|---|
+| `guild_weekly_scores` | `internal` (không vai trò nào có quyền, chỉ đọc qua `leaderboard_final`) | một dòng mỗi tổ đội mỗi tuần đã chốt: **duy nhất `(guild_id, week_start)`**, `week_start` là thứ Hai (`CHECK`), `avg_completion` 0–1, `active_members`, `rank` (`NULL` = không xếp hạng; **duy nhất `(week_start, rank)`**: hai tổ đội cùng hạng là điều cơ sở dữ liệu không cho); chỉ mục `(week_start, avg_completion desc)`; xóa lan theo tổ đội |
+
+Bản ghi "tuần đã chốt" là một dòng `job_runs` với `job = 'guild-week'`, `run_for` = 00:00 thứ Hai của tuần đó ở Hồ Chí Minh, `ran_at` = lúc chốt; chỉ mục duy nhất từng phần `job_runs_guild_week_key` trên `run_for` WHERE `job = 'guild-week'` giữ "mỗi tuần một lần".
+
+### Hàm
+
+| Hàm | Vai trò | Việc |
+|---|---|---|
+| `job_guild_week_inputs(p_week_start date, p_through date)` → bảng `(guild_id, name, created_at, members)` | `app_job` | Mỗi tổ đội một dòng, theo id. `members` = các thành viên **hiện tại** (người đã rời không còn dòng thành viên nên tự bị loại; người đã xóa hoặc chưa onboarding không tính), mỗi người `{userId, joinedDate (ngày Hồ Chí Minh của joined_at), days}`; `days` = `app._member_days` trên `[p_week_start, p_through]` (`date`, `storyDone`, `storyTotal`, `frozen`). Không cột nào khác. |
+| `job_apply_guild_week(p_week_start date, p_rows jsonb)` → `{applied, grants}` | `app_job` | Một transaction. Ghi bản ghi tuần **trước tiên** (`ON CONFLICT DO NOTHING`); đã có → `{applied: false, grants: []}`. Rồi chèn `guild_weekly_scores` cho mọi tổ đội còn tồn tại, và với mỗi tổ đội có hạng, mỗi thành viên hoạt động **vẫn còn trong tổ đội đó**: xu qua `app._grant(…, 'GUILD_WEEKLY', '<week_start>')` (AR-34), huy hiệu hạng 1 vào `inventory`, thông báo `GUILD_WEEKLY_RESULT` `{rank, coins, weekStart}` (khóa chống trùng = ngày đầu tuần). Trả các dòng sổ cái đã ghi, mỗi dòng có `userId`, để job gọi `log.ledger`. Từ chối dòng không có tổ đội, dòng có hạng mà không có thưởng, huy hiệu không phải `BADGE`. |
+| `leaderboard_final(p_week_start date)` → jsonb | `app_auth` | `{updatedAt (ran_at của bản ghi tuần, null nếu chưa chốt), entries (top 50 có hạng theo hạng: rank, guildName, avgCompletion, activeMembers, isMine), mine (dòng của tổ đội hiện tại của người gọi trong tuần đó, hoặc null)}`. Chỉ tên, tỉ lệ, số người, hạng (R-P.1). |
+| `app._member_days(p_user, p_from, p_through)` | nội bộ | Ngày có nhật ký của một người, với STORY xong / tổng và `frozen` (có vé **và** chưa xong hết, AR-10). Bản duy nhất của luật này: `guild_overview` và `job_guild_week_inputs` cùng đọc ở đây. |
+| `app._guild_week_rows(jsonb)` | nội bộ | Kiểu hóa `p_rows`: `guildId`, `avgCompletion`, `activeMembers`, `rank`, `coins`, `badgeCode`, `members`. |
+
+**Thứ tự khóa của `job_apply_guild_week`:** bản ghi tuần (lượt chạy thứ hai chờ ở chỉ mục duy nhất rồi thấy tuần đã chốt) → **mọi dòng `users` có thể được trả thưởng** (`FOR NO KEY UPDATE`, theo id) → các dòng `guilds` (`FOR KEY SHARE`, theo id; tổ đội đã bị xóa thì bỏ qua) → `progression_state` (trong `app._grant`). Các hàm tổ đội khóa `users` rồi mới `guilds FOR UPDATE`; nếu job khóa tổ đội trước rồi mới khóa `users` thì hai bên có thể chờ nhau vòng tròn (deadlock). Thành viên hoạt động rời tổ đội đúng lúc chốt: rời trước → không được thưởng (vẫn được đếm trong `active_members` đã tính); chốt trước → được thưởng rồi mới rời.
+
+### Hai job
+
+| Job | Khi nào | Việc |
+|---|---|---|
+| `leaderboard-refresh` | mỗi 5 phút | Tính bảng tức thời của tuần đang chạy, cất vào bộ nhớ đệm trong tiến trình (`{weekStart, updatedAt, entries (top 50), byGuild}`). |
+| `weekly-rollover` | từ 03:30 thứ Hai giờ Hồ Chí Minh | Với mỗi tuần trong 28 ngày trước tuần đang mở (tuần đang mở = tuần của thời điểm hiện tại lùi 3 giờ 30 phút), cũ nhất trước, mỗi tuần một transaction: tính đủ 7 ngày, xếp hạng, gọi `job_apply_guild_week`. Tuần đã chốt trả `applied: false` và không trả gì. Máy chủ tắt hai thứ Hai → lần chạy kế tiếp chốt cả hai tuần, theo thứ tự. Kết quả ghi vào `job_runs`: danh sách tuần đã chốt và số dòng sổ cái. |
+
+Bộ nhớ đệm là của một tiến trình (`// ponytail: in-process cache, one server process`; không Redis, AR-17).
+
+### Route
+
+| Route | Auth | Thành công | Lỗi riêng |
+|---|---|---|---|
+| `GET /leaderboard?week=current\|previous` | `user` | `200 Leaderboard` | `422 VALIDATION_FAILED` (`week` / `required`, `format`: chỉ đúng `current` hoặc `previous`) |
+
+- Thứ tự lỗi: `401 SESSION_INVALID` → `409 ONBOARDING_REQUIRED` → `422 VALIDATION_FAILED`.
+- `current`: từ bộ nhớ đệm; khi trống, cũ hơn 10 phút hoặc thuộc tuần khác thì tính một lần (single flight: các request cùng lúc chờ chung một lần tính). Request tính **mượn transaction của chính nó**: đổi sang `app_job` (chỉ vai trò này gọi được `job_guild_week_inputs`), tính, rồi đổi lại `app_auth` với đúng người gọi. Không lấy client thứ hai từ pool: một handler đã giữ một client, lấy thêm có thể làm cạn pool (`noPoolInHandler` của `app.ts`). `final: false`, `updatedAt` = thời điểm tính. `mine` luôn có khi người gọi ở trong tổ đội, kể cả ngoài top 50 hay không xếp hạng (`ranked: false`, `rank: null`); tổ đội lập sau lần tính gần nhất hiện `{ranked: false, rank: null, avgCompletion: 0, activeMembers: 0}` tới lần làm mới sau; ngoài tổ đội → `null`.
+- `previous`: `leaderboard_final(thứ Hai tuần trước)`; `final: true`; `updatedAt` = lúc chốt. Trước khi tuần đó được chốt (kể cả 00:00–03:30 thứ Hai): `entries: []`, `mine: null`, `updatedAt` = thời điểm của request.
+- Thân trả về chỉ có các khóa của hợp đồng: không id người dùng, không id tổ đội.
+
+### Mồi nhử, ca tấn công, test
+
+- `87-decoy-guild-week.sql`: một dòng `guild_weekly_scores` không xếp hạng của tổ đội mồi nhử, tuần 05/01/2026.
+- `server/checks/attacks/leaderboard.ts` (hai ca): `app_auth` gọi `job_guild_week_inputs` / `job_apply_guild_week` → `permission denied for function`, đọc hay xóa `guild_weekly_scores` → `permission denied for table`; A ngoài tổ đội, rồi A làm tổ trưởng tổ đội riêng, gọi `leaderboard_final` đúng tuần của mồi nhử → `{updatedAt: null, entries: [], mine: null}` (chỉ điều kiện "có hạng" giữ dòng mồi nhử khỏi `entries`, chỉ điều kiện "tổ đội của người gọi" giữ nó khỏi `mine`). Mỗi ca so dòng mồi nhử trước và sau.
+- `server/src/routes/leaderboard.test.ts` (đồng hồ test cố định, `runJob`; nhật ký sắp bằng superuser, riêng ca New York ghi qua HTTP): bảng tức thời và tuần chốt bằng đúng `scoreGuildWeek` + `rankGuilds` trên cùng đầu vào; tổ đội 3 người trung bình cao hơn đứng trên tổ đội 8 người trung bình thấp hơn; tổ đội 2 người hoạt động → `mine.ranked` false, không trong `entries`, không thưởng; thưởng 150 + `BADGE_GUILD_TOP1`, 100, 60, 20, thành viên không hoạt động của tổ đội có hạng không nhận gì, thông báo và dòng `log.ledger` khớp từng người; người vào thứ Năm tính từ thứ Năm, người rời trước khi chốt bị loại, ngày đóng băng (một nhiệm vụ đã xong + vé) và ngày không nhật ký là 0 (mỗi luật đổi con số, test khẳng định cả điều đó); `guild_overview` và `job_guild_week_inputs` đọc ra cùng các ngày trên cùng dữ liệu; nhãn Chủ nhật / thứ Hai của người ở New York; 03:29 thứ Hai chưa đến hạn và chưa chốt tuần, 03:30 đến hạn và chốt; chạy hai lần không trả gì hai lần (sổ cái, kho đồ, thông báo, điểm, bản ghi tuần không đổi); hai lượt chốt cùng lúc trên hai pool → đúng một lượt áp dụng; tắt hai thứ Hai → một lần chạy chốt các tuần theo thứ tự cũ trước; bộ nhớ đệm: hai request trong 5 phút đọc `job_guild_week_inputs` một lần (đếm bằng `mock.method`), làm mới thì `updatedAt` đổi, cũ hơn 10 phút thì đọc lại, hai request song song đọc một lần; 51 tổ đội có hạng → `entries` 50, `mine` hạng 51; hòa ba tiêu chí → xếp theo id tổ đội, dù dòng đến theo thứ tự nào; `previous` trước khi chốt → rỗng, `final: true`; `week` sai → 422; thứ tự 401 → 409 → 422; quét riêng tư (đúng khóa của hợp đồng, không id, không giá trị canh gác sinh trắc) trên cả hai loại bảng; mã nguồn các hàm mới không đọc bảng hay cột riêng tư.
+- **Cuộc đua** (hai pool `app_conn`, một transaction được giữ mở tới khi test thả): thành viên hoạt động rời trước → không được thưởng, chốt trước → được thưởng rồi mới rời; thứ tự khóa của `guild_join` / `guild_leave` (dòng `users`, rồi tổ đội `FOR UPDATE`) dừng giữa hai khóa trong khi chốt chạy → không deadlock; thành viên không hoạt động rời và người mới tham gia trong khi chốt giữ tổ đội → cả hai chờ rồi thành công, không ai trong họ được thưởng; 10 vòng chốt và rời cùng lúc → không lỗi nào.
+
+### Phần ba cổng không nhìn thấy
+
+- Thứ tự khóa của `job_apply_guild_week`, "mỗi tuần một lần" ở mức hàm, và việc chỉ trả thưởng cho thành viên còn trong tổ đội do test giữ; cổng 1 và 3 không đọc thân hàm.
+- `joinedDate` ở đây là ngày **lịch Hồ Chí Minh** của `joined_at` (theo đề bài), còn `guild_overview` dùng ngày **logic theo múi giờ của thành viên**: với người ở múi giờ xa vào gần nửa đêm, `weekCompletion` của màn tổ đội và `avgCompletion` của bảng xếp hạng có thể lệch một ngày đếm.
+
+Sửa `51-guild-week.sql` thì chạy `npm run server:test` và `npm run db:api-check`.
