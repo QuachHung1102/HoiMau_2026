@@ -17,9 +17,9 @@ function refuse(fields: FieldError[]): void {
   }
 }
 
-/** Trimmed; 3 to 30 code points; the format of a display name (no unseen character, a letter or digit). */
+/** NFC, trimmed; 3 to 30 code points; the format of a display name (no unseen character, a letter or digit). */
 function nameOf(value: unknown, fields: FieldError[]): string {
-  const name = typeof value === 'string' ? value.trim() : '';
+  const name = typeof value === 'string' ? value.normalize('NFC').trim() : '';
   const length = [...name].length;
   let rule: FieldError['rule'] | null = null;
   if (typeof value !== 'string') {
@@ -37,12 +37,12 @@ function nameOf(value: unknown, fields: FieldError[]): string {
   return name;
 }
 
-/** Optional; trimmed; at most 80 code points; no unseen character. Absent or null is ''. */
+/** Optional; NFC, trimmed; at most 80 code points; no unseen character. Absent or null is ''. */
 function mottoOf(value: unknown, fields: FieldError[]): string {
   if (value === undefined || value === null) {
     return '';
   }
-  const motto = typeof value === 'string' ? value.trim() : '';
+  const motto = typeof value === 'string' ? value.normalize('NFC').trim() : '';
   if (typeof value !== 'string' || stripUnseen(motto) !== motto) {
     fields.push({ field: 'motto', rule: 'format' });
   } else if ([...motto].length > LIMITS.guildMotto.max) {

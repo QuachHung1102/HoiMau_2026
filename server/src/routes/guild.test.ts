@@ -11,7 +11,7 @@ import type { MemberWeek } from '../../../domain/guild.ts';
 import { BANNED_TERMS } from '../../../domain/language.ts';
 import { addDays, daysBetween, localParts, logicalDateOf, weekStartOf } from '../../../domain/logicalDate.ts';
 import { asUser, setTestClock } from '../../test/helpers.ts';
-import { newOnboardedUser, serverPool, startTestApp } from '../../test/http.ts';
+import { newOnboardedUser, newUser, serverPool, startTestApp } from '../../test/http.ts';
 import type { CallResult, TestApp } from '../../test/http.ts';
 import { createTestDb } from '../../test/testdb.ts';
 import type { TestDb } from '../../test/testdb.ts';
@@ -170,6 +170,60 @@ test('create refusal order: the body before the guild, ALREADY_IN_GUILD before G
   refusal(await create(leader, name), 409, 'ALREADY_IN_GUILD');
   refusal(await create(leader, 'ab'), 422, 'VALIDATION_FAILED', { fields: [{ field: 'name', rule: 'min' }] });
   refusal(await create(leader, `Tổ ${BANNED_TERMS[0]}`), 422, 'NAME_NOT_ALLOWED');
+});
+
+test('create: a body that breaks a field rule AND holds a banned term is VALIDATION_FAILED, not NAME_NOT_ALLOWED', async () => {
+  const user = await newOnboardedUser(db);
+  refusal(await create(user, `Tổ ${BANNED_TERMS[0]}`, 'x'.repeat(81)), 422, 'VALIDATION_FAILED', {
+    fields: [{ field: 'motto', rule: 'max' }],
+  });
+});
+
+test('names are NFC: the decomposed spelling of a taken name is GUILD_NAME_TAKEN, over HTTP and at guild_create itself; what is stored is NFC', async () => {
+  const name = `Tổ Rồng ${randomUUID().slice(0, 6)}`.normalize('NFC');
+  const decomposed = name.normalize('NFD');
+  assert.notEqual(decomposed, name);
+  ok(await create(await newOnboardedUser(db), name));
+  const user = await newOnboardedUser(db);
+  refusal(await create(user, decomposed), 409, 'GUILD_NAME_TAKEN');
+  const direct = await asUser(db.app, user.userId, c => c.query('SELECT guild_create($1, $2)', [decomposed, '']))
+    .then(() => 'ok', (e: Error) => e.message);
+  assert.equal(direct, 'GUILD_NAME_TAKEN');
+  // a fresh decomposed name and motto are stored composed
+  const other = `Tổ Rồng ${randomUUID().slice(0, 6)}`;
+  const { rows } = await asUser(db.app, user.userId, c =>
+    c.query('SELECT guild_create($1, $2) AS id', [other.normalize('NFD'), 'Mỗi ngày'.normalize('NFD')]),
+  );
+  const saved = (await db.admin.query('SELECT name, motto FROM guilds WHERE id = $1', [rows[0].id])).rows[0];
+  assert.deepEqual([saved.name, saved.motto], [other.normalize('NFC'), 'Mỗi ngày'.normalize('NFC')]);
+});
+
+test('a caller who is not onboarded gets 409 ONBOARDING_REQUIRED from every guild route, and from every guild_* write called directly', async () => {
+  const user = await newUser(db);
+  const { code, leader } = await guildOf(1);
+  const calls: [string, string, unknown][] = [
+    ['POST', '/guilds', { name: freshName() }],
+    ['POST', '/guilds/join', { inviteCode: code }],
+    ['GET', '/guilds/me', undefined],
+    ['POST', '/guilds/me/leave', undefined],
+    ['POST', '/guilds/me/transfer', { userId: leader.userId }],
+  ];
+  for (const [method, path, body] of calls) {
+    const key = method === 'POST' ? randomUUID() : undefined;
+    refusal(await app.call(method, path, { token: user.token, key, body }), 409, 'ONBOARDING_REQUIRED');
+  }
+  // the second fence: app._lock_member, before INVITE_CODE_INVALID and NOT_IN_GUILD
+  for (const [sql, values] of [
+    ['SELECT guild_create($1, $2)', [freshName(), '']],
+    ['SELECT guild_join($1)', [code]],
+    ['SELECT guild_join($1)', ['ZZZZZZZZ']],
+    ['SELECT guild_leave()', []],
+    ['SELECT guild_transfer($1)', [leader.userId]],
+  ] as [string, unknown[]][]) {
+    const got = await asUser(db.app, user.userId, c => c.query(sql, values)).then(() => 'ok', (e: Error) => e.message);
+    assert.equal(got, 'ONBOARDING_REQUIRED', `${sql} ${JSON.stringify(values)}`);
+  }
+  assert.equal((await stored((await mine(leader)).guild.id)).members.length, 1);
 });
 
 test('a replayed create answers the same and makes one guild', async () => {
