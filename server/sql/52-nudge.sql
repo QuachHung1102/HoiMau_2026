@@ -96,8 +96,9 @@ SELECT meta.expect_function('app._nudge_block_reason(uuid, uuid)', 'invoker', '{
 
 -- Sends p_template_code to p_receiver_id. In this order: NUDGE_TEMPLATE_UNKNOWN;
 -- ONBOARDING_REQUIRED (the caller is not a live, onboarded user); the locks (see the rules
--- above); app._nudge_block_reason, raised; NUDGE_NOT_SAME_GUILD also when the receiver was not
--- in the sender's guild when the rows were locked (so not locked: it joined in between); the
+-- above); app._nudge_block_reason, raised, except that a receiver who was not in the sender's
+-- guild when the rows were locked (so not locked: it may have joined in between) is
+-- NUDGE_NOT_SAME_GUILD whatever else holds (NOT_IN_GUILD still comes first); the
 -- event (id = p_action_id; the unique key of the receiver's day becomes NUDGE_RECEIVER_LIMIT);
 -- the receiver's NUDGE notification {senderName, templateCode, text}, dedupe key = the event id.
 -- Returns {sentAt, senderRemainingToday}.
@@ -138,7 +139,7 @@ BEGIN
   PERFORM 1 FROM progression_state s WHERE s.user_id = v_user FOR UPDATE;
 
   v_reason := app._nudge_block_reason(v_user, p_receiver_id);
-  IF v_reason IS NULL AND NOT v_receiver_locked THEN
+  IF NOT v_receiver_locked AND v_reason IS DISTINCT FROM 'NOT_IN_GUILD' THEN
     v_reason := 'NUDGE_NOT_SAME_GUILD';
   END IF;
   IF v_reason IS NOT NULL THEN

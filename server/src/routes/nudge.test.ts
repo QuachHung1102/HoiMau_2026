@@ -184,6 +184,7 @@ test('refusals, each with its code and status, and none writes a row: other guil
 });
 
 test("the window is the receiver's [12:00, 20:00): London 11:59 and Tokyo 20:00 refused while it is 18:59 and 18:00 for the sender; London 12:00 and Tokyo 19:59 succeed, and so does London 14:00 while it is 21:00 for the sender", async () => {
+  await clock(ICT_NOON); // the sessions are made at the test clock
   const [s, l1, l2, l3, t1, t2] = await guildOf(
     'Asia/Ho_Chi_Minh', 'Europe/London', 'Europe/London', 'Europe/London', 'Asia/Tokyo', 'Asia/Tokyo',
   );
@@ -343,6 +344,7 @@ test('replay with the same idempotency key: the same answer, one event, one noti
 });
 
 test("each party's own logical date: a sender in Los Angeles is limited until 03:00 there, then fresh; the next day the receiver is fresh too", async () => {
+  await clock(ICT_NOON);
   const [s, r1, r2, r3, r4, x] = await guildOf(
     'America/Los_Angeles', 'Asia/Ho_Chi_Minh', 'Asia/Ho_Chi_Minh', 'Asia/Ho_Chi_Minh', 'Asia/Ho_Chi_Minh', 'Asia/Ho_Chi_Minh',
   );
@@ -455,6 +457,7 @@ test('guild_overview of 52-nudge.sql answers what that of 50-guild.sql answers, 
     [c.userId],
   );
   await storyDone(c, '2027-03-10');
+  await storyDone(b, '2027-03-14'); // the Sunday of the week: the last day the days read
   const sql50 = await readFile(new URL('../../sql/50-guild.sql', import.meta.url), 'utf8');
   const from = sql50.indexOf('CREATE OR REPLACE FUNCTION guild_overview()');
   const body50 = sql50.slice(from, sql50.indexOf('$$;', from) + 3);
