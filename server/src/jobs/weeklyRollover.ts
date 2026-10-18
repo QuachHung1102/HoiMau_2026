@@ -2,7 +2,8 @@
 // week not older than 28 days that is not applied yet is scored for its full seven days and
 // handed to job_apply_guild_week (51-guild-week.sql), which stores it and pays the rewards once.
 // Oldest first, one transaction per week: a server that was down for two Mondays settles both
-// weeks, in order, on its next run.
+// weeks, in order, on its next run. A week that throws ends the run there (the newer weeks wait,
+// so the order holds) and the run is tried again RETRY_MS later.
 import type { PoolClient } from 'pg';
 import { guildWeeklyReward } from '../../../domain/economy.ts';
 import { addDays } from '../../../domain/logicalDate.ts';
@@ -16,6 +17,8 @@ import type { Job } from './scheduler.ts';
 /** A week is closed for the rollover from 03:30 of the Monday after it. */
 const CLOSE_AFTER_MS = (3 * 60 + 30) * 60_000;
 const CATCH_UP_WEEKS = 4; // 28 days
+/** A failed run is tried again this long after it (every run is idempotent). */
+const RETRY_MS = 15 * 60_000;
 
 /** The Monday of the week that is still open for the rollover at `now`. */
 const openWeek = (now: Date): DateLabel => ictWeek(new Date(now.getTime() - CLOSE_AFTER_MS)).weekStart;
@@ -45,7 +48,12 @@ export async function settleWeek(db: PoolClient, weekStart: DateLabel): Promise<
 
 const weeklyRollover: Job = {
   name: 'weekly-rollover',
-  due: (now, lastRunAt) => lastRunAt === null || lastRunAt.getTime() < slotOf(now),
+  // a failed run (DB blip, restart mid-run) is retried every RETRY_MS, not next Monday; a week
+  // that keeps failing stays a failed job_runs row and an error line each time
+  due: (now, lastRunAt, lastOk) =>
+    lastRunAt === null ||
+    lastRunAt.getTime() < slotOf(now) ||
+    (lastOk === false && now.getTime() - lastRunAt.getTime() >= RETRY_MS),
   async run(pool, now, log) {
     const open = openWeek(now);
     const applied: DateLabel[] = [];

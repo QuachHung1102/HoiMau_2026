@@ -19,7 +19,7 @@ import { newOnboardedUser, newUser, serverPool, startTestApp } from '../../test/
 import type { CallResult, TestApp } from '../../test/http.ts';
 import { createTestDb } from '../../test/testdb.ts';
 import type { TestDb } from '../../test/testdb.ts';
-import { runJob } from '../jobs/scheduler.ts';
+import { runJob, startScheduler } from '../jobs/scheduler.ts';
 import weeklyRollover, { settleWeek } from '../jobs/weeklyRollover.ts';
 import { setBoard, weekInputs } from '../leaderboardCache.ts';
 import { createLogger } from '../log.ts';
@@ -294,6 +294,56 @@ test('cache: two current requests within 5 minutes read job_guild_week_inputs on
   }
 });
 
+test('single flight: two users of two guilds at once share one read, and each gets the mine and isMine of its own guild', async () => {
+  await clock('2028-06-14T05:00:00.000Z');
+  const ws = '2028-06-12';
+  setBoard(null);
+  const gx = await arrange(ws, [{ logs: days(ws, 3, story.length) }, { logs: days(ws, 3, story.length) }, { logs: days(ws, 3, story.length) }]);
+  const gy = await arrange(ws, [{ logs: days(ws, 3, 1) }, { logs: days(ws, 3, 1) }, { logs: days(ws, 3, 1) }]);
+  const want = expected([gx, gy], ws, '2028-06-14');
+  const original = weekInputs.read;
+  const spy = mock.method(weekInputs, 'read', async (...args: Parameters<typeof original>) => {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    return original(...args);
+  });
+  try {
+    const [x, y] = (await Promise.all([board(gx.users[0], 'current'), board(gy.users[0], 'current')])).map(r => ok(r));
+    assert.equal(spy.mock.callCount(), 1);
+    for (const [body, g] of [[x, gx], [y, gy]] as const) {
+      const row = want.get(g.id)!;
+      assert.deepEqual(body.mine, { ranked: true, rank: row.rank, avgCompletion: row.avgCompletion, activeMembers: 3 });
+      assert.deepEqual(body.entries.filter((e: any) => e.isMine).map((e: any) => e.guildName), [g.name]);
+    }
+    assert.notDeepEqual(x.mine, y.mine);
+  } finally {
+    spy.mock.restore();
+    setBoard(null);
+  }
+});
+
+test('a failed compute is not cached: the requests that shared it get 500, the next one computes again and gets 200', async () => {
+  await clock('2028-06-14T06:00:00.000Z');
+  const user = await newOnboardedUser(db);
+  setBoard(null);
+  const original = weekInputs.read;
+  const spy = mock.method(weekInputs, 'read', async () => {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    throw new Error('read failed');
+  });
+  try {
+    const both = await Promise.all([board(user, 'current'), board(user, 'current')]);
+    assert.deepEqual(both.map(r => r.status), [500, 500]);
+    assert.equal(spy.mock.callCount(), 1);
+    spy.mock.mockImplementation(original);
+    const next = ok(await board(user, 'current'));
+    assert.equal(next.updatedAt, '2028-06-14T06:00:00.000Z');
+    assert.equal(spy.mock.callCount(), 2);
+  } finally {
+    spy.mock.restore();
+    setBoard(null);
+  }
+});
+
 test('mine is filled for a guild outside the top 50: 51 ranked guilds, the caller\'s is 51st', async () => {
   await clock('2027-01-13T05:00:00.000Z');
   const ws = '2027-01-11';
@@ -460,19 +510,25 @@ test('two rollovers at once on two pools: one applies, the other finds the week 
   assert.equal(g.users.length, 3);
 });
 
-test('a member who joined mid-week is averaged from the join date, one who left before the rollover is excluded, a frozen day and a day without a log count 0; guild_overview and job_guild_week_inputs read the same days', async () => {
+test('a member who joined mid-week is averaged from the join date (the logical date of joined_at), one who left before the rollover is excluded, a frozen day and a day without a log count 0; guild_overview and job_guild_week_inputs read the same days and join dates', async () => {
   const ws = '2027-04-12';
   const at = '2027-04-18T20:30:00.000Z';
   await clock('2027-04-18T05:00:00.000Z'); // Sunday 12:00 of that week in Asia/Ho_Chi_Minh
   const total = story.length;
   const g = await arrange(ws, [
     { logs: days(ws, 7, total) }, // a: every day
-    { joined: addDays(ws, 3), logs: days(ws, 6, total, 1) }, // b: joined Thursday; Tuesday and Wednesday are before
+    // b: joined Thursday 01:00 (logical Wednesday, below); Tuesday is before, a half Wednesday counts
+    { joined: addDays(ws, 3), logs: [...days(ws, 1, total, 1), { date: addDays(ws, 2), done: 1 }, ...days(ws, 4, total, 3)] },
     // c: two full days, a frozen day with one quest done, a half day, three days without a log
     { logs: [...days(ws, 2, total), { date: addDays(ws, 2), done: 1, frozen: true }, { date: addDays(ws, 4), done: 1 }] },
     { logs: days(ws, 7, total) }, // d: leaves before the rollover
-  ]);
+  ], [{}, {}, {}, { timezone: 'America/New_York' }]);
   const [a, b, c, d] = g.users;
+  // b joined Thursday 01:00 Asia/Ho_Chi_Minh: calendar date Thursday, logical date Wednesday, so
+  // Wednesday counts. d (New York) joined 05:00Z = 01:00 EDT: logical date the day before its
+  // Asia/Ho_Chi_Minh calendar date.
+  await db.admin.query('UPDATE guild_memberships SET joined_at = $2 WHERE user_id = $1', [b.userId, `${addDays(ws, 3)}T01:00:00+07:00`]);
+  g.weeks[1] = { ...g.weeks[1], joinedDate: addDays(ws, 2) };
 
   // the two readers of a member's days agree, day for day, on this fixture (one rule, app._member_days)
   const overview = await asUser(db.app, a.userId, async x => (await x.query('SELECT guild_overview() AS o')).rows[0].o.guild);
@@ -482,9 +538,12 @@ test('a member who joined mid-week is averaged from the join date, one who left 
   assert.equal(inputs.length, 1);
   assert.deepEqual(Object.keys(inputs[0]).sort(), ['created_at', 'guild_id', 'members', 'name']);
   assert.deepEqual(
-    inputs[0].members.map((m: any) => [m.userId, m.days]),
-    [...overview.members].sort((x: any, y: any) => (x.userId < y.userId ? -1 : 1)).map((m: any) => [m.userId, m.days]),
+    inputs[0].members.map((m: any) => [m.userId, m.joinedDate, m.days]),
+    [...overview.members].sort((x: any, y: any) => (x.userId < y.userId ? -1 : 1)).map((m: any) => [m.userId, m.joinedDate, m.days]),
   );
+  const joined = new Map(inputs[0].members.map((m: any) => [m.userId, m.joinedDate]));
+  assert.equal(joined.get(b.userId), addDays(ws, 2));
+  assert.equal(joined.get(d.userId), addDays(ws, -8));
   for (const m of inputs[0].members) {
     assert.deepEqual(Object.keys(m).sort(), ['days', 'joinedDate', 'userId']);
     for (const day of m.days) {
@@ -501,8 +560,9 @@ test('a member who joined mid-week is averaged from the join date, one who left 
   const want = scoreGuildWeek(stayed, ws, addDays(ws, 6));
   const [avg, active] = (await storedScores(ws, [g.id])).get(g.id)!;
   assert.deepEqual([avg, active], [want.avgCompletion, 3]);
-  // each rule changes the number: d counted, b from Monday, c's frozen day counted as a half
+  // each rule changes the number: d counted, b from Monday, b from its calendar date Thursday, c's frozen day counted as a half
   assert.notEqual(avg, scoreGuildWeek(g.weeks, ws, addDays(ws, 6)).avgCompletion);
+  assert.notEqual(avg, scoreGuildWeek([g.weeks[0], { ...g.weeks[1], joinedDate: addDays(ws, 3) }, g.weeks[2]], ws, addDays(ws, 6)).avgCompletion);
   assert.notEqual(avg, scoreGuildWeek([g.weeks[0], { ...g.weeks[1], joinedDate: ws }, g.weeks[2]], ws, addDays(ws, 6)).avgCompletion);
   const unfrozen = { ...g.weeks[2], days: g.weeks[2].days.map(day => ({ ...day, frozen: false })) };
   assert.notEqual(avg, scoreGuildWeek([g.weeks[0], g.weeks[1], unfrozen], ws, addDays(ws, 6)).avgCompletion);
@@ -581,6 +641,52 @@ test('catch-up: down for two Mondays, one run settles both weeks, oldest first',
     const want = scoreGuildWeek(g.weeks, ws, addDays(ws, 6));
     assert.deepEqual((await storedScores(ws, [g.id])).get(g.id), [want.avgCompletion, 3, 1]);
     assert.deepEqual([...(await coinsOf(ws)).values()], [150, 150, 150]);
+  }
+});
+
+test('a failed rollover is retried 15 minutes later, not next Monday: every failure is an error line and a failed job_runs row; the run that succeeds pays once; then it is not due till the next slot', async () => {
+  const ws = '2027-12-06';
+  await clock('2027-12-08T05:00:00.000Z');
+  await arrange(ws, [{ logs: days(ws, 2, story.length) }, { logs: days(ws, 2, story.length) }, { logs: days(ws, 2, story.length) }]);
+  let now = new Date('2027-12-12T20:30:00.000Z'); // Monday 2027-12-13 03:30
+  const failing = mock.method(weekInputs, 'read', async () => {
+    throw new Error('database blip');
+  });
+  const seen: string[] = [];
+  const scheduler = await startScheduler({
+    pool: db.app,
+    log: createLogger(line => seen.push(line)),
+    jobs: [weeklyRollover],
+    now: async () => now,
+    intervalMs: 60 * 60_000,
+  });
+  const tickAt = async (iso: string) => {
+    now = new Date(iso);
+    await clock(iso);
+    await scheduler.tick();
+  };
+  const runs = () => seen.map(line => JSON.parse(line)).filter(line => line.evt === 'job' && line.job === 'weekly-rollover');
+  try {
+    await tickAt('2027-12-12T20:30:00.000Z');
+    await tickAt('2027-12-12T20:44:00.000Z'); // 14 minutes after the failure: not yet
+    await tickAt('2027-12-12T20:45:00.000Z'); // still failing: a second failed run
+    assert.deepEqual(runs().map(r => [r.level, r.ok]), [['error', false], ['error', false]]);
+    assert.equal((await coinsOf(ws)).size, 0);
+    failing.mock.restore();
+    await tickAt('2027-12-12T21:00:00.000Z');
+    await tickAt('2027-12-12T21:15:00.000Z');
+    await tickAt('2027-12-19T20:29:00.000Z');
+    assert.deepEqual(runs().map(r => r.ok), [false, false, true]);
+    assert.equal(runs()[2].detail.applied.at(-1), ws);
+    assert.deepEqual([...(await coinsOf(ws)).values()], [150, 150, 150]);
+    const recorded = await db.admin.query(
+      "SELECT ok FROM job_runs WHERE job = 'weekly-rollover' AND run_for BETWEEN '2027-12-12T20:30:00Z' AND '2027-12-19T20:29:00Z' ORDER BY run_for",
+    );
+    assert.deepEqual(recorded.rows.map(r => r.ok), [false, false, true]);
+    assert.deepEqual(scheduler.health(), [{ job: 'weekly-rollover', lastRunAt: '2027-12-12T21:00:00.000Z', ok: true }]);
+  } finally {
+    failing.mock.restore();
+    await scheduler.stop();
   }
 });
 

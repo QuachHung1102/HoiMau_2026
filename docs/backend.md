@@ -1364,7 +1364,7 @@ Một ngày đã đóng không mở lại: đổi múi giờ giữa hai lượt 
 
 ### Bộ lập lịch (`jobs/scheduler.ts`)
 
-- Mỗi file `server/src/jobs/<tên>.ts` (trừ `scheduler.ts`, `run.ts` và test) export mặc định một `Job`: `{ name, due(now, lastRunAt), run(pool, now, log) }`. Thêm job là thêm file, không sửa danh sách nào. `run` trả về số đếm (được ghi vào `job_runs` và log, nên không bao giờ có dữ liệu cá nhân) và gọi `log.ledger` cho mọi dòng sổ cái nó ghi.
+- Mỗi file `server/src/jobs/<tên>.ts` (trừ `scheduler.ts`, `run.ts` và test) export mặc định một `Job`: `{ name, due(now, lastRunAt, lastOk), run(pool, now, log) }` (`lastOk`: lần chạy trước có thành công không; `weekly-rollover` dùng nó để chạy lại lần lỗi). Thêm job là thêm file, không sửa danh sách nào. `run` trả về số đếm (được ghi vào `job_runs` và log, nên không bao giờ có dữ liệu cá nhân) và gọi `log.ledger` cho mọi dòng sổ cái nó ghi.
 - `serve` của `main.ts` khởi động bộ lập lịch: **một** `setInterval` 60 giây. Mỗi nhịp đọc `SELECT app.now()` (đồng hồ test của kịch bản áp dụng cho job như cho SQL); nếu lần chạy `day-close` thành công cuối cùng đã cũ hơn 90 phút (tính từ nhịp đầu khi chưa có lần nào) thì ghi một dòng `{level:'alert', evt:'job_late', job:'day-close'}`; rồi khởi chạy mọi job tới hạn mà **không đang chạy**: không bao giờ có hai lượt của cùng một job cùng lúc. Lỗi của một lượt được ghi log (không có thông báo lỗi) và ghi vào `job_runs` với `ok = false`; bộ lập lịch chạy tiếp.
 - `day-close` tới hạn mỗi giờ một lần từ phút 15: khi lần chạy cuối trong tiến trình này trước mốc hh:15 gần nhất. Tiến trình vừa khởi động thì chạy ngay ở nhịp đầu (bù lần đã lỡ; job lặp lại được).
 - `stop()` (gọi từ cơ chế dừng sẵn có của `main.ts`) gỡ bộ hẹn giờ, rồi chờ các lượt đang chạy kết thúc trước khi pool đóng. Bộ hẹn giờ không `unref`: bộ lập lịch quên dừng sẽ giữ tiến trình sống, và lộ ra ngay.
@@ -1683,7 +1683,7 @@ Bản ghi "tuần đã chốt" là một dòng `job_runs` với `job = 'guild-we
 
 | Hàm | Vai trò | Việc |
 |---|---|---|
-| `job_guild_week_inputs(p_week_start date, p_through date)` → bảng `(guild_id, name, created_at, members)` | `app_job` | Mỗi tổ đội một dòng, theo id. `members` = các thành viên **hiện tại** (người đã rời không còn dòng thành viên nên tự bị loại; người đã xóa hoặc chưa onboarding không tính), mỗi người `{userId, joinedDate (ngày Hồ Chí Minh của joined_at), days}`; `days` = `app._member_days` trên `[p_week_start, p_through]` (`date`, `storyDone`, `storyTotal`, `frozen`). Không cột nào khác. |
+| `job_guild_week_inputs(p_week_start date, p_through date)` → bảng `(guild_id, name, created_at, members)` | `app_job` | Mỗi tổ đội một dòng, theo id. `members` = các thành viên **hiện tại** (người đã rời không còn dòng thành viên nên tự bị loại; người đã xóa hoặc chưa onboarding không tính), mỗi người `{userId, joinedDate (ngày logic của joined_at theo múi giờ của thành viên, cùng luật với guild_overview), days}`; `days` = `app._member_days` trên `[p_week_start, p_through]` (`date`, `storyDone`, `storyTotal`, `frozen`). Không cột nào khác. |
 | `job_apply_guild_week(p_week_start date, p_rows jsonb)` → `{applied, grants}` | `app_job` | Một transaction. Ghi bản ghi tuần **trước tiên** (`ON CONFLICT DO NOTHING`); đã có → `{applied: false, grants: []}`. Rồi chèn `guild_weekly_scores` cho mọi tổ đội còn tồn tại, và với mỗi tổ đội có hạng, mỗi thành viên hoạt động **vẫn còn trong tổ đội đó**: xu qua `app._grant(…, 'GUILD_WEEKLY', '<week_start>')` (AR-34), huy hiệu hạng 1 vào `inventory`, thông báo `GUILD_WEEKLY_RESULT` `{rank, coins, weekStart}` (khóa chống trùng = ngày đầu tuần). Trả các dòng sổ cái đã ghi, mỗi dòng có `userId`, để job gọi `log.ledger`. Từ chối dòng không có tổ đội, dòng có hạng mà không có thưởng, huy hiệu không phải `BADGE`. |
 | `leaderboard_final(p_week_start date)` → jsonb | `app_auth` | `{updatedAt (ran_at của bản ghi tuần, null nếu chưa chốt), entries (top 50 có hạng theo hạng: rank, guildName, avgCompletion, activeMembers, isMine), mine (dòng của tổ đội hiện tại của người gọi trong tuần đó, hoặc null)}`. Chỉ tên, tỉ lệ, số người, hạng (R-P.1). |
 | `app._member_days(p_user, p_from, p_through)` | nội bộ | Ngày có nhật ký của một người, với STORY xong / tổng và `frozen` (có vé **và** chưa xong hết, AR-10). Bản duy nhất của luật này: `guild_overview` và `job_guild_week_inputs` cùng đọc ở đây. |
@@ -1696,7 +1696,7 @@ Bản ghi "tuần đã chốt" là một dòng `job_runs` với `job = 'guild-we
 | Job | Khi nào | Việc |
 |---|---|---|
 | `leaderboard-refresh` | mỗi 5 phút | Tính bảng tức thời của tuần đang chạy, cất vào bộ nhớ đệm trong tiến trình (`{weekStart, updatedAt, entries (top 50), byGuild}`). |
-| `weekly-rollover` | từ 03:30 thứ Hai giờ Hồ Chí Minh | Với mỗi tuần trong 28 ngày trước tuần đang mở (tuần đang mở = tuần của thời điểm hiện tại lùi 3 giờ 30 phút), cũ nhất trước, mỗi tuần một transaction: tính đủ 7 ngày, xếp hạng, gọi `job_apply_guild_week`. Tuần đã chốt trả `applied: false` và không trả gì. Máy chủ tắt hai thứ Hai → lần chạy kế tiếp chốt cả hai tuần, theo thứ tự. Kết quả ghi vào `job_runs`: danh sách tuần đã chốt và số dòng sổ cái. |
+| `weekly-rollover` | từ 03:30 thứ Hai giờ Hồ Chí Minh | Với mỗi tuần trong 28 ngày trước tuần đang mở (tuần đang mở = tuần của thời điểm hiện tại lùi 3 giờ 30 phút), cũ nhất trước, mỗi tuần một transaction: tính đủ 7 ngày, xếp hạng, gọi `job_apply_guild_week`. Tuần đã chốt trả `applied: false` và không trả gì. Máy chủ tắt hai thứ Hai → lần chạy kế tiếp chốt cả hai tuần, theo thứ tự. Kết quả ghi vào `job_runs`: danh sách tuần đã chốt và số dòng sổ cái. Một tuần lỗi dừng lần chạy ở đó (các tuần mới hơn chờ, giữ thứ tự); lần chạy lỗi được chạy lại sau 15 phút (mỗi lần lỗi là một dòng log `error` và một dòng `job_runs` `ok = false`), không đợi tới thứ Hai sau. |
 
 Bộ nhớ đệm là của một tiến trình (`// ponytail: in-process cache, one server process`; không Redis, AR-17).
 
@@ -1721,6 +1721,6 @@ Bộ nhớ đệm là của một tiến trình (`// ponytail: in-process cache,
 ### Phần ba cổng không nhìn thấy
 
 - Thứ tự khóa của `job_apply_guild_week`, "mỗi tuần một lần" ở mức hàm, và việc chỉ trả thưởng cho thành viên còn trong tổ đội do test giữ; cổng 1 và 3 không đọc thân hàm.
-- `joinedDate` ở đây là ngày **lịch Hồ Chí Minh** của `joined_at` (theo đề bài), còn `guild_overview` dùng ngày **logic theo múi giờ của thành viên**: với người ở múi giờ xa vào gần nửa đêm, `weekCompletion` của màn tổ đội và `avgCompletion` của bảng xếp hạng có thể lệch một ngày đếm.
+- `joinedDate` là ngày logic của `joined_at` theo múi giờ của thành viên, cùng luật với `guild_overview` (test so `joinedDate` của hai bên trên một người vào lúc 01:00 giờ Hồ Chí Minh và một người ở New York).
 
 Sửa `51-guild-week.sql` thì chạy `npm run server:test` và `npm run db:api-check`.

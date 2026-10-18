@@ -17,8 +17,11 @@ import type { Logger } from '../log.ts';
 export type Job = {
   /** As listed by /healthz and recorded in job_runs. */
   name: string;
-  /** Whether a run is due at `now`, given the instant of the last run in this process (null: none yet). */
-  due(now: Date, lastRunAt: Date | null): boolean;
+  /**
+   * Whether a run is due at `now`, given the instant of the last run in this process (null: none
+   * yet) and whether that run succeeded (undefined: none yet).
+   */
+  due(now: Date, lastRunAt: Date | null, lastOk?: boolean): boolean;
   /**
    * One run for the instant `now`; what it returns is recorded in job_runs and logged, so counts
    * only, never personal data. `log` is the scheduler's: `log.ledger` for every ledger row the
@@ -198,7 +201,7 @@ export async function startScheduler(opts: {
     }
     const started: Promise<void>[] = [];
     for (const job of jobs) {
-      if (running.has(job.name) || !job.due(now, last.get(job.name)?.at ?? null)) {
+      if (running.has(job.name) || !job.due(now, last.get(job.name)?.at ?? null, last.get(job.name)?.ok)) {
         continue;
       }
       const run = execute(job, pool, now, log).then(
