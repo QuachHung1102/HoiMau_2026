@@ -14,15 +14,15 @@ describe('S68: the stages', () => {
     expect(screen.getByRole('header', { name: 'Hành trình lớn lên' })).toBeTruthy();
     expect(screen.getByText('Giai đoạn đã đạt sẽ không mất đi.')).toBeTruthy();
     // current = HATCHLING (index 1)
-    expect(row('Hạt giống')?.props.accessibilityLabel).toBe(`Hạt giống. Đã qua. Cần ${formatNumber(300)} XP trong giai đoạn này`);
-    expect(row('Chồi non')?.props.accessibilityLabel).toBe(`Chồi non. Sắp tới. Cần ${formatNumber(4000)} XP trong giai đoạn này`);
-    expect(row('Cây xanh')?.props.accessibilityLabel).toBe(`Cây xanh. Sắp tới. Cần ${formatNumber(12000)} XP trong giai đoạn này`);
-    expect(row('Cây huyền thoại')?.props.accessibilityLabel).toBe('Cây huyền thoại. Sắp tới. Giai đoạn cuối, không cần thêm XP');
+    expect(row('Hạt giống')?.props.accessibilityLabel).toBe(`Hạt giống. Đã qua. ${formatNumber(300)} XP để lớn lên`);
+    expect(row('Chồi non')?.props.accessibilityLabel).toBe(`Chồi non. Sắp tới. ${formatNumber(4000)} XP để lớn lên`);
+    expect(row('Cây xanh')?.props.accessibilityLabel).toBe(`Cây xanh. Sắp tới. ${formatNumber(12000)} XP để lớn lên`);
+    expect(row('Cây huyền thoại')?.props.accessibilityLabel).toBe('Cây huyền thoại. Sắp tới. Giai đoạn cuối');
     expect(screen.getAllByText('Đã qua')).toHaveLength(1);
     expect(screen.getAllByText('Hiện tại')).toHaveLength(1);
     expect(screen.getAllByText('Sắp tới')).toHaveLength(3);
     // the current one: its size, and the progress to the next
-    expect(screen.getByText(`Cần ${formatNumber(1200)} XP trong giai đoạn này`)).toBeTruthy();
+    expect(screen.getByText(`${formatNumber(1200)} XP để lớn lên`)).toBeTruthy();
     const bar = screen.getByRole('progressbar', { name: '64% tới Chồi non' });
     expect(bar.props.accessibilityValue).toEqual({ min: 0, max: 100, now: 64 });
     // the order of the rows is the order of the stages

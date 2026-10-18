@@ -62,12 +62,14 @@ export function PetScreen({ navigation }: ScreenProps<'Pet'>) {
       <ProgressBar value={pet.growthPercent} max={100} label={growthText(pet)} />
       <View style={[styles.stage, { backgroundColor: palette.soft }]}>
         {/* decorative: the mood line under it says the same; mam-idle (mam-tired when TIRED) lives in Mam */}
-        <Mam stage={pet.stage} mood={pet.mood} skin={mamSkinOf(pet.skinCode)} size={200} animation="idle" decorative active={focused} />
+        <Mam stage={pet.stage} mood={pet.mood} skin={mamSkinOf(pet.skinCode)} size={176} animation="idle" decorative active={focused} />
       </View>
       <AppText variant="headline" accessibilityRole="header">
         {vi.moodText[pet.mood]}
       </AppText>
-      <AppText variant="body">{tired ? vi.tiredNote : vi.petCare}</AppText>
+      <AppText variant="body" style={styles.note}>
+        {tired ? vi.tiredNote : vi.petCare}
+      </AppText>
       <ListRow icon="Sprout" {...vi.growthRow} onPress={() => navigation.navigate('PetStages')} />
       {tired ? (
         <Button label={vi.tiredAction} onPress={() => navigation.navigate('QuestBoard')} />
@@ -84,5 +86,6 @@ export function PetScreen({ navigation }: ScreenProps<'Pet'>) {
 const styles = StyleSheet.create({
   chipRow: { flexDirection: 'row' },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4, paddingHorizontal: 10, borderRadius: radius.button },
-  stage: { alignItems: 'center', justifyContent: 'center', borderRadius: radius.surface, paddingVertical: 32, marginVertical: 8 },
+  stage: { alignItems: 'center', justifyContent: 'center', borderRadius: radius.surface, paddingVertical: 28, marginVertical: 8 },
+  note: { marginTop: 8, marginBottom: 8 },
 });
