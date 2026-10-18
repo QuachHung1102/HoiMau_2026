@@ -2,11 +2,13 @@ import { useIsFocused } from '@react-navigation/native';
 import { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { WorkoutDetail } from '../../../domain/contract/content.ts';
+import { poses } from '../../assets/motion/poses';
 import type { ScreenProps } from '../../app/routes';
 import { ApiError } from '../../shared/api/client';
 import { healthVi } from '../../shared/i18n/vi/health';
 import { failureText } from '../../shared/i18n/vi/sync';
 import * as vi from '../../shared/i18n/vi/workout';
+import { useTheme } from '../../shared/theme/ThemeProvider';
 import { spacing } from '../../shared/theme/tokens';
 import { AppText } from '../../shared/ui/AppText';
 import { Button } from '../../shared/ui/Button';
@@ -14,7 +16,9 @@ import { Card, ListRow } from '../../shared/ui/Card';
 import { Icon, type IconName } from '../../shared/ui/Icon';
 import { Screen } from '../../shared/ui/Screen';
 import { ErrorState, LoadingState } from '../../shared/ui/States';
+import { Touchable } from '../../shared/ui/Touchable';
 import { useWorkout } from './api';
+import { MoveDemoView } from './MoveDemoView';
 
 type Step = WorkoutDetail['steps'][number];
 const PHASES: readonly { phase: Step['phase']; icon: IconName }[] = [
@@ -23,7 +27,7 @@ const PHASES: readonly { phase: Step['phase']; icon: IconName }[] = [
   { phase: 'COOLDOWN', icon: 'Wind' },
 ];
 
-/** The move in words: its name, how much of it, and its three instruction lines. (The animated demo is Task 36's.) */
+/** The move in words: its name, how much of it, and its three instruction lines. */
 export function MoveGuide({ step, caption }: { step: Step; caption?: string }) {
   return (
     <Card tone="soft">
@@ -44,6 +48,7 @@ export function MoveGuide({ step, caption }: { step: Step; caption?: string }) {
 
 /** S18: what the workout is made of, before starting it. */
 export function WorkoutDetailScreen({ route, navigation }: ScreenProps<'WorkoutDetail'>) {
+  const palette = useTheme();
   const focused = useIsFocused();
   const { id } = route.params;
   const workout = useWorkout(id);
@@ -71,10 +76,24 @@ export function WorkoutDetailScreen({ route, navigation }: ScreenProps<'WorkoutD
     starting.current = true;
     navigation.navigate('FocusSession', { id });
   };
+  const openDemo = (step: Step) => navigation.navigate('MoveDemo', { workoutId: id, code: step.move.code });
+  const first = steps[0];
 
   return (
     <Screen onBack={back}>
-      {steps[0] ? <MoveGuide step={steps[0]} caption={vi.firstMove} /> : null}
+      {first?.move.demoCode ? (
+        // motion: focus-demo (the first move loops while this screen is focused; its key pose under reduced motion)
+        <Touchable accessibilityRole="button" accessibilityLabel={vi.watchDemo(first.move.name)} onPress={() => openDemo(first)} style={[styles.demo, { backgroundColor: palette.soft }]}>
+          <MoveDemoView demoCode={first.move.demoCode} active={focused} />
+          <View style={styles.play}>
+            <View style={[styles.playButton, { backgroundColor: palette.white }]}>
+              <Icon name="Play" color={palette.primary} />
+            </View>
+          </View>
+        </Touchable>
+      ) : first ? (
+        <MoveGuide step={first} caption={vi.firstMove} />
+      ) : null}
       <AppText variant="caption">{vi.demoCaption(steps.length)}</AppText>
 
       <View style={styles.section}>
@@ -109,7 +128,8 @@ export function WorkoutDetailScreen({ route, navigation }: ScreenProps<'WorkoutD
             key={step.position}
             title={step.move.name}
             description={vi.moveLine(vi.phaseShort[step.phase], step.repsText)}
-            onPress={() => navigation.navigate('MoveDemo', { workoutId: id, code: step.move.code })}
+            thumbnail={step.move.demoCode ? poses[step.move.demoCode] : undefined}
+            onPress={() => openDemo(step)}
           />
         ))}
       </View>
@@ -126,6 +146,9 @@ export function WorkoutDetailScreen({ route, navigation }: ScreenProps<'WorkoutD
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   lines: { gap: 4 },
+  demo: { borderRadius: 20, overflow: 'hidden', paddingHorizontal: 32 },
+  play: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
+  playButton: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
   section: { marginTop: spacing.section - 8 },
   phase: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   actions: { gap: 12, marginTop: 8 },

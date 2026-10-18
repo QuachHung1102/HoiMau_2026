@@ -11,6 +11,7 @@ import { failureText, rejectionText } from '../../shared/i18n/vi/sync';
 import * as vi from '../../shared/i18n/vi/workout';
 import { motion } from '../../shared/motion/motion';
 import { useReducedMotion } from '../../shared/motion/useReducedMotion';
+import { setKeepAwake } from '../../shared/native/hoiMauNative';
 import { usePendingActions, useRejectedActions } from '../../shared/storage/pendingActions';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { sizes, spacing } from '../../shared/theme/tokens';
@@ -27,6 +28,7 @@ import { Switch } from '../../shared/ui/Toggles';
 import { Touchable } from '../../shared/ui/Touchable';
 import { useStandUpHold } from '../quests/useStandUp';
 import { useCompleteWorkout, useWorkout } from './api';
+import { MoveDemoView } from './MoveDemoView';
 import { activeMs, buildSchedule, elapsedSec, pauseClock, positionAt, resumeClock, startClock, type ClockState } from './sessionClock';
 import { MoveGuide } from './WorkoutDetailScreen';
 
@@ -57,6 +59,7 @@ function CloseButton({ onPress }: { onPress: () => void }) {
 /** The session of one workout, from the first second to the moment the server has its record. */
 function Session({ detail, navigation }: { detail: WorkoutDetail; navigation: ScreenProps<'FocusSession'>['navigation'] }) {
   const palette = useTheme();
+  const focused = useIsFocused();
   const reduced = useReducedMotion();
   const { userId } = useSession();
   const pending = usePendingActions(userId);
@@ -86,6 +89,11 @@ function Session({ detail, navigation }: { detail: WorkoutDetail; navigation: Sc
   const paused = clock.pausedAtMs !== null;
   // Paused by the person (or by leaving the app), not merely held while S63 is open.
   const showPaused = paused && !asking?.wasRunning;
+
+  // Spec F-05: the screen stays on while the session runs; paused, held by S63, ended or left, it may sleep again.
+  const awake = running && !paused;
+  useEffect(() => setKeepAwake(awake), [awake]);
+  useEffect(() => () => setKeepAwake(false), []);
 
   // motion: focus-ring (the ring and the countdown follow the session clock; the interval only says when to look)
   useEffect(() => {
@@ -297,6 +305,30 @@ function Session({ detail, navigation }: { detail: WorkoutDetail; navigation: Sc
         <AppText variant="secondary">{showPaused ? vi.pausedSubtitle(detail.name) : vi.focusSubtitle(detail.name)}</AppText>
       </Animated.View>
 
+      {step?.move.demoCode ? (
+        <View style={styles.section}>
+          {/* motion: focus-demo (the current move loops while the session runs; paused or left, it stops) */}
+          <View style={[styles.demo, { backgroundColor: palette.soft }]}>
+            <MoveDemoView demoCode={step.move.demoCode} active={focused && !paused} />
+          </View>
+          <View style={styles.demoRow}>
+            <AppText weight="semibold" style={styles.fill}>
+              {vi.dotted(step.move.name, step.repsText)}
+            </AppText>
+            <Touchable
+              accessibilityRole="button"
+              accessibilityLabel={`${vi.seeGuide}: ${step.move.name}`}
+              onPress={() => navigation.navigate('MoveDemo', { workoutId: detail.id, code: step.move.code })}
+              style={styles.link}
+            >
+              <AppText weight="semibold" color="primary">
+                {vi.seeGuide}
+              </AppText>
+            </Touchable>
+          </View>
+        </View>
+      ) : null}
+
       <Card tone="primary" style={styles.section}>
         <Icon name={showPaused ? 'Pause' : 'Activity'} size={32} color={palette.white} />
         <AppText variant="title" color="white" accessibilityRole="header">
@@ -371,5 +403,8 @@ const styles = StyleSheet.create({
   text: { gap: 8 },
   section: { gap: 8, marginTop: spacing.section - 8 },
   ring: { alignItems: 'center', marginVertical: 8 },
+  demo: { borderRadius: 20, overflow: 'hidden', paddingHorizontal: 48 },
+  demoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  link: { minHeight: sizes.minTouch, justifyContent: 'center' },
   actions: { gap: 12, marginTop: spacing.section - 8 },
 });
