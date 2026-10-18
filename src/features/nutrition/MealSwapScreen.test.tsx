@@ -2,7 +2,7 @@ import { fireEvent, screen, within } from '@testing-library/react-native';
 import type { MealPlanState } from '../../../domain/contract/content.ts';
 import { INGREDIENT_TAGS } from '../../../domain/types.ts';
 import * as vi from '../../shared/i18n/vi/nutrition';
-import { act, fetchMock, hold, installTodayTestEnv, landed, mealByCode, noUndo, openMealDetail, openMealSwap, queryClient, refuse, settle, swaps, world } from './mealTestKit';
+import { act, fetchMock, hold, installTodayTestEnv, landed, mealByCode, noUndo, openMealDetail, openMealSwap, queryClient, refuse, requested, settle, swaps, world } from './mealTestKit';
 
 installTodayTestEnv();
 
@@ -100,6 +100,56 @@ describe('S15: choosing among the suggestions', () => {
     // the plan was not touched
     expect(world.plan.planned.LUNCH).toBe(mealByCode('COM_GA').id);
     expect(world.plan.used.LUNCH).toBe(0);
+    view.unmount();
+  });
+
+  test('SWAP_CANDIDATE_INVALID: the choice is cleared at once, not only when the new list lands (the button cannot send the stale choice again)', async () => {
+    const view = await openMealSwap('LUNCH');
+    world.plan.shown.LUNCH = [...world.plan.shown.LUNCH, mealByCode('COM_CA').id];
+    const reread = hold('GET /nutrition/swap-candidates?mealSlot=LUNCH');
+    fireEvent.press(option(/Cơm cá và rau luộc/));
+    fireEvent.press(chooseButton());
+    expect(await screen.findByText('Gợi ý vừa thay đổi. Bạn chọn lại từ danh sách mới nhé.')).toBeTruthy();
+    // the list on screen is still the old one, with the refused meal in it
+    expect(option(/Cơm cá và rau luộc/).props.accessibilityState.checked).toBe(false);
+    expect(chooseButton().props.accessibilityState.disabled).toBe(true);
+    await act(async () => reread.release());
+    await landed();
+    expect(swaps()).toHaveLength(1);
+    view.unmount();
+  });
+
+  test('409 DAY_CLOSED on a choice: the day-turned words (no "Thử lại": it would meet the same answer), the plan is read again, the old meal stays', async () => {
+    const view = await openMealSwap('LUNCH');
+    world.closedDate = world.day.logicalDate;
+    const reads = requested('/nutrition/plan');
+    fireEvent.press(option(/Cơm cá và rau luộc/));
+    fireEvent.press(chooseButton());
+    expect(await screen.findByText('Ngày mới vừa bắt đầu nên thực đơn đang được làm mới. Bạn thử lại nhé.')).toBeTruthy();
+    expect(screen.queryByText(/^Chưa đổi được món/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Thử lại' })).toBeNull();
+    await landed();
+    expect(requested('/nutrition/plan')).toBeGreaterThan(reads);
+    expect(chooseButton().props.accessibilityState.disabled).toBe(true);
+    expect(swaps()).toHaveLength(1);
+    expect(world.plan.planned.LUNCH).toBe(mealByCode('COM_GA').id);
+    view.unmount();
+  });
+
+  test('a request the server answered (even with a 500) is over: "Thử lại" sends a NEW request id; after a lost connection it repeats the old one', async () => {
+    const view = await openMealSwap('LUNCH');
+    world.answer = request => (request === 'POST /nutrition/swap' ? refuse(500, 'INTERNAL') : undefined);
+    fireEvent.press(option(/Bún gà rau thơm/));
+    fireEvent.press(chooseButton());
+    expect(await screen.findByText(/^Chưa đổi được món\./)).toBeTruthy();
+    world.answer = undefined;
+    fireEvent.press(screen.getByRole('button', { name: 'Thử lại' }));
+    expect(await screen.findByRole('header', { name: 'Bún gà rau thơm' })).toBeTruthy();
+    const sent = swaps();
+    expect(sent).toHaveLength(2);
+    expect(sent[1].id).not.toBe(sent[0].id);
+    expect(sent[1].body).toEqual(sent[0].body);
+    await landed();
     view.unmount();
   });
 
@@ -262,6 +312,57 @@ describe('S15: ingredients to avoid', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Thử lại' }));
     await waitForText('Đang tránh: Hải sản');
     await landed();
+    view.unmount();
+  });
+
+  test('a save the server refused (a 500), tried again, is a new request id', async () => {
+    const view = await openMealSwap('LUNCH');
+    world.answer = request => (request === 'PATCH /settings' ? refuse(500, 'INTERNAL') : undefined);
+    fireEvent.press(field());
+    await screen.findByRole('header', { name: 'Nguyên liệu cần tránh' });
+    fireEvent.press(screen.getByRole('checkbox', { name: 'Hải sản' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Lưu' }));
+    await screen.findByText(/^Chưa lưu được nguyên liệu cần tránh\./);
+    world.answer = undefined;
+    fireEvent.press(screen.getByRole('button', { name: 'Thử lại' }));
+    await waitForText('Đang tránh: Hải sản');
+    await landed();
+    expect(patches()).toHaveLength(2);
+    expect(patches()[1].key).not.toBe(patches()[0].key);
+    expect(patches()[1].body).toEqual(patches()[0].body);
+    view.unmount();
+  });
+
+  test('a lost connection on the save: "Thử lại" repeats the same request id (the server may have it already)', async () => {
+    const view = await openMealSwap('LUNCH');
+    world.answer = request => {
+      if (request === 'PATCH /settings') throw new TypeError('Network request failed');
+      return undefined;
+    };
+    fireEvent.press(field());
+    await screen.findByRole('header', { name: 'Nguyên liệu cần tránh' });
+    fireEvent.press(screen.getByRole('checkbox', { name: 'Hải sản' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Lưu' }));
+    expect(await screen.findByText(/^Chưa lưu được nguyên liệu cần tránh\. Không kết nối được mạng\./)).toBeTruthy();
+    world.answer = undefined;
+    fireEvent.press(screen.getByRole('button', { name: 'Thử lại' }));
+    await waitForText('Đang tránh: Hải sản');
+    const sent = patches();
+    expect(sent.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(sent.map(patch => patch.key)).size).toBe(1);
+    await landed();
+    view.unmount();
+  });
+
+  test('the settings are still loading: the field is off until they have answered (saving from an empty list would erase what is saved)', async () => {
+    const answer = hold('GET /settings');
+    const view = await openMealSwap('LUNCH');
+    expect(field().props.accessibilityState.disabled).toBe(true);
+    // not an error: no message, no retry
+    expect(screen.queryByText('Chưa tải được nguyên liệu đang tránh.')).toBeNull();
+    await act(async () => answer.release());
+    await landed();
+    expect(field().props.accessibilityState.disabled).toBeFalsy();
     view.unmount();
   });
 

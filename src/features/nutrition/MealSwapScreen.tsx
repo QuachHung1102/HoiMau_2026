@@ -104,6 +104,11 @@ export function MealSwapScreen({ route, navigation }: ScreenProps<'MealSwap'>) {
       setSelected(null);
       setNotice({ text: failureText(outcome.code), kind: 'info' });
       refresh();
+    } else if (outcome.code === 'DAY_CLOSED') {
+      // The day turned: the same words as the reads say, and the plan is read again. Pressing again would meet the same answer.
+      setSelected(null);
+      setNotice({ text: loadText(outcome.code), kind: 'info' });
+      refresh();
     } else {
       setNotice({ text: vi.swapNotDone(failureText(outcome.code)), kind: 'error' });
     }
