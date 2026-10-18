@@ -89,7 +89,7 @@ test('S47 on a provisional day (the kept one is over, no network): no inputs are
 });
 
 test.each([
-  ['link', 'Ghi nhận bữa ăn', ['ManualKcal']],
+  ['link', 'Ghi nhận bữa ăn', ['MealPlan']],
   ['link', 'Chọn bài tập kháng lực', ['WorkoutCatalog']],
   ['link', 'Chọn bài cardio hoặc HIIT', ['WorkoutCatalog']],
   ['button', 'Xem lịch sử ghi nhận', ['DayHistory']],
