@@ -158,7 +158,7 @@ test('refusals, each with its code and status, and none writes a row: other guil
   const loner = await newOnboardedUser(db);
   await mute(c);
   await storyDone(d, '2027-03-10');
-  const before = (await db.admin.query('SELECT count(*)::int AS n FROM nudge_events')).rows[0].n;
+  const stored = (await db.admin.query('SELECT count(*)::int AS n FROM nudge_events')).rows[0].n;
   const refused: [CallResult, number, string][] = [
     [await send(a, outsider.userId), 403, 'NUDGE_NOT_SAME_GUILD'],
     [await send(a, a.userId), 403, 'NUDGE_NOT_SAME_GUILD'],
@@ -171,7 +171,7 @@ test('refusals, each with its code and status, and none writes a row: other guil
     refused.map(([r]) => [r.status, outcome(r)]),
     refused.map(([, status, code]) => [status, code]),
   );
-  assert.equal((await db.admin.query('SELECT count(*)::int AS n FROM nudge_events')).rows[0].n, before);
+  assert.equal((await db.admin.query('SELECT count(*)::int AS n FROM nudge_events')).rows[0].n, stored);
   assert.equal((await nudgesOf(c)).length + (await nudgesOf(d)).length + (await nudgesOf(outsider)).length, 0);
   // the sender's 4th of the day; a second nudge to one receiver from another sender
   assert.deepEqual([outcome(await send(a, b.userId)), outcome(await send(a, e.userId)), outcome(await send(a, f.userId))], ['ok', 'ok', 'ok']);
