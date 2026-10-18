@@ -111,18 +111,21 @@ test('journal_create against the job for the same user and week, both orders and
       // second waits for that users row. (Held on the users row instead, an HTTP request that already
       // holds a key-share lock on it from its idempotency row would not queue behind the job.)
       await hold.query('SELECT 1 FROM progression_state WHERE user_id = $1 FOR UPDATE', [user.userId]);
-      if (order === 'job first') {
-        job = run();
-        await until(1);
-        entry = write(user);
-      } else {
-        entry = write(user);
-        await until(1);
-        job = run();
+      try {
+        if (order === 'job first') {
+          job = run();
+          await until(1);
+          entry = write(user);
+        } else {
+          entry = write(user);
+          await until(1);
+          job = run();
+        }
+        await until(2);
+      } finally {
+        await hold.query('COMMIT');
+        hold.release();
       }
-      await until(2);
-      await hold.query('COMMIT');
-      hold.release();
     }
     const [decided, written] = await Promise.all([job, entry]);
     assert.equal(written.status, 200, JSON.stringify(written.body));
