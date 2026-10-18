@@ -433,9 +433,9 @@ test('rollover: ranks and numbers equal the domain; rewards 150 + BADGE_GUILD_TO
   privacyScan(top, ids);
 
   // a second run: nothing twice
-  const before = await counts();
+  const was = await counts();
   assert.deepEqual((await rollover(at)).applied, []);
-  assert.deepEqual(await counts(), before);
+  assert.deepEqual(await counts(), was);
 });
 
 test('two rollovers at once on two pools: one applies, the other finds the week taken; the rewards are paid once', async () => {
@@ -444,7 +444,7 @@ test('two rollovers at once on two pools: one applies, the other finds the week 
   await clock('2027-10-06T05:00:00.000Z');
   const g = await arrange(ws, [{ logs: days(ws, 2, story.length) }, { logs: days(ws, 2, 1) }, { logs: days(ws, 1, 1) }]);
   await clock(at);
-  const before = await counts();
+  const was = await counts();
   const [a, b] = await Promise.all([rollover(at, db.app), rollover(at, second)]);
   assert.deepEqual(
     [a.applied, b.applied].map(applied => (applied as string[]).includes(ws)).sort(),
@@ -452,10 +452,10 @@ test('two rollovers at once on two pools: one applies, the other finds the week 
   );
   const coins = await coinsOf(ws);
   assert.deepEqual([...coins.values()], [150, 150, 150]);
-  const after = await counts();
-  assert.equal(after.ledger - before.ledger, 3);
-  assert.equal(after.notes - before.notes, 3);
-  assert.equal(after.badges - before.badges, 3);
+  const now = await counts();
+  assert.equal(now.ledger - was.ledger, 3);
+  assert.equal(now.notes - was.notes, 3);
+  assert.equal(now.badges - was.badges, 3);
   assert.equal((await db.admin.query("SELECT count(*)::int AS n FROM job_runs WHERE job = 'guild-week' AND detail ->> 'weekStart' = $1", [ws])).rows[0].n, 1);
   assert.equal(g.users.length, 3);
 });
