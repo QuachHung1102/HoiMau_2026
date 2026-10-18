@@ -65,6 +65,7 @@ export const refusal: Record<string, string> = {
   ITEM_NOT_PURCHASABLE: 'Vật phẩm này không bán bằng xu. Nó đến từ hành trình của bạn.',
   ITEM_NOT_FOUND: 'Vật phẩm này không còn trong cửa hàng.',
   ITEM_NOT_OWNED: 'Bạn chưa sở hữu vật phẩm này.',
+  PERK_ALREADY_UNLOCKED: 'Tiện ích này đã được mở khóa từ trước, điểm của bạn không bị trừ thêm.',
 };
 export const lockedLevel = (level: number) => `Vật phẩm này mở ở cấp ${level}. Xu của bạn chưa bị trừ.`;
 export const notBought = 'Chưa mua được. Xu của bạn chưa bị trừ.';
