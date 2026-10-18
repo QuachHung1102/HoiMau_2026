@@ -46,7 +46,7 @@ export function PetStagesScreen({ navigation }: ScreenProps<'PetStages'>) {
               accessibilityState={{ selected: current }}
               style={[styles.row, { backgroundColor: current ? palette.soft : palette.white, borderColor: palette.line }, !current && styles.outlined]}
             >
-              {/* Stages ahead are drawn paler, and also say "Sắp tới": never the tint alone. */}
+              {/* Stages ahead are drawn paler and also say so in words: never the tint alone. */}
               <View style={[styles.thumb, state === 'next' && styles.ahead]}>
                 <Mam stage={stage} mood="NEUTRAL" skin={mamSkinOf(pet.skinCode)} size={THUMB} decorative />
               </View>
