@@ -132,7 +132,7 @@ export function occurredAtOf(body: unknown): string | null {
 }
 
 /** A date label that names a real date, or the refusal of `field`. */
-function dateOf(value: string | null | undefined, field: string): DateLabel {
+export function dateOf(value: string | null | undefined, field: string): DateLabel {
   if (value === null || value === undefined || value === '') {
     throw refuse(field, 'required');
   }
