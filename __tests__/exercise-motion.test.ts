@@ -16,6 +16,15 @@ test('src/assets/motion is what scripts/extract-exercise-motion.mjs makes from d
   expect(output).toMatch(/^OK: /);
 });
 
+type Node = { id?: string; origin?: number[]; attrs: Record<string, string>; children: Node[] };
+test.each(['side', 'front'] as const)('the %s rig keeps every attribute of its SVG elements (ids and pivots included)', rig => {
+  const svg = fs.readFileSync(path.join(root, `design/assets/exercise/rig-${rig}.svg`), 'utf8');
+  const inElements = svg.replace(/<svg[^>]*>/, '').match(/[\w:-]+="[^"]*"/g)?.length;
+  const count = (node: Node): number => Object.keys(node.attrs).length + (node.id ? 1 : 0) + (node.origin ? 1 : 0) + node.children.reduce((sum, child) => sum + count(child), 0);
+  const tree = (data.rigs as unknown as Record<string, Node>)[rig];
+  expect(count(tree) - Object.keys(tree.attrs).length).toBe(inElements);
+});
+
 test('every move of the content has its demo: an extracted exercise entry, or the breathing guide', () => {
   const content = fs.readFileSync(path.join(root, 'server/content/exercises.ts'), 'utf8');
   const codes = [...content.matchAll(/demoCode: '([^']+)'/g)].map(match => match[1]);

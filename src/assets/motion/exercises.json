@@ -219,6 +219,10 @@
           {
            "tag": "line",
            "attrs": {
+            "x1": "100",
+            "y1": "92",
+            "x2": "100",
+            "y2": "121",
             "stroke": "#2E3E5C",
             "strokeWidth": "11",
             "strokeLinecap": "round"
@@ -232,6 +236,10 @@
             {
              "tag": "line",
              "attrs": {
+              "x1": "100",
+              "y1": "121",
+              "x2": "100",
+              "y2": "145",
               "stroke": "#2E3E5C",
               "strokeWidth": "9.5",
               "strokeLinecap": "round"
@@ -282,6 +290,10 @@
           {
            "tag": "line",
            "attrs": {
+            "x1": "100",
+            "y1": "92",
+            "x2": "100",
+            "y2": "121",
             "stroke": "#182743",
             "strokeWidth": "11",
             "strokeLinecap": "round"
@@ -295,6 +307,10 @@
             {
              "tag": "line",
              "attrs": {
+              "x1": "100",
+              "y1": "121",
+              "x2": "100",
+              "y2": "145",
               "stroke": "#182743",
               "strokeWidth": "9.5",
               "strokeLinecap": "round"
@@ -349,6 +365,10 @@
             {
              "tag": "line",
              "attrs": {
+              "x1": "100",
+              "y1": "54",
+              "x2": "100",
+              "y2": "73",
               "stroke": "#C98E6C",
               "strokeWidth": "7.5",
               "strokeLinecap": "round"
@@ -358,6 +378,10 @@
             {
              "tag": "line",
              "attrs": {
+              "x1": "100",
+              "y1": "54",
+              "x2": "100",
+              "y2": "62",
               "stroke": "#1D48AE",
               "strokeWidth": "10",
               "strokeLinecap": "round"
@@ -371,6 +395,10 @@
               {
                "tag": "line",
                "attrs": {
+                "x1": "100",
+                "y1": "73",
+                "x2": "100",
+                "y2": "89",
                 "stroke": "#C98E6C",
                 "strokeWidth": "6.5",
                 "strokeLinecap": "round"
@@ -509,6 +537,10 @@
           {
            "tag": "line",
            "attrs": {
+            "x1": "100.5",
+            "y1": "46",
+            "x2": "101.5",
+            "y2": "40",
             "stroke": "#E8B08A",
             "strokeWidth": "6",
             "strokeLinecap": "round"
@@ -561,6 +593,10 @@
             {
              "tag": "line",
              "attrs": {
+              "x1": "100",
+              "y1": "54",
+              "x2": "100",
+              "y2": "73",
               "stroke": "#E8B08A",
               "strokeWidth": "7.5",
               "strokeLinecap": "round"
@@ -574,6 +610,10 @@
               {
                "tag": "line",
                "attrs": {
+                "x1": "100",
+                "y1": "54",
+                "x2": "100",
+                "y2": "62",
                 "stroke": "#2458D3",
                 "strokeWidth": "10",
                 "strokeLinecap": "round"
@@ -594,6 +634,10 @@
               {
                "tag": "line",
                "attrs": {
+                "x1": "100",
+                "y1": "73",
+                "x2": "100",
+                "y2": "89",
                 "stroke": "#E8B08A",
                 "strokeWidth": "6.5",
                 "strokeLinecap": "round"
@@ -648,6 +692,10 @@
                   {
                    "tag": "line",
                    "attrs": {
+                    "x1": "100",
+                    "y1": "91",
+                    "x2": "100",
+                    "y2": "97.5",
                     "stroke": "#E8B08A",
                     "strokeWidth": "5",
                     "strokeLinecap": "round"
@@ -706,6 +754,10 @@
       {
        "tag": "line",
        "attrs": {
+        "x1": "148",
+        "y1": "98",
+        "x2": "100",
+        "y2": "98",
         "stroke": "#88D64B",
         "strokeWidth": "2.5"
        },
@@ -815,6 +867,10 @@
           {
            "tag": "line",
            "attrs": {
+            "x1": "94",
+            "y1": "92",
+            "x2": "94",
+            "y2": "121",
             "stroke": "#182743",
             "strokeWidth": "11",
             "strokeLinecap": "round"
@@ -828,6 +884,10 @@
             {
              "tag": "line",
              "attrs": {
+              "x1": "94",
+              "y1": "121",
+              "x2": "94",
+              "y2": "145",
               "stroke": "#182743",
               "strokeWidth": "9.5",
               "strokeLinecap": "round"
@@ -878,6 +938,10 @@
           {
            "tag": "line",
            "attrs": {
+            "x1": "106",
+            "y1": "92",
+            "x2": "106",
+            "y2": "121",
             "stroke": "#182743",
             "strokeWidth": "11",
             "strokeLinecap": "round"
@@ -891,6 +955,10 @@
             {
              "tag": "line",
              "attrs": {
+              "x1": "106",
+              "y1": "121",
+              "x2": "106",
+              "y2": "145",
               "stroke": "#182743",
               "strokeWidth": "9.5",
               "strokeLinecap": "round"
@@ -975,6 +1043,10 @@
           {
            "tag": "line",
            "attrs": {
+            "x1": "100",
+            "y1": "46",
+            "x2": "100",
+            "y2": "40",
             "stroke": "#E8B08A",
             "strokeWidth": "6",
             "strokeLinecap": "round"
@@ -1056,6 +1128,10 @@
             {
              "tag": "line",
              "attrs": {
+              "x1": "86",
+              "y1": "54",
+              "x2": "86",
+              "y2": "73",
               "stroke": "#E8B08A",
               "strokeWidth": "7.5",
               "strokeLinecap": "round"
@@ -1065,6 +1141,10 @@
             {
              "tag": "line",
              "attrs": {
+              "x1": "86",
+              "y1": "54",
+              "x2": "86",
+              "y2": "62",
               "stroke": "#2458D3",
               "strokeWidth": "10",
               "strokeLinecap": "round"
@@ -1078,6 +1158,10 @@
               {
                "tag": "line",
                "attrs": {
+                "x1": "86",
+                "y1": "73",
+                "x2": "86",
+                "y2": "89",
                 "stroke": "#E8B08A",
                 "strokeWidth": "6.5",
                 "strokeLinecap": "round"
@@ -1095,6 +1179,10 @@
                   {
                    "tag": "line",
                    "attrs": {
+                    "x1": "79",
+                    "y1": "90.5",
+                    "x2": "93",
+                    "y2": "90.5",
                     "stroke": "#56647B",
                     "strokeWidth": "2.5"
                    },
@@ -1165,6 +1253,10 @@
             {
              "tag": "line",
              "attrs": {
+              "x1": "114",
+              "y1": "54",
+              "x2": "114",
+              "y2": "73",
               "stroke": "#E8B08A",
               "strokeWidth": "7.5",
               "strokeLinecap": "round"
@@ -1174,6 +1266,10 @@
             {
              "tag": "line",
              "attrs": {
+              "x1": "114",
+              "y1": "54",
+              "x2": "114",
+              "y2": "62",
               "stroke": "#2458D3",
               "strokeWidth": "10",
               "strokeLinecap": "round"
@@ -1187,6 +1283,10 @@
               {
                "tag": "line",
                "attrs": {
+                "x1": "114",
+                "y1": "73",
+                "x2": "114",
+                "y2": "89",
                 "stroke": "#E8B08A",
                 "strokeWidth": "6.5",
                 "strokeLinecap": "round"
@@ -1204,6 +1304,10 @@
                   {
                    "tag": "line",
                    "attrs": {
+                    "x1": "107",
+                    "y1": "90.5",
+                    "x2": "121",
+                    "y2": "90.5",
                     "stroke": "#56647B",
                     "strokeWidth": "2.5"
                    },
@@ -1295,6 +1399,10 @@
       {
        "tag": "line",
        "attrs": {
+        "x1": "94",
+        "y1": "112",
+        "x2": "106",
+        "y2": "112",
         "stroke": "#88D64B",
         "strokeWidth": "3"
        },

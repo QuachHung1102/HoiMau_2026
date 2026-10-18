@@ -24,7 +24,7 @@ function parseSvg(text) {
       continue;
     }
     const node = { tag, attrs: {}, children: [] };
-    for (const [, name, value] of rawAttrs.matchAll(/([a-zA-Z:-]+)="([^"]*)"/g)) {
+    for (const [, name, value] of rawAttrs.matchAll(/([\w:-]+)="([^"]*)"/g)) {
       if (name === 'id') node.id = value;
       else if (name === 'style') {
         const origin = /transform-origin:\s*([-\d.]+)px\s+([-\d.]+)px/.exec(value);
