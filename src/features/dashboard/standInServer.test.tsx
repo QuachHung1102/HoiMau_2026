@@ -491,3 +491,175 @@ describe('the meal plan routes (Task 33 report, "Notes for Task 34")', () => {
     expect(code(await post(NUTRITION.slice(5), { mealSlot: 'SNACK' }))).toBe('409 PLAN_NOT_FOUND');
   });
 });
+
+// Task 37: the shop, the inventory, the perks and the pet, against server/src/routes/shop.ts, perks.ts and
+// server/sql/41-shop.sql (task-37-report.md "Notes for Task 38"). The error order is that of the SQL functions.
+describe('the shop, the inventory, the perks and the pet (Task 37)', () => {
+  const FOREST = 'THEME_FOREST';
+  const SKY = 'THEME_SKY';
+  const buy = (item: string, key?: string) => send('POST', `/shop/${item}/purchase`, undefined, key);
+  const equip = (item: string) => send('POST', `/inventory/${item}/equip`);
+  const unlock = (body: unknown) => post('/perks/unlock', body);
+  const items = (answer: Answer) => answer.json.items as { code: string; owned: boolean; equipped: boolean; locked: boolean }[];
+  const coin = () => world.me.progression?.coin;
+  const withPoints = (perkPointsAvailable: number) => {
+    world.me = { ...world.me, progression: { ...(world.me.progression as NonNullable<typeof world.me.progression>), perkPointsAvailable } };
+  };
+  const withCoins = (amount: number) => {
+    world.me = { ...world.me, progression: { ...(world.me.progression as NonNullable<typeof world.me.progression>), coin: amount } };
+  };
+
+  test('GET /shop: the purchasable and the default items in the order of the server, the balance and the level; locked is the level alone; earned badges are not for sale', async () => {
+    const shop = await get('/shop');
+    expect([shop.status, shop.json.coin, shop.json.level]).toEqual([200, 250, 5]);
+    expect(items(shop).map(item => item.code)).toEqual(['THEME_DEFAULT', FOREST, SKY, 'SKIN_DEFAULT', 'SKIN_FOX', 'BADGE_NEW_DAY', 'BADGE_STEP_BY_STEP']);
+    expect(items(shop).filter(item => item.locked).map(item => item.code)).toEqual([SKY]);
+    // the defaults are owned, and in use while nothing of their kind is equipped
+    expect(items(shop).filter(item => item.owned || item.equipped).map(item => [item.code, item.owned, item.equipped])).toEqual([
+      ['THEME_DEFAULT', true, true],
+      ['SKIN_DEFAULT', true, true],
+    ]);
+    expect(shop.json.items[1]).toEqual({ code: FOREST, name: 'Rừng xanh', kind: 'THEME', priceCoin: 80, minLevel: 1, assetKey: 'forest', purchasable: true, isDefault: false, owned: false, equipped: false, locked: false });
+  });
+
+  test('GET /inventory: the defaults, what was bought, an earned badge; nothing else', async () => {
+    expect(items(await get('/inventory')).map(item => item.code)).toEqual(['THEME_DEFAULT', 'SKIN_DEFAULT']);
+    world.shop.owned = [FOREST, 'BADGE_STREAK_7'];
+    expect(items(await get('/inventory')).map(item => item.code)).toEqual(['THEME_DEFAULT', FOREST, 'SKIN_DEFAULT', 'BADGE_STREAK_7']);
+  });
+
+  test('a purchase: the coins go down by the price, the item is owned, the answer is { coin, item }; the same key again is the stored answer and charges nothing', async () => {
+    const bought = await buy(FOREST);
+    expect([bought.status, bought.json.coin, coin()]).toEqual([200, 170, 170]);
+    expect(bought.json.item).toMatchObject({ code: FOREST, owned: true, equipped: false });
+    expect(world.shop.owned).toEqual([FOREST]);
+    const replay = await buy(FOREST, bought.key);
+    expect([replay.status, replay.json, coin(), world.shop.owned]).toEqual([200, bought.json, 170, [FOREST]]);
+    // the same key for another item is another request
+    expect(code(await buy('SKIN_FOX', bought.key))).toBe('409 IDEMPOTENCY_KEY_REUSED');
+  });
+
+  test('the refusals, each with its status and details, in the order of shop_purchase: item, for sale, level, owned, coins', async () => {
+    expect(code(await buy('NOPE'))).toBe('404 ITEM_NOT_FOUND');
+    expect(code(await buy('BADGE_STREAK_7'))).toBe('409 ITEM_NOT_PURCHASABLE');
+    expect(code(await buy('THEME_DEFAULT'))).toBe('409 ITEM_NOT_PURCHASABLE');
+    // level before coins: the sky opens at level 8 and costs 300, and the person has neither
+    withCoins(0);
+    const locked = await buy(SKY);
+    expect([code(locked), locked.json.error.details]).toEqual(['409 ITEM_LOCKED_LEVEL', { minLevel: 8 }]);
+    // level before owned
+    world.shop.owned = [SKY];
+    expect(code(await buy(SKY))).toBe('409 ITEM_LOCKED_LEVEL');
+    // owned before coins
+    world.shop.owned = [FOREST];
+    expect(code(await buy(FOREST))).toBe('409 ALREADY_OWNED');
+    world.shop.owned = [];
+    withCoins(30);
+    const poor = await buy(FOREST);
+    expect([code(poor), poor.json.error.details]).toEqual(['409 INSUFFICIENT_COINS', { price: 80, coin: 30 }]);
+    // a refusal writes nothing, and its key is free again (only a 2xx is remembered)
+    expect([coin(), world.shop.owned]).toEqual([30, []]);
+    withCoins(250);
+    expect((await buy(FOREST, poor.key)).status).toBe(200);
+  });
+
+  test('every route of these is for an onboarded user first: ONBOARDING_REQUIRED, before the item is even looked at', async () => {
+    world.me = { ...world.me, progression: null };
+    for (const answer of [await get('/shop'), await get('/inventory'), await get('/perks'), await get('/pet'), await buy('NOPE'), await equip('NOPE'), await unlock({})]) {
+      expect(code(answer)).toBe('409 ONBOARDING_REQUIRED');
+    }
+  });
+
+  test('equip: an item that is not the person\'s (an unknown code too) is 409 ITEM_NOT_OWNED; one item per kind is in use afterwards, the other kinds are not touched; a default leaves the kind with none', async () => {
+    expect(code(await equip(FOREST))).toBe('409 ITEM_NOT_OWNED');
+    expect(code(await equip('NOPE'))).toBe('409 ITEM_NOT_OWNED');
+    world.shop.owned = [FOREST, 'SKIN_FOX', 'BADGE_STREAK_7'];
+    const skin = await equip('SKIN_FOX');
+    expect(skin.status).toBe(200);
+    const theme = await equip(FOREST);
+    expect(items(theme).filter(item => item.equipped).map(item => item.code)).toEqual([FOREST, 'SKIN_FOX']);
+    expect(world.me.appearance).toEqual({ themeCode: FOREST, petSkinCode: 'SKIN_FOX', badgeCode: null });
+    expect((await get('/me')).json.appearance).toEqual(world.me.appearance);
+    expect(world.me.pet?.skinCode).toBe('SKIN_FOX');
+    // the default theme: no theme row is equipped, and the default says "in use" again
+    const back = await equip('THEME_DEFAULT');
+    expect(items(back).filter(item => item.equipped).map(item => item.code)).toEqual(['THEME_DEFAULT', 'SKIN_FOX']);
+    expect(world.shop.equipped.THEME).toBeNull();
+    expect((await get('/me')).json.appearance).toEqual({ themeCode: 'THEME_DEFAULT', petSkinCode: 'SKIN_FOX', badgeCode: null });
+    // a badge is equipped like the others
+    await equip('BADGE_STREAK_7');
+    expect(world.me.appearance?.badgeCode).toBe('BADGE_STREAK_7');
+  });
+
+  test('GET /perks: the three perks in order with their costs, the points of the profile; GET /pet is the profile\'s Mầm', async () => {
+    withPoints(3);
+    const perks = await get('/perks');
+    expect(perks.json).toEqual({
+      pointsAvailable: 3,
+      perks: [
+        { code: 'MEAL_SWAP_PLUS', cost: 2, unlocked: false, repeatable: false },
+        { code: 'TICKET_CAP_PLUS', cost: 3, unlocked: false, repeatable: false },
+        { code: 'THEME_UNLOCK', cost: 1, unlocked: false, repeatable: true },
+      ],
+    });
+    expect((await get('/pet')).json).toEqual(world.me.pet);
+  });
+
+  test('POST /perks/unlock: the body is checked first (422 naming each member); itemCode matters to THEME_UNLOCK only', async () => {
+    withPoints(3);
+    const none = await unlock({});
+    expect([code(none), fields(none)]).toEqual(['422 VALIDATION_FAILED', [{ field: 'perkCode', rule: 'required' }]]);
+    expect(fields(await unlock({ perkCode: 'NOPE' }))).toEqual([{ field: 'perkCode', rule: 'enum' }]);
+    expect(fields(await unlock({ perkCode: 'THEME_UNLOCK' }))).toEqual([{ field: 'itemCode', rule: 'required' }]);
+    expect(fields(await unlock({ perkCode: 'THEME_UNLOCK', itemCode: 7 }))).toEqual([{ field: 'itemCode', rule: 'format' }]);
+    // another perk ignores whatever itemCode says
+    expect((await unlock({ perkCode: 'MEAL_SWAP_PLUS', itemCode: 7 })).status).toBe(200);
+  });
+
+  test('MEAL_SWAP_PLUS and TICKET_CAP_PLUS once each: already unlocked before the points; too few points 409; the points go down by the cost and the answer is the perks', async () => {
+    withPoints(2);
+    expect(code(await unlock({ perkCode: 'TICKET_CAP_PLUS' }))).toBe('409 PERK_POINTS_INSUFFICIENT');
+    expect(world.shop.unlocked).toEqual([]);
+    const done = await unlock({ perkCode: 'MEAL_SWAP_PLUS' });
+    expect([done.status, done.json.pointsAvailable, done.json.perks[0].unlocked, world.me.progression?.perkPointsAvailable]).toEqual([200, 0, true, 0]);
+    // 0 points left, and the perk is used: "already" is said, not "not enough"
+    expect(code(await unlock({ perkCode: 'MEAL_SWAP_PLUS' }))).toBe('409 PERK_ALREADY_UNLOCKED');
+    expect(world.shop.unlocked).toEqual([{ perk: 'MEAL_SWAP_PLUS', cost: 2 }]);
+  });
+
+  test('THEME_UNLOCK: a theme that is not a theme, or is the default, is 404; owned, then the level (with minLevel), then the points; the theme is added, coins untouched, and the perk can be used again', async () => {
+    withPoints(0);
+    for (const itemCode of ['NOPE', 'SKIN_FOX', 'THEME_DEFAULT']) expect(code(await unlock({ perkCode: 'THEME_UNLOCK', itemCode }))).toBe('404 ITEM_NOT_FOUND');
+    world.shop.owned = [FOREST];
+    expect(code(await unlock({ perkCode: 'THEME_UNLOCK', itemCode: FOREST }))).toBe('409 ALREADY_OWNED');
+    const locked = await unlock({ perkCode: 'THEME_UNLOCK', itemCode: SKY });
+    expect([code(locked), locked.json.error.details]).toEqual(['409 ITEM_LOCKED_LEVEL', { minLevel: 8 }]);
+    // everything the theme needs is there but the point
+    world.shop.owned = [];
+    expect(code(await unlock({ perkCode: 'THEME_UNLOCK', itemCode: FOREST }))).toBe('409 PERK_POINTS_INSUFFICIENT');
+    withPoints(2);
+    const coins = coin();
+    const opened = await unlock({ perkCode: 'THEME_UNLOCK', itemCode: FOREST });
+    expect([opened.status, opened.json.pointsAvailable, opened.json.perks[2], coin(), world.shop.owned]).toEqual([200, 1, { code: 'THEME_UNLOCK', cost: 1, unlocked: true, repeatable: true }, coins, [FOREST]]);
+    expect(code(await unlock({ perkCode: 'THEME_UNLOCK', itemCode: FOREST }))).toBe('409 ALREADY_OWNED');
+    world.me = { ...world.me, progression: { ...(world.me.progression as NonNullable<typeof world.me.progression>), level: 8 } };
+    expect((await unlock({ perkCode: 'THEME_UNLOCK', itemCode: SKY })).json.pointsAvailable).toBe(0);
+  });
+
+  test('an undo whose coins were spent (a purchase inside the window) is 409 UNDO_COINS_SPENT and writes nothing; DAY_CLOSED comes first', async () => {
+    withCoins(78);
+    const tick = await post(WATER_TICK, {}); // +5 coins: 83
+    expect(coin()).toBe(83);
+    expect((await buy(FOREST)).status).toBe(200); // 3 left
+    world.closedDate = world.day.logicalDate;
+    expect(code(await post(WATER_UNDO, { tickId: tick.key }))).toBe('409 DAY_CLOSED');
+    world.closedDate = undefined;
+    const refused = await post(WATER_UNDO, { tickId: tick.key });
+    expect(code(refused)).toBe('409 UNDO_COINS_SPENT');
+    expect([coin(), quest(world.day, 'WATER_8').progress]).toEqual([3, 4]);
+    // the coins are back (a later grant): the same undo goes through
+    withCoins(10);
+    expect((await post(WATER_UNDO, { tickId: tick.key })).status).toBe(200);
+    expect(coin()).toBe(5);
+  });
+});
