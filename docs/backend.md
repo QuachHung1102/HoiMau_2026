@@ -1594,7 +1594,7 @@ Sửa `41-shop.sql` thì chạy `npm run server:test` và `npm run db:api-check`
 
 ## Tổ đội (`50-guild.sql`, `routes/guild.ts`, `readModels/guild.ts`)
 
-Tổ đội 3–8 người, vào bằng mã mời, mỗi người tối đa một tổ đội, mỗi tổ đội đúng một tổ trưởng. Thành viên thấy nhau ở mức tên hiển thị, cấp, vai trò, số ngày hoàn thành trong tuần và nhiệm vụ chính hôm nay đã xong chưa, **không gì khác** (F-11, R-D08, R-P.1, AR-17, AR-18). Hợp đồng: `GuildState`, `GuildMember`, `GuildCreateRequest`, `GuildJoinRequest`, `TransferRequest` trong `docs/api/openapi.yaml`. Bảng xếp hạng và thưởng tuần: xem "Bảng xếp hạng và thưởng tuần"; nhắc nhở (Task 41) chưa có; không có kick, không có chat.
+Tổ đội 3–8 người, vào bằng mã mời, mỗi người tối đa một tổ đội, mỗi tổ đội đúng một tổ trưởng. Thành viên thấy nhau ở mức tên hiển thị, cấp, vai trò, số ngày hoàn thành trong tuần và nhiệm vụ chính hôm nay đã xong chưa, **không gì khác** (F-11, R-D08, R-P.1, AR-17, AR-18). Hợp đồng: `GuildState`, `GuildMember`, `GuildCreateRequest`, `GuildJoinRequest`, `TransferRequest` trong `docs/api/openapi.yaml`. Bảng xếp hạng và thưởng tuần: xem "Bảng xếp hạng và thưởng tuần"; nhắc nhở: xem "Nhắc nhở (nudge) và nhắc nhiệm vụ"; không có kick, không có chat.
 
 ### Bảng
 
@@ -1635,7 +1635,7 @@ Mã mời theo AR-18: 8 ký tự từ `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (`app._
 
 - Thứ tự lỗi của `POST /guilds`: thân sai (`VALIDATION_FAILED`) → từ cấm trong tên hoặc khẩu hiệu (`NAME_NOT_ALLOWED`, `findBannedTerms` của `domain/language.ts`, xét sau cùng ở route như với tên hiển thị) → `ALREADY_IN_GUILD` → `GUILD_NAME_TAKEN`. Tên: chuẩn hóa NFC, cắt khoảng trắng, 3–30 ký tự (đếm trên dạng NFC), cùng định dạng với tên hiển thị (không ký tự vô hình, có ít nhất một chữ hoặc số). Khẩu hiệu: tùy chọn, chuẩn hóa NFC, cắt khoảng trắng, ≤ 80, không ký tự vô hình.
 - Người không ở tổ đội nào gọi chuyển quyền nhận `403 NOT_LEADER` (hợp đồng không ghi `NOT_IN_GUILD` cho route này).
-- **`GuildState`** do `buildGuild` tính từ `guild_overview` bằng domain: `level` = `levelForXp(xp)`; `daysCompletedThisWeek` = số ngày từ `max(weekStart, joinedDate)` tới hôm nay có đủ mọi nhiệm vụ STORY (ngày có vé mà xong hết vẫn tính); `daysCountedThisWeek` = `memberWeek(…).countedDays`; `weekCompletion` = `scoreGuildWeek(…).avgCompletion`. Tuần là tuần bắt đầu thứ Hai của `Asia/Ho_Chi_Minh`, **tính tới ngày lịch hôm nay ở đó** (AR-17); chỉ `storyDoneToday` dùng ngày logic của chính thành viên. `inactiveDays` = số ngày tới hôm nay (giờ Hồ Chí Minh) tính từ ngày **muộn hơn** trong hai ngày: `lastLogDate` (ngày ghi gần nhất của bất kỳ thành viên nào) và ngày tạo tổ đội (giờ Hồ Chí Minh); chưa ai ghi gì thì tính từ ngày tạo. Tổ đội không thể "lặng" lâu hơn tuổi của nó: tổ đội mới tạo hôm nay không bao giờ `inactive` ngay ngày đầu, kể cả khi mọi thành viên ghi lần cuối từ 20 ngày trước; `inactive` = `inactiveDays ≥ 14` (`GUILD_INACTIVE_DAYS`). `nudge` tạm thời là `{allowed: false, reason: null}` ở **mọi** dòng cho tới khi Task 41 điền (hợp đồng chỉ cho dạng này ở dòng của chính người gọi; đây là trạng thái tạm).
+- **`GuildState`** do `buildGuild` tính từ `guild_overview` bằng domain: `level` = `levelForXp(xp)`; `daysCompletedThisWeek` = số ngày từ `max(weekStart, joinedDate)` tới hôm nay có đủ mọi nhiệm vụ STORY (ngày có vé mà xong hết vẫn tính); `daysCountedThisWeek` = `memberWeek(…).countedDays`; `weekCompletion` = `scoreGuildWeek(…).avgCompletion`. Tuần là tuần bắt đầu thứ Hai của `Asia/Ho_Chi_Minh`, **tính tới ngày lịch hôm nay ở đó** (AR-17); chỉ `storyDoneToday` dùng ngày logic của chính thành viên. `inactiveDays` = số ngày tới hôm nay (giờ Hồ Chí Minh) tính từ ngày **muộn hơn** trong hai ngày: `lastLogDate` (ngày ghi gần nhất của bất kỳ thành viên nào) và ngày tạo tổ đội (giờ Hồ Chí Minh); chưa ai ghi gì thì tính từ ngày tạo. Tổ đội không thể "lặng" lâu hơn tuổi của nó: tổ đội mới tạo hôm nay không bao giờ `inactive` ngay ngày đầu, kể cả khi mọi thành viên ghi lần cuối từ 20 ngày trước; `inactive` = `inactiveDays ≥ 14` (`GUILD_INACTIVE_DAYS`). `nudge` = `{allowed: reason == null, reason}` với `reason` = `app._nudge_block_reason(người gọi, thành viên)` mà `guild_overview` trả cho từng dòng (xem "Nhắc nhở (nudge) và nhắc nhiệm vụ"); riêng dòng của chính người gọi là `{allowed: false, reason: null}` như hợp đồng quy định.
 - Không route nào ghi sổ cái, nên không có dòng `log.ledger`.
 
 ### Riêng tư
@@ -1724,3 +1724,52 @@ Bộ nhớ đệm là của một tiến trình (`// ponytail: in-process cache,
 - `joinedDate` là ngày logic của `joined_at` theo múi giờ của thành viên, cùng luật với `guild_overview` (test so `joinedDate` của hai bên trên một người vào lúc 01:00 giờ Hồ Chí Minh và một người ở New York).
 
 Sửa `51-guild-week.sql` thì chạy `npm run server:test` và `npm run db:api-check`.
+
+## Nhắc nhở (nudge) và nhắc nhiệm vụ (`52-nudge.sql`, `routes/nudge.ts`, `jobs/reminderDispatch.ts`, `seed/nudgeTemplates.ts`)
+
+Thành viên tổ đội gửi cho đồng đội một trong các câu mẫu cố định, dưới sáu ràng buộc chống lạm dụng (F-12, R-12.1–R-12.6, AR-19); người đã bật nhắc nhiệm vụ nhận một mục trong hộp thư mỗi ngày, trong khung giờ họ chọn (AR-23). Không có thông báo đẩy. Hợp đồng: `NudgeTemplates`, `NudgeRequest`, `NudgeResult`, `GuildMember.nudge`, `InboxItemNudge` trong `docs/api/openapi.yaml`.
+
+### Bảng
+
+| Bảng | Lớp | Ghi chú |
+|---|---|---|
+| `nudge_templates` | `content` (đọc) | khóa `code`, `text`; seed từ `server/content/nudgeTemplates.ts` theo `code`, không bao giờ xóa (sự kiện cũ trỏ tới mã của nó) |
+| `nudge_events` | `internal` (không vai trò nào có quyền) | khóa `id` = action id của request; `sender_id`, `receiver_id` (khóa ngoại về `users`, xóa lan), `template_code` (khóa ngoại về `nudge_templates`), `sender_date` (ngày logic của người gửi), `receiver_date` (ngày logic của người nhận), `sent_at`; **duy nhất `(receiver_id, receiver_date)`** (mỗi người nhận tối đa một lời nhắc mỗi ngày của họ); `CHECK (sender_id <> receiver_id)`; chỉ mục `(sender_id, sender_date)` |
+
+### Hàm
+
+| Hàm | Vai trò | Việc |
+|---|---|---|
+| `app._nudge_block_reason(p_sender, p_receiver)` → text | nội bộ | Lý do không được nhắc lúc này, `NULL` = được. Gặp điều nào trước thì trả điều đó, theo đúng thứ tự: `NOT_IN_GUILD` (người gửi không ở tổ đội nào) → `NUDGE_NOT_SAME_GUILD` (người nhận là chính mình hoặc không cùng tổ đội) → `NUDGE_RECEIVER_MUTED` (`nudges_enabled` false) → `NUDGE_NOT_NEEDED` (mọi nhiệm vụ STORY của ngày logic hiện tại của người nhận đã xong, đọc qua `app._member_days`: cùng luật với `storyDoneToday`) → `NUDGE_OUTSIDE_WINDOW` (giờ đồng hồ của **người nhận** ngoài `[12:00, 20:00)`) → `NUDGE_RECEIVER_LIMIT` (người nhận đã có một lời nhắc cho ngày logic hiện tại của họ) → `NUDGE_SENDER_LIMIT` (người gửi đã gửi 3 cho ngày logic hiện tại của **họ**). Mỗi bên đếm theo ngày logic của chính mình. |
+| `nudge_send(p_receiver_id, p_template_code, p_action_id)` → `{sentAt, senderRemainingToday}` | `app_auth` | Thứ tự: `NUDGE_TEMPLATE_UNKNOWN` → `ONBOARDING_REQUIRED` → khóa → lý do của `app._nudge_block_reason` (raise) → chèn sự kiện (vi phạm khóa duy nhất của ngày người nhận cũng thành `NUDGE_RECEIVER_LIMIT`) → `app._notify(người nhận, 'NUDGE', {senderName, templateCode, text}, <id sự kiện>)`. Thông báo không mang gì của người gửi ngoài tên hiển thị. |
+| `guild_overview()` | `app_auth` | Được tạo lại ở đây bằng `CREATE OR REPLACE` (cùng chữ ký, nên quyền và đăng ký `meta` của `50-guild.sql` giữ nguyên). Thân giống `50-guild.sql` **từng ký tự**, chỉ thêm `nudge` = `app._nudge_block_reason(người gọi, thành viên)` cho mỗi dòng. Sửa một bản thì sửa cả hai: một test so đầu ra của hai bản trên cùng dữ liệu. |
+| `job_reminder_dispatch(p_now)` → int | `app_job` | Một câu lệnh: với mỗi người dùng đã onboarding, chưa xóa, bật `reminder_enabled`, có giờ đồng hồ (múi giờ của chính họ) tại `p_now` nằm trong khung đã chọn (`MORNING` `[07:00, 09:00)`, `NOON` `[11:30, 13:30)`, `EVENING` `[18:00, 20:00)`) và ngày logic hiện tại chưa `story_completed`: `app._notify(user, 'QUEST_REMINDER', {}, <ngày logic>)`. Khóa chống trùng là ngày logic nên mỗi ngày một lần. Trả số mục đã tạo. |
+
+**Thứ tự khóa của `nudge_send`** (thứ tự chung của cả mã nguồn: dòng `users` trước hết): một câu lệnh khóa `FOR NO KEY UPDATE`, **theo id**, dòng `users` của người gửi và (chỉ khi người nhận đang cùng tổ đội) của người nhận, vì `app._notify` đòi giữ khóa dòng của người nhận; rồi `progression_state` của người gửi `FOR UPDATE` (tuần tự hóa số lời nhắc của người gửi); không khóa gì sau đó. Lý do từ chối được tính **sau** các khóa, trong một câu lệnh riêng (READ COMMITTED: thấy việc rời tổ đội, chuyển tổ trưởng hay lời nhắc khác vừa commit trong lúc chờ). A nhắc B trong khi B nhắc A: cả hai lấy hai dòng `users` theo cùng một thứ tự, không thể chờ nhau vòng tròn; `job_apply_guild_week` cũng khóa các dòng `users` theo id trước mọi thứ khác. Người nhận chưa cùng tổ đội lúc khóa (nên không bị khóa) mà vào tổ đội ngay sau đó → vẫn `NUDGE_NOT_SAME_GUILD`: không bao giờ gọi `app._notify` khi chưa giữ khóa dòng người nhận. `job_reminder_dispatch` khóa các dòng `users` sẽ nhận thông báo, theo id, trong chính câu lệnh đó.
+
+### Route và job
+
+| Route | Auth | Thành công | Lỗi riêng |
+|---|---|---|---|
+| `GET /guilds/nudge-templates` | `user` | `200 NudgeTemplates` (các mẫu đã seed, theo `code`) | – |
+| `POST /guilds/nudge` | `user`, idempotent, **10 lần/phút mỗi tài khoản** (AR-21) | `200 NudgeResult` | `422 VALIDATION_FAILED` (`receiverId` / `required`, `format`: UUID; `templateCode` / `required`, `format`: chuỗi), `422 NUDGE_TEMPLATE_UNKNOWN`, `409 NOT_IN_GUILD`, `403 NUDGE_NOT_SAME_GUILD`, `409 NUDGE_RECEIVER_MUTED`, `409 NUDGE_NOT_NEEDED`, `409 NUDGE_OUTSIDE_WINDOW`, `409 NUDGE_RECEIVER_LIMIT`, `409 NUDGE_SENDER_LIMIT` |
+
+- Thứ tự lỗi: `401` → `409 ONBOARDING_REQUIRED` → `422 VALIDATION_FAILED` → thứ tự của `nudge_send` ở trên.
+- Thân request chỉ được đọc hai khóa `receiverId`, `templateCode`; khóa nào khác (một câu tự viết chẳng hạn) không được đọc, không được lưu (R-12.5).
+- Gửi lại cùng `Idempotency-Key` → cùng câu trả lời đã lưu, không thêm sự kiện, không tốn lượt.
+- Job `reminder-dispatch` (`jobs/reminderDispatch.ts`) đến hạn ở phút 0, 15, 30, 45 (mỗi phần tư giờ một lần, từ phút đầu của nó) và gọi `job_reminder_dispatch(now)`; kết quả `{created}` ghi vào `job_runs`.
+
+### Mồi nhử, ca tấn công, test
+
+- `88-decoy-nudge.sql`: một lời nhắc từ `DECOY_1` tới `DECOY_2` (cả hai trong tổ đội mồi nhử) với mẫu đã seed `MOVE_TOGETHER`.
+- `server/checks/attacks/nudge.ts` (hai ca): A làm tổ trưởng tổ đội riêng gọi `nudge_send` tới `DECOY_1` và `DECOY_2` (lần sau dùng chính id của lời nhắc mồi nhử làm action id) → `NUDGE_NOT_SAME_GUILD`, không dòng nào được ghi hay đổi (sự kiện, thông báo của mồi nhử); `app_auth` đọc/xóa `nudge_events`, sửa `nudge_templates` → `permission denied for table`; gọi `job_reminder_dispatch`, `app._nudge_block_reason` → `permission denied for function`. Điều kiện cùng tổ đội có ở hai nơi (câu khóa và lý do từ chối): bỏ một nơi thì nơi kia vẫn chặn; bỏ cả hai thì ca tấn công đỏ.
+- `server/src/routes/nudge.test.ts` (đồng hồ test; người gửi và người nhận ở múi giờ khác nhau khi điều đó quan trọng): đường đúng (sự kiện, một mục `NUDGE` với câu mẫu, `senderRemainingToday` 2, khóa tự do bị bỏ qua); từng lỗi với đúng mã và mã HTTP, không ghi dòng nào; khung giờ: London 11:59 và Tokyo 20:00 bị từ chối trong khi người gửi đang 18:59 / 18:00, London 12:00 và Tokyo 19:59 được, London 14:00 được dù người gửi đang 21:00; **từng cặp kề nhau của thứ tự lỗi** (gồm `ONBOARDING_REQUIRED` và `VALIDATION_FAILED` của route, `NUDGE_TEMPLATE_UNKNOWN`, và thứ tự trong SQL cho người chưa onboarding); 5 người cùng nhắc một người → đúng 1 thành công, 4 `NUDGE_RECEIVER_LIMIT`; một người nhắc 5 người cùng lúc → đúng 3; gửi lại cùng khóa; người gửi ở Los Angeles bị giới hạn tới 03:00 giờ của họ rồi được lại, ngày hôm sau người nhận cũng được lại; `GET /guilds/me` hiện đúng lý do mà `nudge_send` raise cho từng thành viên (kể cả `NUDGE_SENDER_LIMIT`), dòng của mình `{allowed: false, reason: null}`; giới hạn 10/phút → request thứ 11 `429`; `guild_overview` của `52-nudge.sql` trả đúng như bản của `50-guild.sql` trừ trường `nudge` (bản cũ được tạo lại trong `pg_temp` từ chính file `50-guild.sql`).
+- **Cuộc đua** (hai pool `app_conn`, một transaction của owner giữ khóa để ép một thứ tự): A nhắc B trong khi B nhắc A, cả hai đã qua khóa `users` và đang chờ `progression_state` → cả hai thành công, không deadlock (với thứ tự khóa "người gửi trước, người nhận sau" test này đỏ vì deadlock), cộng 5 vòng tự do; người nhận rời tổ đội trong lúc lời nhắc chờ → `NUDGE_NOT_SAME_GUILD`, ngược lại việc rời chờ rồi thành công; người nhận chuyển tổ trưởng trong lúc lời nhắc chờ → cả hai thành công; người nhận vào tổ đội ngay sau khi lời nhắc đã khóa → `NUDGE_NOT_SAME_GUILD`; lời nhắc và `job_apply_guild_week` theo cả hai thứ tự, và trường hợp job chờ dòng `users` của người nhận mà lời nhắc đang giữ → không deadlock, mọi người được thưởng, lời nhắc được gửi.
+- `server/src/jobs/reminderDispatch.test.ts`: bật + trong khung + STORY chưa xong → 1 mục `{}` với khóa là ngày logic; chạy lại → 0; ngoài khung → 0; STORY đã xong, tắt nhắc, tài khoản đã xóa → 0 trong khi người đối chứng được nhắc; ba khung ở hai mép (đầu tính, cuối không tính); người ở `America/New_York` chọn `EVENING` được nhắc lúc 18:00 giờ New York, không phải 18:00 giờ Hồ Chí Minh; job đến hạn mỗi phần tư giờ.
+
+### Phần ba cổng không nhìn thấy
+
+- Thứ tự khóa, việc tính lý do sau khóa và trường hợp người nhận vào tổ đội giữa chừng do test cuộc đua giữ; cổng 1 và 3 không đọc thân hàm.
+- `progression_state FOR UPDATE` của người gửi là yêu cầu của bản đặc tả; khóa dòng `users` của người gửi (lấy trước nó) đã tuần tự hóa các lời nhắc của một người.
+
+Sửa `52-nudge.sql` thì chạy `npm run server:test` và `npm run db:api-check`; sửa `guild_overview` ở một trong hai file thì sửa cả file kia.
