@@ -154,6 +154,10 @@ describe('S14: recording the meal', () => {
     world.answer = undefined;
     fireEvent.press(screen.getByRole('button', { name: 'Thử lại' }));
     expect(await screen.findByText(/^Đã ghi\. Tổng hôm nay/)).toBeTruthy();
+    // the refused record is over: the new try is a new record, with a new id
+    expect(logs()).toHaveLength(2);
+    expect(logs()[1].id).not.toBe(logs()[0].id);
+    expect(logs()[1].body).toEqual(logs()[0].body);
     await landed();
     view.unmount();
   });
