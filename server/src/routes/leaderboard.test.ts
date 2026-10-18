@@ -259,6 +259,7 @@ test('live board: ranks, avgCompletion and activeMembers are the domain function
 
 test('cache: two current requests within 5 minutes read job_guild_week_inputs once; a refresh moves updatedAt; older than 10 minutes is read again; parallel requests read once', async () => {
   const user = await newOnboardedUser(db);
+  const original = weekInputs.read;
   const spy = mock.method(weekInputs, 'read');
   try {
     setBoard(null);
@@ -279,6 +280,11 @@ test('cache: two current requests within 5 minutes read job_guild_week_inputs on
     assert.equal(ok(await board(user, 'current')).updatedAt, '2027-01-13T05:15:01.000Z');
     assert.equal(spy.mock.callCount(), 3);
     setBoard(null);
+    // a slow read, so that the second request surely arrives while the first computes
+    spy.mock.mockImplementation(async (...args: Parameters<typeof original>) => {
+      await new Promise(resolve => setTimeout(resolve, 300));
+      return original(...args);
+    });
     const both = await Promise.all([board(user, 'current'), board(user, 'current')]);
     assert.deepEqual(both.map(r => r.status), [200, 200]);
     assert.equal(spy.mock.callCount(), 4);
@@ -316,6 +322,35 @@ test('mine is filled for a guild outside the top 50: 51 ranked guilds, the calle
   } finally {
     spy.mock.restore();
     setBoard(null);
+  }
+});
+
+test('ties in avgCompletion, activeMembers and createdAt are ranked by guild id, whatever order the rows come in', async () => {
+  await clock('2027-01-13T05:00:00.000Z');
+  const ws = '2027-01-11';
+  const same = () => ({
+    userId: randomUUID(),
+    joinedDate: addDays(ws, -7),
+    days: [{ date: ws, storyDone: 1, storyTotal: 2, frozen: false }],
+  });
+  const ids = Array.from({ length: 5 }, () => randomUUID()).sort();
+  const rows = ids.map((id, i) => ({
+    guild_id: id,
+    name: `Hòa ${i}`,
+    created_at: new Date('2026-12-01T00:00:00Z'),
+    members: [same(), same(), same()],
+  }));
+  const user = await newOnboardedUser(db);
+  for (const order of [[...rows].reverse(), [rows[2], rows[0], rows[4], rows[1], rows[3]]]) {
+    const spy = mock.method(weekInputs, 'read', async () => order);
+    try {
+      setBoard(null);
+      const seen = ok(await board(user, 'current'));
+      assert.deepEqual(seen.entries.map((e: any) => [e.rank, e.guildName]), ids.map((_, i) => [i + 1, `Hòa ${i}`]));
+    } finally {
+      spy.mock.restore();
+      setBoard(null);
+    }
   }
 });
 
@@ -517,6 +552,9 @@ test('timing: Monday 03:29 Asia/Ho_Chi_Minh is not due and leaves the week open;
   assert.equal(job(new Date('2027-07-11T20:29:00.000Z'), lastMonday), false);
   assert.equal(job(new Date('2027-07-11T20:30:00.000Z'), lastMonday), true);
   assert.equal(job(new Date('2027-07-11T20:29:00.000Z'), null), true, 'a fresh process looks at once');
+  // the slot itself: a run at 03:30 makes 03:31 not due; a run a moment before 03:30 leaves it due
+  assert.equal(job(new Date('2027-07-11T20:31:00.000Z'), new Date('2027-07-11T20:30:00.000Z')), false);
+  assert.equal(job(new Date('2027-07-11T20:30:00.000Z'), new Date('2027-07-11T20:29:59.999Z')), true);
   await clock('2027-07-07T05:00:00.000Z');
   const g = await arrange(ws, [{ logs: days(ws, 1, story.length) }, { logs: days(ws, 1, story.length) }, { logs: days(ws, 1, story.length) }]);
   await clock('2027-07-11T20:29:00.000Z');
@@ -586,11 +624,19 @@ async function raceGuild() {
   return { ws, g, a, x, y, i };
 }
 
-test('race: X, an active member, leaves while the rollover applies: leave first → X is not paid; apply first → X is paid; never a deadlock', async () => {
+test('race: X, an active member, leaves (and joins another guild) while the rollover applies: leave first → X is not paid; apply first → X is paid; never a deadlock', async () => {
   await clock('2027-11-03T05:00:00.000Z');
   {
     const { ws, a, x, y } = await raceGuild();
-    const leave = held(work => asUser(second, x.userId, work), c => c.query('SELECT guild_leave()'));
+    const other = await newOnboardedUser(db);
+    const code = ok(await post(other, '/guilds', { name: `Tổ ${randomUUID().slice(0, 8)}` })).guild.inviteCode;
+    const leave = held(
+      work => asUser(second, x.userId, work),
+      async c => {
+        await c.query('SELECT guild_leave()');
+        await c.query('SELECT guild_join($1)', [code]);
+      },
+    );
     await leave.started;
     const settle = asJob(db.app, c => settleWeek(c, ws));
     await waitForLockWaiter();
