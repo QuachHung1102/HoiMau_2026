@@ -40,3 +40,31 @@ export const moodText: Record<PetMood, string> = {
 };
 /** What a screen reader says for the mascot picture. */
 export const mamLabel = (stage: PetStage, mood: PetMood) => `${stageName[stage]}. ${moodText[mood]}`;
+
+// S22, S70, S68 and S69 (Task 38).
+export const petTitle = 'Mầm của bạn';
+export const petSubtitle = 'Người bạn nhỏ trên một hành trình dài.';
+/** "64% tới Chồi non". */
+export const growthLine = (growth: number, next: string) => `${growth}% tới ${next}`;
+export const grownUp = 'Đã lớn hết cỡ';
+export const petCare = 'Những ngày bạn chăm sóc mình cũng nuôi lớn Mầm. Tiến hóa đã đạt sẽ không mất đi.';
+/** Under the mood line of S70: no illness, no blame, the stage is what it was. */
+export const tiredNote = 'Mầm vẫn ở đây. Một việc nhỏ hôm nay là đủ để bắt đầu lại.';
+export const growthRow = { title: 'Hành trình lớn lên', description: 'Xem các giai đoạn của Mầm' } as const;
+export const changeLook = 'Đổi diện mạo';
+export const visitShop = 'Ghé cửa hàng';
+export const tiredAction = 'Chọn một việc nhỏ';
+export const petLoadFailed = 'Chưa tải được thông tin của Mầm. Bạn thử lại nhé.';
+
+export const stagesTitle = 'Hành trình lớn lên';
+export const stagesSubtitle = 'Giai đoạn đã đạt sẽ không mất đi.';
+export type StageState = 'past' | 'current' | 'next';
+export const stageState: Record<StageState, string> = { past: 'Đã qua', current: 'Hiện tại', next: 'Sắp tới' };
+/** The XP earned inside a stage that completes it (R-D07), in words. */
+export const stageSize = (xp: number | null) => (xp === null ? 'Giai đoạn cuối, không cần thêm XP' : `Cần ${formatNumber(xp)} XP trong giai đoạn này`);
+export const stagesFooter = 'Mầm lớn lên nhờ những việc bạn đã làm, không mua được bằng xu.';
+export const stageRowLabel = (name: string, state: StageState, size: string) => `${name}. ${stageState[state]}. ${size}`;
+
+export const stageUpTitle = (stage: PetStage) => `Mầm đã thành ${stageName[stage]}`;
+export const stageUpBody = 'Công sức những ngày qua đã giúp Mầm lớn lên.';
+export const seeMam = 'Xem Mầm';

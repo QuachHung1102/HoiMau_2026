@@ -5,8 +5,9 @@
 // Tasks 20 and 21 do (status, error code, body, what a replay remembers).
 import { configure, screen } from '@testing-library/react-native';
 import type { ActionResult, GameEvent } from '../../../domain/contract/common.ts';
-import type { Meal, MealPlanState, SwapCandidates } from '../../../domain/contract/content.ts';
-import type { DayDetail, DaySummary, DayState, InboxReadResult, Me, QuestState, Settings } from '../../../domain/contract/core.ts';
+import type { Inventory, Meal, MealPlanState, PurchaseResult, Shop, ShopItem, SwapCandidates } from '../../../domain/contract/content.ts';
+import type { DayDetail, DaySummary, DayState, InboxReadResult, Me, PerkCode, Perks, QuestState, Settings } from '../../../domain/contract/core.ts';
+import { PERKS } from '../../../domain/economy.ts';
 import { calorieWindow } from '../../../domain/energy.ts';
 import { addDays, daysBetween } from '../../../domain/logicalDate.ts';
 import { rankMeals, slotTarget } from '../../../domain/mealPlan.ts';
@@ -14,6 +15,7 @@ import { cumulativeXpForLevel, levelForXp, perkPointsEarned, titleKeyForLevel, x
 import { mapStats } from '../../../domain/stats.ts';
 import { INGREDIENT_TAGS, type IngredientTag, type MealSlot } from '../../../domain/types.ts';
 import { tabLabel } from '../../shared/i18n/vi/nav';
+import { SHOP_ITEMS } from '../../../server/content/shopItems.ts';
 import fixture from '../nutrition/mealFixture.json';
 import { clearCelebrations } from '../progression/celebrations';
 import { tickPath, WATER } from '../quests/api';
@@ -99,7 +101,7 @@ export function meOf(more: Partial<Me> = {}): Me {
     },
     stats: { hp: 26, en: 69, str: 40, spd: 30 },
     pet: { stage: 'HATCHLING', stageIndex: 1, growthPercent: 64, mood: 'HAPPY', skinCode: 'SKIN_DEFAULT', nextStage: 'JUVENILE' },
-    appearance: { themeCode: 'default', petSkinCode: 'SKIN_DEFAULT', badgeCode: null },
+    appearance: { themeCode: 'THEME_DEFAULT', petSkinCode: 'SKIN_DEFAULT', badgeCode: null },
     ...more,
   };
 }
@@ -142,6 +144,8 @@ export const world = {} as {
   minutes: { resistance: number; cardio: number };
   /** Today's meal plan: the meal of each slot, what is logged, the swaps used, the meals each slot has shown. */
   plan: ReturnType<typeof freshPlan>;
+  /** What the shop knows of this person: items bought, the item equipped per kind, perks unlocked. */
+  shop: ReturnType<typeof freshShop>;
   answer?: (request: string, init: Init) => unknown;
 };
 
@@ -163,6 +167,10 @@ export function guard(run: () => unknown) {
 export function stop(status: number, code: string, fields?: { field: string; rule: string }[]): never {
   throw new Stop(refuse(status, code, fields && { fields }));
 }
+/** Ends the request with a refusal that carries its own `details` (`{ minLevel }`, `{ price, coin }`). */
+function stopWith(status: number, code: string, details: Record<string, unknown>): never {
+  throw new Stop(refuse(status, code, details));
+}
 
 const replies = new Map<string, { request: string; body: string; answer: { ok: boolean } }>();
 const canonical = (text: string | undefined) =>
@@ -172,13 +180,19 @@ const canonical = (text: string | undefined) =>
 /**
  * Runs a write once per key: `run` gets the key and the body, which must be a JSON object. Only a 2xx is remembered
  * under its key (a refusal runs again); the same key with another path or body is `409 IDEMPOTENCY_KEY_REUSED`.
+ * `bodyless`: a route that takes no body (a purchase, an equip): `run` gets `{}`.
  */
-export function keyed(request: string, init: Init, run: (key: string, body: Record<string, unknown>) => { ok: boolean }) {
+export function keyed(request: string, init: Init, run: (key: string, body: Record<string, unknown>) => { ok: boolean }, bodyless = false) {
   const key = init.headers['Idempotency-Key'];
   const body = canonical(init.body);
   const known = replies.get(key);
   if (known) return known.request === request && known.body === body ? known.answer : refuse(409, 'IDEMPOTENCY_KEY_REUSED');
   return guard(() => {
+    if (bodyless) {
+      const answer = run(key, {});
+      if (answer.ok) replies.set(key, { request, body, answer });
+      return answer;
+    }
     if (init.body === undefined) stop(422, 'VALIDATION_FAILED', [{ field: 'body', rule: 'required' }]);
     const parsed: unknown = JSON.parse(init.body);
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) stop(422, 'VALIDATION_FAILED', [{ field: 'body', rule: 'format' }]);
@@ -297,6 +311,25 @@ export function serverAnswer(request: string, init: Init): unknown {
     return keyed(request, init, swapMeal);
   });
   if (request === 'PATCH /settings') return keyed(request, init, patchSettings);
+  const [, boughtCode] = /^POST \/shop\/([^/]+)\/purchase$/.exec(request) ?? [];
+  if (boughtCode) return guard(() => {
+    onboarded();
+    return keyed(request, init, () => purchase(decodeURIComponent(boughtCode)), true);
+  });
+  const [, equipCode] = /^POST \/inventory\/([^/]+)\/equip$/.exec(request) ?? [];
+  if (equipCode) return guard(() => {
+    onboarded();
+    return keyed(request, init, () => equip(decodeURIComponent(equipCode)), true);
+  });
+  if (request === 'POST /perks/unlock') return guard(() => {
+    onboarded();
+    return keyed(request, init, (_key, body) => unlockPerk(body));
+  });
+  const reads: Record<string, () => unknown> = { 'GET /shop': shopState, 'GET /inventory': inventoryState, 'GET /perks': perksState, 'GET /pet': () => world.me.pet };
+  if (request in reads) return guard(() => {
+    onboarded();
+    return respond(200, reads[request]());
+  });
   if (request === 'GET /progression') return world.me.progression ? respond(200, world.me.progression) : refuse(409, 'ONBOARDING_REQUIRED');
   const [, route, query] = /^GET (\/day\/history(?:\/[^?]*)?)(?:\?(.*))?$/.exec(request) ?? [];
   if (route) return guard(() => history(route, new URLSearchParams(query)));
@@ -365,6 +398,9 @@ function undo(code: string, id: string, body: Record<string, unknown>) {
   if (!daily || !target) stop(404, 'TICK_NOT_FOUND');
   if (live.at(-1) !== target) stop(409, 'UNDO_NOT_LATEST');
   if (Date.now() - Date.parse(target.at) > UNDO_WINDOW_MS) stop(409, 'UNDO_WINDOW_EXPIRED');
+  if (dayClosed()) stop(409, 'DAY_CLOSED');
+  // the coins of the tick are spent (a purchase in between): taking them back would leave the coin sum below 0 (quest_undo)
+  if ((world.me.progression?.coin ?? 0) < daily.coinReward) stop(409, 'UNDO_COINS_SPENT');
   target.undone = true;
   const previous = live.at(-2);
   return moveBy(-1, daily, previous ? { id: previous.id, at: previous.at } : null, id);
@@ -576,6 +612,90 @@ function patchSettings(_id: string, body: Record<string, unknown>) {
   return respond(200, world.settings);
 }
 
+// ---- the shop, the inventory, the perks (server Task 37: server/src/routes/shop.ts, perks.ts, sql/41-shop.sql) ----
+// The items are the server's own content (server/content/shopItems.ts). Every route here is for an onboarded user (409
+// ONBOARDING_REQUIRED first) and every write is idempotent. The coin sum is `progression.coin`, the points are
+// `progression.perkPointsAvailable` (the server derives both; here the profile holds them), the level is `progression.level`.
+type Kind = ShopItem['kind'];
+const KINDS: Kind[] = ['THEME', 'PET_SKIN', 'BADGE'];
+
+/** What a person has: bought items, the item equipped per kind (null: the default of that kind), perks unlocked. */
+export function freshShop() {
+  return { owned: [] as string[], equipped: { THEME: null, PET_SKIN: null, BADGE: null } as Record<Kind, string | null>, unlocked: [] as { perk: PerkCode; cost: number }[] };
+}
+const coinOf = () => world.me.progression?.coin ?? 0;
+const levelOf = () => world.me.progression?.level ?? 1;
+const itemOf = (code: string) => SHOP_ITEMS.find(item => item.code === code);
+const ownsItem = (code: string) => itemOf(code)?.isDefault === true || world.shop.owned.includes(code);
+/** Every item in the order of the server: kind, the default first, then level, price and code. */
+function allItems(): ShopItem[] {
+  const { equipped } = world.shop;
+  return [...SHOP_ITEMS]
+    .sort((a, b) => KINDS.indexOf(a.kind) - KINDS.indexOf(b.kind) || Number(b.isDefault) - Number(a.isDefault) || a.minLevel - b.minLevel || a.priceCoin - b.priceCoin || (a.code < b.code ? -1 : 1))
+    .map(item => ({ ...item, owned: ownsItem(item.code), equipped: equipped[item.kind] === item.code || (item.isDefault && equipped[item.kind] === null), locked: levelOf() < item.minLevel }));
+}
+const shopState = (): Shop => ({ coin: coinOf(), level: levelOf(), items: allItems().filter(item => item.purchasable || item.isDefault) });
+const inventoryState = (): Inventory => ({ items: allItems().filter(item => item.owned) });
+function perksState(): Perks {
+  return {
+    pointsAvailable: world.me.progression?.perkPointsAvailable ?? 0,
+    perks: (Object.keys(PERKS) as PerkCode[]).map(code => ({ code, cost: PERKS[code].cost, unlocked: world.shop.unlocked.some(item => item.perk === code), repeatable: code === 'THEME_UNLOCK' })),
+  };
+}
+/** `shop_purchase`, in its order: unknown (404), not for sale or a default, level, owned, coins (with its numbers). */
+function purchase(code: string) {
+  const item = itemOf(code);
+  if (!item) stop(404, 'ITEM_NOT_FOUND');
+  if (!item.purchasable || item.isDefault) stop(409, 'ITEM_NOT_PURCHASABLE');
+  if (levelOf() < item.minLevel) stopWith(409, 'ITEM_LOCKED_LEVEL', { minLevel: item.minLevel });
+  if (ownsItem(code)) stop(409, 'ALREADY_OWNED');
+  if (coinOf() < item.priceCoin) stopWith(409, 'INSUFFICIENT_COINS', { price: item.priceCoin, coin: coinOf() });
+  const progression = world.me.progression;
+  if (progression) world.me = { ...world.me, progression: { ...progression, coin: progression.coin - item.priceCoin } };
+  world.shop.owned.push(code);
+  return respond(200, { coin: coinOf(), item: allItems().find(candidate => candidate.code === code) } as PurchaseResult);
+}
+/** `inventory_equip`: owned or a default (an unknown code too: ITEM_NOT_OWNED); that kind has one equipped item afterwards (none for a default). */
+function equip(code: string) {
+  const item = itemOf(code);
+  if (!item || !ownsItem(code)) stop(409, 'ITEM_NOT_OWNED');
+  world.shop.equipped[item.kind] = item.isDefault ? null : code;
+  const { equipped } = world.shop;
+  const appearance = { themeCode: equipped.THEME ?? 'THEME_DEFAULT', petSkinCode: equipped.PET_SKIN ?? 'SKIN_DEFAULT', badgeCode: equipped.BADGE };
+  world.me = { ...world.me, appearance, pet: world.me.pet && { ...world.me.pet, skinCode: appearance.petSkinCode } };
+  return respond(200, inventoryState());
+}
+/** `POST /perks/unlock`: the body check of the route (422), then `perk_unlock`: the theme (404, owned, level), once only, the points. */
+function unlockPerk(body: Record<string, unknown>) {
+  const { perkCode, itemCode } = body;
+  const fields: { field: string; rule: string }[] = [];
+  if (perkCode === undefined) fields.push({ field: 'perkCode', rule: 'required' });
+  else if (typeof perkCode !== 'string' || !Object.hasOwn(PERKS, perkCode)) fields.push({ field: 'perkCode', rule: 'enum' });
+  // itemCode is THEME_UNLOCK's only: another perk ignores it, whatever it is
+  if (perkCode === 'THEME_UNLOCK') {
+    if (itemCode === undefined) fields.push({ field: 'itemCode', rule: 'required' });
+    else if (typeof itemCode !== 'string') fields.push({ field: 'itemCode', rule: 'format' });
+  }
+  if (fields.length > 0) stop(422, 'VALIDATION_FAILED', fields);
+  const perk = perkCode as PerkCode;
+  const cost = PERKS[perk].cost;
+  let theme: ShopItem | undefined;
+  if (perk === 'THEME_UNLOCK') {
+    theme = allItems().find(item => item.code === itemCode && item.kind === 'THEME' && !item.isDefault);
+    if (!theme) stop(404, 'ITEM_NOT_FOUND');
+    if (theme.owned) stop(409, 'ALREADY_OWNED');
+    if (theme.locked) stopWith(409, 'ITEM_LOCKED_LEVEL', { minLevel: theme.minLevel });
+  } else if (world.shop.unlocked.some(item => item.perk === perk)) {
+    stop(409, 'PERK_ALREADY_UNLOCKED');
+  }
+  const progression = world.me.progression;
+  if (!progression || progression.perkPointsAvailable < cost) stop(409, 'PERK_POINTS_INSUFFICIENT');
+  world.me = { ...world.me, progression: { ...progression, perkPointsAvailable: progression.perkPointsAvailable - cost } };
+  world.shop.unlocked.push({ perk, cost });
+  if (theme) world.shop.owned.push(theme.code);
+  return respond(200, perksState());
+}
+
 /** Keeps every `request` open until `release`; then the given response, or the server's own answer, comes back. */
 export function hold(request: string) {
   let open!: (answer: unknown) => void;
@@ -609,7 +729,7 @@ export function installTodayTestEnv() {
   beforeEach(() => {
     replies.clear();
     ledger.clear();
-    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, hour: 19, closedDate: undefined, skew: 0, highWater: undefined, minutes: { resistance: 60, cardio: 45 }, history: {}, plan: freshPlan(), answer: undefined });
+    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, hour: 19, closedDate: undefined, skew: 0, highWater: undefined, minutes: { resistance: 60, cardio: 45 }, history: {}, plan: freshPlan(), shop: freshShop(), answer: undefined });
     fetchMock.mockImplementation(async (url, init) => {
       const request = `${init.method} ${url.replace(BASE, '')}`;
       const taken = await world.answer?.(request, init);

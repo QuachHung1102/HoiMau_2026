@@ -38,7 +38,7 @@ export function pushCelebrations(events: readonly GameEvent[], actionId?: string
   set([...queue, ...fresh]);
 }
 
-/** This one has been shown, or dropped (the first when none is named): the host takes its own, a later task takes PET_STAGE_UP. */
+/** This one has been shown, or dropped (the first when none is named): the host takes its own. */
 export const dismissCelebration = (celebration?: Celebration) => set(celebration ? queue.filter(item => item !== celebration) : queue.slice(1));
 /** Another account, or a test: nothing of the previous one is shown, and no action id is remembered. */
 export const clearCelebrations = () => {
@@ -46,5 +46,5 @@ export const clearCelebrations = () => {
   set([]);
 };
 
-/** Oldest first; the host (CelebrationHost) takes the LEVEL_UPs, the pet screen task takes PET_STAGE_UP. */
+/** Oldest first; the host (CelebrationHost) shows the LEVEL_UPs (S65) and the PET_STAGE_UPs (S69). */
 export const useCelebrationQueue = (): readonly Celebration[] => useSyncExternalStore(subscribe, () => queue);

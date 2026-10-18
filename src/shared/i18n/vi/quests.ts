@@ -29,6 +29,8 @@ export const undo = 'Hoàn tác';
 export const undone = 'Đã hoàn tác';
 /** The undo was refused, or its time is over. */
 export const undoUnavailable = 'Không hoàn tác được nữa, ghi nhận vẫn được giữ';
+/** The undo was refused because the coins of that record have been spent (a purchase in between); nothing to retry. */
+export const undoCoinsSpent = 'Không hoàn tác được vì xu của ghi nhận này đã được dùng. Ghi nhận vẫn được giữ.';
 /** The undo did not reach the server and can still be tried again. */
 export const undoOffline = 'Chưa hoàn tác được, ghi nhận vẫn được giữ';
 

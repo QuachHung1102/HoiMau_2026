@@ -110,7 +110,7 @@ export function useTick(questCode: string) {
           snackbar.show(
             offline && left > 0
               ? { message: vi.undoOffline, action: { label: common.retry, onPress: attempt }, durationMs: left, countdown: true }
-              : { message: vi.undoUnavailable },
+              : { message: error instanceof ApiError && error.code === 'UNDO_COINS_SPENT' ? vi.undoCoinsSpent : vi.undoUnavailable },
           );
         }
       };

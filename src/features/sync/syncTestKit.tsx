@@ -12,6 +12,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import * as Keychain from 'react-native-keychain';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { MeTheme } from '../../app/MeTheme';
 import { AppNavigation } from '../../app/navigation';
 import { SessionProvider, useSession, wipeQueries, type Session } from '../../shared/api/session';
 import { groupPendingTitle } from '../../shared/i18n/vi/nav';
@@ -82,7 +83,7 @@ export async function mountApp({ signedIn = true, motion = 'REDUCED', extra, ins
       <ThemeProvider>
         <MotionPreferenceProvider value={motion}>
           <QueryClientProvider client={client}>
-            <SessionProvider>
+            <SessionProvider><MeTheme>
               <OnboardingProvider>
                 <View style={styles.fill}>
                   <PendingBanner />
@@ -92,7 +93,7 @@ export async function mountApp({ signedIn = true, motion = 'REDUCED', extra, ins
                 <Recorder />
                 {extra}
               </OnboardingProvider>
-            </SessionProvider>
+            </MeTheme></SessionProvider>
           </QueryClientProvider>
         </MotionPreferenceProvider>
       </ThemeProvider>

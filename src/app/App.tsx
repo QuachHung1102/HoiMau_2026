@@ -8,6 +8,7 @@ import { PendingBanner } from '../features/sync/PendingBanner';
 import { RejectedNotice } from '../features/sync/RejectedNotice';
 import { SessionProvider, wipeQueries } from '../shared/api/session';
 import { ThemeProvider } from '../shared/theme/ThemeProvider';
+import { MeTheme } from './MeTheme';
 import { AppNavigation } from './navigation';
 
 function App() {
@@ -22,6 +23,7 @@ function App() {
           <SessionProvider>
             {/* Slot: a provider that must sit above every navigator wraps <AppNavigation /> right here.
                 OnboardingProvider keeps what was typed while Back moves between the onboarding steps. */}
+            <MeTheme>
             <OnboardingProvider>
               <View style={styles.fill}>
                 {/* Offline / waiting-to-send (S38): its own row above the app, so it never covers a screen or the
@@ -34,6 +36,7 @@ function App() {
               </View>
               <RejectedNotice />
             </OnboardingProvider>
+            </MeTheme>
           </SessionProvider>
         </QueryClientProvider>
       </ThemeProvider>

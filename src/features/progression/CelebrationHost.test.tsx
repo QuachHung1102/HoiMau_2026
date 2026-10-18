@@ -169,14 +169,63 @@ describe('S65: a level reached', () => {
     view.unmount();
   });
 
-  test('PET_STAGE_UP is not for this host: it stays in the queue, whatever is shown around it', async () => {
+  test('PET_STAGE_UP (S69) waits for the level overlay around it, then is shown, and leaves the queue as it is shown', async () => {
     await keepCelebrated(5);
     const view = await open();
     await push({ type: 'PET_STAGE_UP', stage: 'JUVENILE' }, levelUp(6));
     await screen.findByRole('header', { name: 'Bạn lên cấp 6' });
-    await closeIt('Để sau');
+    expect(title('Mầm đã thành Chồi non')).toBeNull();
     expect(queued()).toEqual([{ type: 'PET_STAGE_UP', stage: 'JUVENILE' }]);
-    expect(screen.queryByRole('button', { name: 'Để sau' })).toBeNull();
+    await closeIt('Để sau');
+    expect(await screen.findByRole('header', { name: 'Mầm đã thành Chồi non' })).toBeTruthy();
+    expect(screen.getByText('Công sức những ngày qua đã giúp Mầm lớn lên.')).toBeTruthy();
+    expect(queued()).toEqual([]);
+    view.unmount();
+  });
+});
+
+describe('S69: Mầm evolves', () => {
+  const stageUp: GameEvent = { type: 'PET_STAGE_UP', stage: 'JUVENILE' };
+
+  test('one event is one overlay: closing it, or the same answer replayed, shows nothing again', async () => {
+    await keepCelebrated(5);
+    const view = await open();
+    act(() => pushCelebrations([stageUp], 'action-1'));
+    expect(await screen.findByRole('header', { name: 'Mầm đã thành Chồi non' })).toBeTruthy();
+    act(() => pushCelebrations([stageUp], 'action-1'));
+    await closeIt('Để sau');
+    await settle();
+    expect(title('Mầm đã thành Chồi non')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Xem Mầm' })).toBeNull();
+    expect(queued()).toEqual([]);
+    view.unmount();
+  });
+
+  test('"Xem Mầm" closes it and opens the pet screen; the stage on it is the one the server has', async () => {
+    await keepCelebrated(5);
+    world.me = { ...world.me, pet: { ...(world.me.pet as NonNullable<typeof world.me.pet>), stage: 'JUVENILE', stageIndex: 2, growthPercent: 0, nextStage: 'ADULT' } };
+    const view = await open();
+    await push(stageUp);
+    await screen.findByRole('header', { name: 'Mầm đã thành Chồi non' });
+    await closeIt('Xem Mầm');
+    expect(mockNavigate).toHaveBeenCalledWith('Pet');
+    expect(title('Mầm đã thành Chồi non')).toBeNull();
+    expect(await screen.findByRole('header', { name: 'Mầm của bạn' })).toBeTruthy();
+    await settle();
+    expect(screen.getByRole('progressbar', { name: '0% tới Cây xanh' })).toBeTruthy();
+    view.unmount();
+  });
+
+  test('nothing is laid over the focus flow: it waits until the flow lets go', async () => {
+    await keepCelebrated(5);
+    const view = await open();
+    act(() => setHold(true));
+    await push(stageUp);
+    await settle();
+    expect(title('Mầm đã thành Chồi non')).toBeNull();
+    expect(queued()).toEqual([stageUp]);
+    act(() => setHold(false));
+    expect(await screen.findByRole('header', { name: 'Mầm đã thành Chồi non' })).toBeTruthy();
     view.unmount();
   });
 });

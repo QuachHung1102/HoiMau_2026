@@ -8,24 +8,27 @@ import type { PetStage } from '../../../domain/types.ts';
 import type { RootParamList } from '../../app/routes';
 import { boundUserId } from '../../shared/api/client';
 import { useSession } from '../../shared/api/session';
+import * as petVi from '../../shared/i18n/vi/pet';
 import * as vi from '../../shared/i18n/vi/progression';
 import { levelTitleText } from '../../shared/i18n/vi/today';
 import { loadCelebratedLevel, saveCelebratedLevel } from '../../shared/storage/celebrated';
 import { OverlayCelebration } from '../../shared/ui/OverlayCelebration';
 import { meKey } from '../auth/api';
+import { petKey } from '../shop/api';
 import { useDay } from '../quests/api';
 import { useFocusHeld } from '../quests/useStandUp';
 import { markInboxRead } from './api';
 import { clearCelebrations, dismissCelebration, pushCelebrations, useCelebrationQueue } from './celebrations';
 
-/** What is on screen: a level reached (S65) or a streak milestone (S66). `id` is what the overlay is keyed on. */
+/** What is on screen: a level reached (S65), a streak milestone (S66) or Mầm's new stage (S69). `id` is what the overlay is keyed on. */
 export type Shown =
   | { id: string; kind: 'LEVEL_UP'; level: number; titleKey: TitleKey; points: number }
-  | { id: string; kind: 'STREAK_MILESTONE'; days: number; coins: number; badgeCode: string };
+  | { id: string; kind: 'STREAK_MILESTONE'; days: number; coins: number; badgeCode: string }
+  | { id: string; kind: 'PET_STAGE_UP'; stage: PetStage };
 
 type Props = { shown: Shown; stage: PetStage; skin?: 'fox'; onClose: () => void; onSee: () => void };
 
-/** S65 / S66 as the host shows them: the copy and the two buttons. `onSee` and `onClose` both leave it to the caller to close. */
+/** S65 / S66 / S69 as the host shows them: the copy and the two buttons. `onSee` and `onClose` both leave it to the caller to close. */
 export function CelebrationOverlay({ shown, stage, skin, onClose, onSee }: Props) {
   const primary = { onPress: onSee };
   const secondary = { onPress: onClose };
@@ -42,6 +45,19 @@ export function CelebrationOverlay({ shown, stage, skin, onClose, onSee }: Props
       subtitle={levelTitleText[shown.titleKey]}
       body={vi.levelUpBody(shown.points)}
       primary={{ ...primary, label: vi.seePerks }}
+      secondary={{ ...secondary, label: vi.later }}
+      onClose={onClose}
+    />
+  ) : shown.kind === 'PET_STAGE_UP' ? (
+    // motion: mam-evolve (the overlay's own tracks)
+    <OverlayCelebration
+      key={shown.id}
+      kind="PET_STAGE_UP"
+      stage={shown.stage}
+      skin={skin}
+      title={petVi.stageUpTitle(shown.stage)}
+      body={petVi.stageUpBody}
+      primary={{ ...primary, label: petVi.seeMam }}
       secondary={{ ...secondary, label: vi.later }}
       onClose={onClose}
     />
@@ -88,7 +104,7 @@ function useKnownMe(): Me | undefined {
  * - A milestone is shown once per item id and `POST /inbox/read` goes out when it is shown. If that fails the item stays
  *   unread on the server and is shown again the next time the app starts: acceptable, nothing is lost.
  * - Nothing is laid over the focus flow (`useFocusHeld`); what is queued is shown after it closes.
- * - `PET_STAGE_UP` stays in the queue for the pet screens (Task 38).
+ * - `PET_STAGE_UP` (S69) is shown once per event, after the levels in the queue, and leaves the queue as it is shown.
  * Mount it once, inside the navigation container (`AppNavigation` children).
  */
 export function CelebrationHost() {
@@ -110,6 +126,7 @@ function ActiveHost({ userId }: { userId: string }) {
   // The highest level celebrated (null: not seeded yet) and the milestone items shown in this run.
   const celebrated = useRef<number | null>(null);
   const items = useRef(new Set<string>());
+  const stageUps = useRef(0);
   const level = me?.progression?.level;
 
   useEffect(() => {
@@ -160,6 +177,15 @@ function ActiveHost({ userId }: { userId: string }) {
       setShown({ id: `level-up:${next.level}`, kind: 'LEVEL_UP', level: next.level, titleKey: next.titleKey, points: next.perkPointsGained });
       return;
     }
+    const stageUp = queue.find(event => event.type === 'PET_STAGE_UP');
+    if (stageUp?.type === 'PET_STAGE_UP') {
+      dismissCelebration(stageUp);
+      stageUps.current += 1;
+      setShown({ id: `pet-stage-up:${stageUps.current}`, kind: 'PET_STAGE_UP', stage: stageUp.stage });
+      // Mầm's own screens show the stage the server now has.
+      queryClient.invalidateQueries({ queryKey: petKey });
+      return;
+    }
     const milestone = day?.celebrations.find(item => item.kind === 'STREAK_MILESTONE' && item.readAt === null && !items.current.has(item.id));
     if (milestone) {
       items.current.add(milestone.id);
@@ -179,7 +205,7 @@ function ActiveHost({ userId }: { userId: string }) {
       onClose={close}
       onSee={() => {
         close();
-        navigation.navigate(shown.kind === 'LEVEL_UP' ? 'Levels' : 'Inventory');
+        navigation.navigate(shown.kind === 'LEVEL_UP' ? 'Levels' : shown.kind === 'PET_STAGE_UP' ? 'Pet' : 'Inventory');
       }}
     />
   );
