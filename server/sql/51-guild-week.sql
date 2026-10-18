@@ -65,7 +65,8 @@ SELECT meta.expect_function('app._guild_week_rows(jsonb)', 'invoker', '{}');
 
 -- One row per guild, by id: its name, created_at and its CURRENT members (a member who left has
 -- no row any more, so is excluded; deleted and not onboarded users are not members here), each
--- as memberWeek takes it: {userId, joinedDate (the Asia/Ho_Chi_Minh date of joined_at), days
+-- as memberWeek takes it: {userId, joinedDate (the member's logical date of joined_at, the rule
+-- guild_overview uses), days
 -- (app._member_days over p_week_start..p_through, the logs whose label lies in that range)}.
 CREATE OR REPLACE FUNCTION job_guild_week_inputs(p_week_start date, p_through date)
 RETURNS TABLE (guild_id uuid, name text, created_at timestamptz, members jsonb)
@@ -74,7 +75,7 @@ AS $$
   SELECT g.id, g.name, g.created_at,
          coalesce((SELECT jsonb_agg(jsonb_build_object(
                             'userId', m.user_id,
-                            'joinedDate', (m.joined_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date,
+                            'joinedDate', app.logical_date(m.joined_at, u.timezone),
                             'days', app._member_days(m.user_id, p_week_start, p_through))
                           ORDER BY m.user_id)
                      FROM guild_memberships m JOIN users u ON u.id = m.user_id
