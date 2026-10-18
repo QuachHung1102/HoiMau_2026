@@ -421,11 +421,63 @@ describe('the meal plan routes (Task 33 report, "Notes for Task 34")', () => {
 
   test('excluded tags leave the candidates at once, the planned meals stay (PATCH /settings, AR-15)', async () => {
     const answer = await send('PATCH', '/settings', JSON.stringify({ excludedMealTags: ['co:hai-san', 'co:gia-cam'] }));
-    expect([answer.status, answer.json.excludedMealTags]).toEqual([200, ['co:hai-san', 'co:gia-cam']]);
+    // kept once each, in the order of the list of eight (as the route does)
+    expect([answer.status, answer.json.excludedMealTags]).toEqual([200, ['co:gia-cam', 'co:hai-san']]);
     expect((await offered('LUNCH')).candidates.map(item => item.code)).toEqual(['DAU_HU_NAM', 'COM_TAM']);
     expect((await slotOf('DINNER')).meal?.code).toBe('CA_AP_CHAO');
     const bad = await send('PATCH', '/settings', JSON.stringify({ excludedMealTags: ['co:nope'] }));
     expect([code(bad), fields(bad)]).toEqual(['422 VALIDATION_FAILED', [{ field: 'excludedMealTags', rule: 'enum' }]]);
+  });
+
+  test('a closed day: the swap is 409 DAY_CLOSED, before the plan, the logged slot and the limit; the reads of a stored plan still answer', async () => {
+    world.closedDate = world.day.logicalDate;
+    world.plan.logged.LUNCH = true;
+    expect(code(await swap('LUNCH', mealByCode('COM_CA').id))).toBe('409 DAY_CLOSED');
+    expect((await get('/nutrition/plan')).status).toBe(200);
+    // the body is checked first
+    expect(code(await swap('BRUNCH', 'x'))).toBe('422 VALIDATION_FAILED');
+    world.closedDate = undefined;
+    expect(code(await swap('LUNCH', mealByCode('COM_CA').id))).toBe('409 MEAL_ALREADY_LOGGED');
+  });
+
+  test('a first read stores the plan, which only an open day takes: closed -> 409 DAY_CLOSED on both reads; no plan stored -> a swap is 409 PLAN_NOT_FOUND', async () => {
+    world.plan.stored = false;
+    world.closedDate = world.day.logicalDate;
+    expect(code(await get('/nutrition/plan'))).toBe('409 DAY_CLOSED');
+    expect(code(await get('/nutrition/swap-candidates?mealSlot=LUNCH'))).toBe('409 DAY_CLOSED');
+    // a bad slot is the route's own check, before the plan is touched
+    expect(code(await get('/nutrition/swap-candidates?mealSlot=BRUNCH'))).toBe('422 VALIDATION_FAILED');
+    world.closedDate = undefined;
+    expect(code(await swap('LUNCH', mealByCode('COM_CA').id))).toBe('409 PLAN_NOT_FOUND');
+    expect((await get('/nutrition/plan')).status).toBe(200);
+    expect(world.plan.stored).toBe(true);
+    expect((await swap('LUNCH', (await offered('LUNCH')).candidates[0].id)).status).toBe(200);
+  });
+
+  test('before onboarding every nutrition route is 409 ONBOARDING_REQUIRED, ahead of the body', async () => {
+    world.me = meOf({ progression: undefined });
+    expect(code(await get('/nutrition/plan'))).toBe('409 ONBOARDING_REQUIRED');
+    expect(code(await get('/nutrition/swap-candidates?mealSlot=BRUNCH'))).toBe('409 ONBOARDING_REQUIRED');
+    expect(code(await swap('BRUNCH', 'x'))).toBe('409 ONBOARDING_REQUIRED');
+  });
+
+  test('PATCH /settings: each field of the route is applied, one wrong or read-only member is 422 naming every one, an unknown member is ignored', async () => {
+    const patch = (body: unknown) => send('PATCH', '/settings', JSON.stringify(body));
+    const changed = await patch({ nudgesEnabled: false, reminderEnabled: true, reminderWindow: 'MORNING', hideStreak: true, motion: 'REDUCED', theme: 'dark' });
+    expect(changed.json).toEqual({ ...world.settings, nudgesEnabled: false, reminderEnabled: true, reminderWindow: 'MORNING', hideStreak: true, motion: 'REDUCED' });
+    expect(world.settings).toMatchObject({ nudgesEnabled: false, reminderEnabled: true, reminderWindow: 'MORNING', hideStreak: true, motion: 'REDUCED', soundEnabled: false });
+    expect(world.settings).not.toHaveProperty('theme');
+    // nothing sent: nothing changed
+    expect((await patch({})).json).toEqual(world.settings);
+    const before = world.settings;
+    const bad = await patch({ nudgesEnabled: 0, reminderWindow: 'NIGHT', soundEnabled: false, motion: 'NONE', excludedMealTags: 'co:sua' });
+    expect([code(bad), fields(bad)]).toEqual([
+      '422 VALIDATION_FAILED',
+      [{ field: 'nudgesEnabled', rule: 'format' }, { field: 'reminderWindow', rule: 'enum' }, { field: 'soundEnabled', rule: 'format' }, { field: 'motion', rule: 'enum' }, { field: 'excludedMealTags', rule: 'format' }],
+    ]);
+    // a refusal writes nothing, even of the valid members
+    expect(fields(await patch({ hideStreak: false, soundEnabled: true }))).toEqual([{ field: 'soundEnabled', rule: 'format' }]);
+    expect(world.settings).toEqual(before);
   });
 
   test('POST /nutrition/log with a slot: the planned meal\'s kcal join the total once; the same slot again is 409 MEAL_ALREADY_LOGGED', async () => {
