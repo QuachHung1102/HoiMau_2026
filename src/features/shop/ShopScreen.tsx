@@ -29,16 +29,22 @@ function ItemCard({ item, onOpen }: { item: ShopItem; onOpen: () => void }) {
     <View style={styles.cell}>
       {/* Exactly one of: owned (in use or not), locked by level, or open to look at. */}
       <Card style={styles.card}>
-        <Icon name={itemIcon(item)} size={40} color={palette.primary} />
+        <View style={styles.start}>
+          <Icon name={itemIcon(item)} size={40} color={palette.primary} />
+        </View>
         <AppText variant="title" style={styles.name}>
           {item.name}
         </AppText>
         <AppText variant="caption">{line}</AppText>
         {item.owned ? (
-          <OwnedChip equipped={item.equipped} />
+          <View style={styles.start}>
+            <OwnedChip equipped={item.equipped} />
+          </View>
         ) : item.locked ? (
           <>
-            <LockChip minLevel={item.minLevel} />
+            <View style={styles.start}>
+              <LockChip minLevel={item.minLevel} />
+            </View>
             <AppText variant="caption">{vi.lockedAt(item.minLevel)}</AppText>
             <Button variant="secondary" label={vi.notYet} disabled />
           </>
@@ -97,5 +103,6 @@ const styles = StyleSheet.create({
   name: { flex: 1, gap: 2 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginVertical: 8 },
   cell: { width: '47.5%' },
-  card: { flex: 1, borderRadius: radius.surface, alignItems: 'flex-start' },
+  card: { flex: 1, borderRadius: radius.surface },
+  start: { alignSelf: 'flex-start' },
 });
