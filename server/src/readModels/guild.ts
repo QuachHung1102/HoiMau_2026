@@ -1,9 +1,10 @@
-// What a member reads back about the own guild: `GuildState`. guild_overview (50-guild.sql) hands
-// over the raw facts of the caller's guild only, and nothing a member may not see (R-P.1); the
+// What a member reads back about the own guild: `GuildState`. guild_overview (50-guild.sql,
+// re-created by 52-nudge.sql with the nudge reason of each member) hands over the raw facts of
+// the caller's guild only, and nothing a member may not see (R-P.1); the
 // numbers are made here with the domain, so the app and the weekly job count alike. The week is
 // the Monday-based Asia/Ho_Chi_Minh one, through today's date there (AR-17, R-D08); only
 // storyDoneToday is about each member's own logical day.
-import type { GuildRole, GuildState } from '../../../domain/contract/social.ts';
+import type { GuildMember, GuildRole, GuildState, NudgeBlockReason } from '../../../domain/contract/social.ts';
 import { GUILD_INACTIVE_DAYS, memberWeek, scoreGuildWeek } from '../../../domain/guild.ts';
 import type { MemberWeek } from '../../../domain/guild.ts';
 import { daysBetween, localParts } from '../../../domain/logicalDate.ts';
@@ -30,9 +31,21 @@ type Overview = {
       xp: number;
       days: MemberWeek['days'];
       today: { date: DateLabel; storyDone: number; storyTotal: number };
+      /** app._nudge_block_reason(caller, member): null = may be nudged now. */
+      nudge: BlockReason;
     }[];
   };
 };
+
+type BlockReason = NudgeBlockReason | 'NOT_IN_GUILD' | 'NUDGE_NOT_SAME_GUILD' | null;
+
+/**
+ * `GuildMember.nudge`: what nudge_send would raise. The caller's own row is the contract's
+ * `{allowed: false, reason: null}` (nobody nudges themselves; SQL says NUDGE_NOT_SAME_GUILD);
+ * on another member's row of the own guild the reason is one of NudgeBlockReason.
+ */
+const nudgeOf = (isMe: boolean, reason: BlockReason): GuildMember['nudge'] =>
+  isMe ? { allowed: false, reason: null } : { allowed: reason === null, reason: reason as NudgeBlockReason | null };
 
 const allDone = (day: { storyDone: number; storyTotal: number }) =>
   day.storyTotal > 0 && day.storyDone === day.storyTotal;
@@ -78,8 +91,7 @@ export async function buildGuild({ db, userId }: Pick<Ctx, 'db' | 'userId'>): Pr
             .length,
           daysCountedThisWeek: memberWeek(weeks[i], weekStart, today).countedDays,
           storyDoneToday: allDone(member.today),
-          // Task 41 fills this in; until then nobody can be nudged
-          nudge: { allowed: false, reason: null },
+          nudge: nudgeOf(member.userId === userId, member.nudge),
         };
       }),
     },
