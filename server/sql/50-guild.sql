@@ -14,9 +14,11 @@
 --     is the mutex of its member list: whoever counts members, reads a role or changes either
 --     holds it, and READS AGAIN after taking it what it read before (a concurrent transfer may
 --     have changed the caller's role). progression_state is never locked here;
---   * FOR UPDATE on guilds although guild_memberships references it: a membership row is only
---     inserted under that same lock (or for a guild made in the same transaction), so no other
---     transaction holds the key-share lock it would conflict with;
+--   * FOR UPDATE on guilds although other tables reference it: a membership row is only
+--     inserted under that same lock (or for a guild made in the same transaction); the one other
+--     holder of a key-share lock on a guild is job_apply_guild_week (51-guild-week.sql), which
+--     takes every users row it needs BEFORE it touches a guild, so it never waits for a users
+--     row while it holds a guild, and no cycle can form with the order above;
 --   * "one leader per guild" is the unique index below, so a role swap demotes before it
 --     promotes, in two statements;
 --   * a refusal is raised with SQLSTATE HM000; time is app.now() only.
@@ -88,9 +90,34 @@ AS $$
     FROM (SELECT sha256(uuid_send(gen_random_uuid())) AS b) s, generate_series(0, 7) i
 $$;
 
-REVOKE ALL ON FUNCTION app._lock_member(uuid), app._invite_code() FROM PUBLIC, app_anon, app_auth, app_job;
+-- The days of p_from..p_through on which the user has a log, as memberWeek (domain/guild.ts)
+-- takes them: [{date, storyDone, storyTotal, frozen}] by date. STORY done / total for the
+-- user's archetype; frozen = a ticket was used for the date and the STORY quests are not all
+-- done (AR-10: a ticket on a completed day leaves it completed). The one copy of this rule:
+-- guild_overview and job_guild_week_inputs (51-guild-week.sql) both read it here.
+CREATE OR REPLACE FUNCTION app._member_days(p_user uuid, p_from date, p_through date) RETURNS jsonb
+LANGUAGE sql STABLE SET search_path = public, pg_temp
+AS $$
+  SELECT coalesce(jsonb_agg(jsonb_build_object(
+           'date', d.logical_date, 'storyDone', k.done, 'storyTotal', k.total,
+           'frozen', NOT (k.total > 0 AND k.done = k.total) AND EXISTS (
+             SELECT 1 FROM freeze_tickets t WHERE t.user_id = d.user_id AND t.used_for_date = d.logical_date))
+         ORDER BY d.logical_date), '[]'::jsonb)
+    FROM users u
+    JOIN daily_logs d ON d.user_id = u.id
+   CROSS JOIN LATERAL (
+          SELECT count(c.completed_at)::int AS done, count(*)::int AS total
+            FROM quests q
+            LEFT JOIN quest_completions c ON c.quest_id = q.id AND c.daily_log_id = d.id
+           WHERE q.category = 'STORY' AND q.is_active AND u.archetype = ANY (q.archetypes)) k
+   WHERE u.id = p_user AND d.logical_date BETWEEN p_from AND p_through
+$$;
+
+REVOKE ALL ON FUNCTION app._lock_member(uuid), app._invite_code(), app._member_days(uuid, date, date)
+  FROM PUBLIC, app_anon, app_auth, app_job;
 SELECT meta.expect_function('app._lock_member(uuid)', 'invoker', '{}');
 SELECT meta.expect_function('app._invite_code()', 'invoker', '{}');
+SELECT meta.expect_function('app._member_days(uuid, date, date)', 'invoker', '{}');
 
 -- ---------------------------------------------------------------------------------------------
 -- The five functions the server calls. The caller is app.current_user_id().
@@ -233,9 +260,7 @@ END $$;
 --            lastLogDate: the latest logical date of any member's log (null without one),
 --            members: [{userId, displayName, role, joinedDate (the member's logical date of
 --                       joined_at), xp (the XP sum),
---                       days: [{date, storyDone, storyTotal, frozen}] for each date of the week
---                             that has a log; frozen = a ticket was used for it and the STORY
---                             quests are not all done (AR-10),
+--                       days: app._member_days over the week (each date of it with a log),
 --                       today: {date (the member's own logical date), storyDone, storyTotal}}]
 --            leader first, then by joined_at}}
 CREATE OR REPLACE FUNCTION guild_overview() RETURNS jsonb
@@ -245,21 +270,6 @@ AS $$
     SELECT m.guild_id, m.role,
            (app.now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AS today
       FROM guild_memberships m WHERE m.user_id = app.current_user_id()
-  ),
-  -- STORY done / total of every log of the members, for the archetype of its user
-  story AS (
-    SELECT d.user_id, d.logical_date, k.done, k.total
-      FROM mine
-      JOIN guild_memberships m ON m.guild_id = mine.guild_id
-      JOIN users u ON u.id = m.user_id
-      JOIN daily_logs d ON d.user_id = m.user_id
-     CROSS JOIN LATERAL (
-            SELECT count(c.completed_at)::int AS done, count(*)::int AS total
-              FROM quests q
-              LEFT JOIN quest_completions c ON c.quest_id = q.id AND c.daily_log_id = d.id
-             WHERE q.category = 'STORY' AND q.is_active AND u.archetype = ANY (q.archetypes)) k
-     WHERE d.logical_date BETWEEN app.week_start(mine.today) AND app.week_start(mine.today) + 6
-        OR d.logical_date = app.logical_date(app.now(), u.timezone)
   )
   SELECT jsonb_build_object('guild', (
     SELECT jsonb_build_object(
@@ -273,19 +283,12 @@ AS $$
                  'userId', u.id, 'displayName', u.display_name, 'role', m.role,
                  'joinedDate', app.logical_date(m.joined_at, u.timezone),
                  'xp', (SELECT coalesce(sum(l.amount), 0) FROM xp_ledger l WHERE l.user_id = u.id),
-                 'days', (SELECT coalesce(jsonb_agg(jsonb_build_object(
-                                   'date', s.logical_date, 'storyDone', s.done, 'storyTotal', s.total,
-                                   'frozen', NOT (s.total > 0 AND s.done = s.total) AND EXISTS (
-                                     SELECT 1 FROM freeze_tickets t
-                                      WHERE t.user_id = u.id AND t.used_for_date = s.logical_date))
-                                 ORDER BY s.logical_date), '[]'::jsonb)
-                            FROM story s
-                           WHERE s.user_id = u.id
-                             AND s.logical_date BETWEEN app.week_start(mine.today) AND app.week_start(mine.today) + 6),
+                 'days', app._member_days(u.id, app.week_start(mine.today), app.week_start(mine.today) + 6),
                  'today', jsonb_build_object(
                    'date', app.logical_date(app.now(), u.timezone),
-                   'storyDone', coalesce((SELECT s.done FROM story s WHERE s.user_id = u.id
-                                            AND s.logical_date = app.logical_date(app.now(), u.timezone)), 0),
+                   'storyDone', coalesce((app._member_days(u.id, app.logical_date(app.now(), u.timezone),
+                                                          app.logical_date(app.now(), u.timezone))
+                                          -> 0 ->> 'storyDone')::int, 0),
                    'storyTotal', (SELECT count(*)::int FROM quests q
                                    WHERE q.category = 'STORY' AND q.is_active AND u.archetype = ANY (q.archetypes))))
                ORDER BY m.role = 'LEADER' DESC, m.joined_at, u.id)
