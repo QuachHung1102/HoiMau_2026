@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS guilds (
   created_at timestamptz NOT NULL DEFAULT app.now()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS guilds_name_key ON guilds (lower(name));
+-- NFC only (guild_create normalizes): a decomposed spelling of a taken name is that name, not a
+-- second guild that renders the same. Dropped and added again so an edit reaches an existing table.
+ALTER TABLE guilds DROP CONSTRAINT IF EXISTS guilds_text_nfc_check;
+ALTER TABLE guilds ADD CONSTRAINT guilds_text_nfc_check CHECK (name IS NFC NORMALIZED AND motto IS NFC NORMALIZED);
 
 -- One row per current member: a user who leaves loses the row (a departed member is no one's
 -- business any more). joined_at drives the mid-week average (R-D08).
@@ -91,7 +95,8 @@ SELECT meta.expect_function('app._invite_code()', 'invoker', '{}');
 -- ---------------------------------------------------------------------------------------------
 -- The five functions the server calls. The caller is app.current_user_id().
 
--- Makes a guild with the caller as its LEADER. In this order: VALIDATION_FAILED (name 3 to 30
+-- Makes a guild with the caller as its LEADER. Name and motto are NFC-normalized and trimmed
+-- before every check and before they are stored. In this order: VALIDATION_FAILED (name 3 to 30
 -- characters once trimmed, motto at most 80; the route judged both before, this is the second
 -- fence), ALREADY_IN_GUILD, GUILD_NAME_TAKEN (any case; also the loser of two creates racing
 -- for one name, who waits on the unique index). An invite code that is taken is drawn again,
@@ -101,8 +106,8 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_user uuid := app.current_user_id();
-  v_name text := btrim(p_name);
-  v_motto text := coalesce(btrim(p_motto), '');
+  v_name text := btrim(normalize(p_name, NFC));
+  v_motto text := coalesce(btrim(normalize(p_motto, NFC)), '');
   v_id uuid;
   v_constraint text;
 BEGIN
