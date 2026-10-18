@@ -1,5 +1,6 @@
 import { act, render } from '@testing-library/react-native';
 import { Animated, AppState } from 'react-native';
+import { G } from 'react-native-svg';
 import { motion } from '../../shared/motion/motion';
 import { MotionPreferenceProvider } from '../../shared/motion/useReducedMotion';
 import { matrixAt, moves, parseTransform, Rig, tracksOf } from './rig';
@@ -34,22 +35,21 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-test('one loop per track over the duration token; all stop when active turns false, and again on unmount', () => {
+test('one loop over the duration token for every track; it stops when active turns false, and again on unmount', () => {
   const { loop, timing, stops } = spyLoops();
   const view = render(player());
-  const tracks = moves[SQUAT].tracks.length;
-  expect(loop).toHaveBeenCalledTimes(tracks);
-  expect(timing.mock.calls.map(([, config]) => config.duration)).toEqual(Array(tracks).fill(motion.durationsMs.repCycle));
+  expect(loop).toHaveBeenCalledTimes(1);
+  expect(timing.mock.calls.map(([, config]) => config.duration)).toEqual([motion.durationsMs.repCycle]);
   expect(stops.every(stop => stop.mock.calls.length === 0)).toBe(true);
 
   view.rerender(player({ active: false }));
   expect(stops.every(stop => stop.mock.calls.length === 1)).toBe(true);
-  expect(loop).toHaveBeenCalledTimes(tracks);
+  expect(loop).toHaveBeenCalledTimes(1);
 
   view.rerender(player());
-  expect(loop).toHaveBeenCalledTimes(2 * tracks);
+  expect(loop).toHaveBeenCalledTimes(2);
   view.unmount();
-  expect(stops).toHaveLength(2 * tracks);
+  expect(stops).toHaveLength(2);
   expect(stops.every(stop => stop.mock.calls.length === 1)).toBe(true);
 });
 
@@ -61,11 +61,10 @@ test('the app going to the background stops the loops; back in the foreground th
   }) as never);
   const { loop, stops } = spyLoops();
   const view = render(player());
-  const tracks = moves[SQUAT].tracks.length;
   act(() => listeners.forEach(listener => listener('background')));
   expect(stops.every(stop => stop.mock.calls.length === 1)).toBe(true);
   act(() => listeners.forEach(listener => listener('active')));
-  expect(loop).toHaveBeenCalledTimes(2 * tracks);
+  expect(loop).toHaveBeenCalledTimes(2);
   view.unmount();
 });
 
@@ -87,10 +86,62 @@ test('reduced motion: no loop starts', () => {
   view.unmount();
 });
 
-test('the real loops run frame by frame without errors and stop on unmount', async () => {
+// The mounted groups of the figure, each with its setNativeProps replaced by a spy (the player calls it per frame).
+function spyGroups(view: ReturnType<typeof render>) {
+  const sent = new Map<string, number[][]>();
+  for (const node of view.UNSAFE_root.findAll(found => found.type === G && found.props.id)) {
+    const list: number[][] = [];
+    sent.set(node.props.id, list);
+    node.instance.setNativeProps = ({ matrix }: { matrix: number[] }) => list.push(matrix);
+  }
+  return sent;
+}
+const apart = (a: number[], b: number[]) => Math.max(...a.map((n, i) => Math.abs(n - b[i])));
+
+test('the real loop moves every track frame by frame: each group gets a changing matrix, then nothing after unmount', async () => {
   jest.useFakeTimers();
   const view = render(player());
+  const sent = spyGroups(view);
+  const tracks = tracksOf(moves[SQUAT]);
   await act(() => jest.advanceTimersByTimeAsync(500));
+  for (const track of tracks) {
+    const frames = sent.get(track.id) ?? [];
+    expect(frames.length).toBeGreaterThan(5);
+    frames.forEach(matrix => expect(matrix).toHaveLength(6));
+  }
+  // the figure moved away from its first pose
+  expect(tracks.some(track => apart((sent.get(track.id) ?? []).at(-1) ?? [], matrixAt(track, 0)) > 0.01)).toBe(true);
+  view.unmount();
+  const counts = [...sent.values()].map(frames => frames.length);
+  await act(() => jest.advanceTimersByTimeAsync(500));
+  expect([...sent.values()].map(frames => frames.length)).toEqual(counts);
+  jest.useRealTimers();
+});
+
+test.each([
+  ['"Xem chậm" turned on', { speed: 0.5 as const }],
+  ['pause then resume', null],
+])('%s: the figure goes on from the pose it is at, not from its first pose', async (_name, change) => {
+  jest.useFakeTimers();
+  const view = render(player());
+  const sent = spyGroups(view);
+  const thigh = 'thigh-f';
+  // half way through the 3.2 s cycle: the deepest point of the squat, far from the first pose
+  await act(() => jest.advanceTimersByTimeAsync(motion.durationsMs.repCycle / 2));
+  const before = (sent.get(thigh) ?? []).at(-1) ?? [];
+  const first = matrixAt(tracksOf(moves[SQUAT]).find(track => track.id === thigh) as never, 0);
+  expect(apart(before, first)).toBeGreaterThan(0.3);
+  if (change) view.rerender(player(change));
+  else {
+    view.rerender(player({ active: false }));
+    await act(() => jest.advanceTimersByTimeAsync(2000));
+    view.rerender(player());
+  }
+  const seen = (sent.get(thigh) ?? []).length;
+  await act(() => jest.advanceTimersByTimeAsync(50));
+  const after = (sent.get(thigh) ?? [])[seen];
+  expect(after).toBeDefined();
+  expect(apart(after, before)).toBeLessThan(0.1);
   view.unmount();
   jest.useRealTimers();
 });

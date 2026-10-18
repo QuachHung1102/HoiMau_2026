@@ -54,7 +54,7 @@ export function BreathingGuide({ pattern, active, circle }: Props) {
     return () => loop.stop();
   }, [moving, pattern, breath]);
   const label = (
-    <AppText variant={circle ? 'body' : 'title'} weight="semibold" color="primary">
+    <AppText variant={circle ? 'body' : 'title'} weight="semibold" color="primary" style={[styles.text, circle && styles.inRing]}>
       {phase.label}
     </AppText>
   );
@@ -70,7 +70,10 @@ export function BreathingGuide({ pattern, active, circle }: Props) {
 
 const SIZE = 180;
 const styles = StyleSheet.create({
-  label: { alignItems: 'center', marginTop: -8 },
+  label: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 16 },
+  text: { textAlign: 'center' },
+  // Large text wraps inside the ring at its smallest (0.7 x SIZE, less the border) instead of crossing it.
+  inRing: { maxWidth: SIZE * 0.6 },
   stage: { width: SIZE, height: SIZE, alignSelf: 'center', alignItems: 'center', justifyContent: 'center' },
   circle: { ...StyleSheet.absoluteFill, borderRadius: SIZE / 2, borderWidth: 4 },
 });
