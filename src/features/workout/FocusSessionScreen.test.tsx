@@ -1,14 +1,20 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen } from '@testing-library/react-native';
-import { BackHandler, Platform } from 'react-native';
+import { Animated, BackHandler, Platform } from 'react-native';
 import type { WorkoutResult } from '../../../domain/contract/content.ts';
 import { api } from '../../shared/api/client';
 import { wipeQueries } from '../../shared/api/session';
+import { setKeepAwake } from '../../shared/native/hoiMauNative';
 import * as pendingActions from '../../shared/storage/pendingActions';
 import { ProgressRing } from '../../shared/ui/ProgressRing';
 import { app, hold, nearLevelUp, queryClient, refuse, respond, settle, world } from '../dashboard/todayTestKit';
 import { useCelebrationQueue } from '../progression/celebrations';
+import { moves } from './rig';
 import { COMPLETE, detail, fakeTimers, foreground, gym, installWorkoutTestEnv, openDetail, pass, sessions, startSession, system } from './workoutTestKit';
+
+// The wrapper no-ops under Jest (no TurboModule, Platform.OS is ios): its calls are what is asserted.
+jest.mock('../../shared/native/hoiMauNative', () => ({ ...jest.requireActual('../../shared/native/hoiMauNative'), setKeepAwake: jest.fn() }));
+const keepAwake = setKeepAwake as jest.Mock;
 
 installWorkoutTestEnv();
 
@@ -63,11 +69,13 @@ describe('S19: the session follows the clock', () => {
     view.unmount();
   });
 
-  test('the demo area is the move in words: its amount and its three instruction lines, with its own caution', async () => {
+  test('the demo area: the move shown above the ring, and in words: its amount and its three instruction lines, with its own caution', async () => {
     const view = await begin();
     const { move, repsText } = detail.steps[0];
+    expect(screen.getByRole('button', { name: `Xem hướng dẫn: ${move.name}` })).toBeTruthy();
     expect(screen.getByText('Cách thực hiện')).toBeTruthy();
-    expect(screen.getByText(`${move.name} · ${repsText}`)).toBeTruthy();
+    // under the demo and in the instruction card
+    expect(screen.getAllByText(`${move.name} · ${repsText}`)).toHaveLength(2);
     move.steps.forEach((line, index) => expect(screen.getByText(`${index + 1}. ${line}`)).toBeTruthy());
     expect(screen.getByText(move.caution)).toBeTruthy();
     expect(screen.getByText('Hít thở đều. Bạn không cần cố theo nhịp của ai khác.')).toBeTruthy();
@@ -606,6 +614,81 @@ describe('nothing interrupts the session', () => {
     expect(screen.queryByText('Đến lúc đứng dậy vươn vai một chút')).toBeNull();
     await pass(60 * S);
     expect(screen.getByText('Đến lúc đứng dậy vươn vai một chút')).toBeTruthy();
+    view.unmount();
+  });
+});
+
+describe('the demo above the ring', () => {
+  test('with motion on, the current move loops while the session runs; pausing stops every loop, resuming starts them again', async () => {
+    const real = Animated.loop;
+    const loops: { stop: jest.Mock }[] = [];
+    jest.spyOn(Animated, 'loop').mockImplementation((...args) => {
+      const loop = real(...args);
+      const stop = jest.fn(() => loop.stop());
+      loops.push({ stop });
+      return { ...loop, start: loop.start, stop };
+    });
+    const view = await begin({ motion: 'FULL' });
+    const live = () => loops.filter(loop => loop.stop.mock.calls.length === 0).length;
+    // one loop per track of the first move (other loops of the app may run beside them)
+    const tracks = moves[detail.steps[0].move.demoCode as string].tracks.length;
+    const running = live();
+    expect(running).toBeGreaterThanOrEqual(tracks);
+    press('Tạm dừng');
+    expect(running - live()).toBe(tracks);
+    press(CONTINUE);
+    expect(live()).toBe(running);
+    view.unmount();
+    expect(live()).toBe(0);
+  });
+});
+
+describe('S82 from the session', () => {
+  test('"Xem hướng dẫn" opens the current move above the session; its clock keeps running; Back returns to the session as it was', async () => {
+    const view = await begin();
+    await pass(10 * S);
+    expect(left()).toBe('14:50');
+    fireEvent.press(screen.getByRole('button', { name: 'Xem hướng dẫn: Xoay vai' }));
+    expect(await screen.findByRole('header', { name: 'Xoay vai' })).toBeTruthy();
+    expect(screen.getByText('Cách làm')).toBeTruthy();
+    expect(header('Đang tập')).toBeNull();
+    await pass(5 * S);
+    fireEvent.press(screen.getByRole('button', { name: 'Quay lại buổi tập' }));
+    expect(await screen.findByRole('header', { name: 'Đang tập' })).toBeTruthy();
+    expect(left()).toBe('14:45');
+    expect(sessions()).toEqual([]);
+    view.unmount();
+  });
+});
+
+describe('the screen stays on while the session runs', () => {
+  test('on at the start, off when paused, on again on resume, off on unmount', async () => {
+    const view = await begin();
+    expect(keepAwake.mock.calls.at(-1)).toEqual([true]);
+    keepAwake.mockClear();
+    press('Tạm dừng');
+    expect(keepAwake.mock.calls).toEqual([[false]]);
+    press(CONTINUE);
+    expect(keepAwake.mock.calls).toEqual([[false], [true]]);
+    keepAwake.mockClear();
+    view.unmount();
+    expect(keepAwake.mock.calls.at(-1)).toEqual([false]);
+    expect(keepAwake).not.toHaveBeenCalledWith(true);
+  });
+
+  test('off while S63 holds the clock, and off once it leads to saving', async () => {
+    const view = await begin();
+    keepAwake.mockClear();
+    press(END);
+    await screen.findByText(EXIT);
+    expect(keepAwake.mock.calls).toEqual([[false]]);
+    press(CONTINUE);
+    expect(keepAwake.mock.calls.at(-1)).toEqual([true]);
+    keepAwake.mockClear();
+    await endAndSave();
+    expect(await screen.findByRole('header', { name: 'Bạn đã bắt đầu, vậy là tốt rồi' })).toBeTruthy();
+    expect(keepAwake.mock.calls.at(-1)).toEqual([false]);
+    expect(keepAwake).not.toHaveBeenCalledWith(true);
     view.unmount();
   });
 });

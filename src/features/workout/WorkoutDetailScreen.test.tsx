@@ -3,8 +3,8 @@ import { healthVi } from '../../shared/i18n/vi/health';
 import { hold, refuse, respond, world } from '../dashboard/todayTestKit';
 import { detail, gym, installWorkoutTestEnv, openCatalog, openDetail, sessions } from './workoutTestKit';
 
-// The real registry; `navigate` of the detail screens is recorded on its way to the navigator, so the link to a route
-// that no task has registered yet (MoveDemo: inert, AR-25) can still be asserted by name.
+// The real registry; `navigate` of the detail screens is recorded on its way to the navigator, so where a press leads
+// can be asserted by route name and params.
 const mockNavigate = jest.fn();
 jest.mock('../../app/screens', () => {
   const actual = jest.requireActual('../../app/screens');
@@ -54,11 +54,9 @@ describe('S18: one workout, before it starts', () => {
       'Thả lỏng vai. Thả lỏng · 30 giây',
     ]);
 
-    // the demo area, in words: the first move, how much of it, its three instruction lines
-    expect(screen.getByText('Động tác đầu tiên')).toBeTruthy();
-    expect(screen.getByText('Xoay vai · 30 giây')).toBeTruthy();
-    detail.steps[0].move.steps.forEach((line, index) => expect(screen.getByText(`${index + 1}. ${line}`)).toBeTruthy());
-    expect(screen.getByText('6 động tác · không có âm thanh')).toBeTruthy();
+    // the demo of the first move, with its play affordance, and what it is
+    expect(button('Xem động tác mẫu: Xoay vai')).toBeTruthy();
+    expect(screen.getByText('Xem động tác mẫu · 6 động tác · không có âm thanh')).toBeTruthy();
 
     // the caution is the reviewed sentence of the health module, word for word
     expect(healthVi.workoutCaution).toBe('Dừng nếu thấy đau hoặc khó chịu. Bạn luôn có thể nghỉ hoặc kết thúc sớm.');
@@ -77,14 +75,19 @@ describe('S18: one workout, before it starts', () => {
     view.unmount();
   });
 
-  test('each move opens its demo, by the code of the move and the id of the workout', async () => {
+  test('each move opens its demo (S82), by the code of the move and the id of the workout; Back returns here', async () => {
     const view = await open();
     fireEvent.press(button('Chùng chân lùi. Phần chính · 8 lần mỗi bên'));
     expect(mockNavigate).toHaveBeenCalledTimes(1);
     expect(mockNavigate).toHaveBeenCalledWith('MoveDemo', { workoutId: detail.id, code: 'CHUNG_CHAN_LUI' });
-    fireEvent.press(button('Xoay vai. Khởi động · 30 giây'));
+    expect(await screen.findByRole('header', { name: 'Chùng chân lùi' })).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Quay lại buổi tập' }));
+    expect(await screen.findByRole('header', { name: detail.name })).toBeTruthy();
+
+    // the demo at the top opens the first move
+    fireEvent.press(button('Xem động tác mẫu: Xoay vai'));
     expect(mockNavigate).toHaveBeenLastCalledWith('MoveDemo', { workoutId: detail.id, code: 'XOAY_VAI' });
-    await act(async () => undefined);
+    expect(await screen.findByRole('header', { name: 'Xoay vai' })).toBeTruthy();
     view.unmount();
   });
 

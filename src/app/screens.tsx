@@ -25,6 +25,7 @@ import { ProfileScreen } from '../features/progression/ProfileScreen';
 import { EndOfDayScreen } from '../features/quests/EndOfDayScreen';
 import { QuestBoardScreen } from '../features/quests/QuestBoardScreen';
 import { FocusSessionScreen } from '../features/workout/FocusSessionScreen';
+import { MoveDemoScreen } from '../features/workout/MoveDemoScreen';
 import { PlanScreen } from '../features/workout/PlanScreen';
 import { WorkoutCatalogScreen } from '../features/workout/WorkoutCatalogScreen';
 import { WorkoutDetailScreen } from '../features/workout/WorkoutDetailScreen';
@@ -77,4 +78,6 @@ export const detailScreens: ScreenEntry[] = [
 export const focusScreens: ScreenEntry[] = [
   { name: 'FocusSession', component: FocusSessionScreen },
   { name: 'WorkoutResult', component: WorkoutResultScreen },
+  // Above S18 and above a running S19: the session stays mounted beneath it, its clock running.
+  { name: 'MoveDemo', component: MoveDemoScreen },
 ];
