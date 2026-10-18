@@ -54,7 +54,7 @@ export function BreathingGuide({ pattern, active, circle }: Props) {
     return () => loop.stop();
   }, [moving, pattern, breath]);
   const label = (
-    <AppText variant="title" color="primary">
+    <AppText variant={circle ? 'body' : 'title'} weight="semibold" color="primary">
       {phase.label}
     </AppText>
   );
@@ -68,7 +68,7 @@ export function BreathingGuide({ pattern, active, circle }: Props) {
   );
 }
 
-const SIZE = 150;
+const SIZE = 180;
 const styles = StyleSheet.create({
   label: { alignItems: 'center', marginTop: -8 },
   stage: { width: SIZE, height: SIZE, alignSelf: 'center', alignItems: 'center', justifyContent: 'center' },

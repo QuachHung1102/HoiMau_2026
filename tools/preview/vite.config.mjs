@@ -29,6 +29,7 @@ export default {
       // Native-only modules -> in-memory stubs (app code stays untouched).
       { find: /^react-native-keychain$/, replacement: path.join(here, 'stubs/keychain.ts') },
       { find: '@react-native/assets-registry/registry', replacement: path.join(here, 'stubs/assets-registry.ts') },
+      { find: /^\.\/NativeHoiMauNative$/,replacement: path.join(here, 'stubs/native-hoi-mau.ts') },
     ],
   },
   optimizeDeps: { rolldownOptions: { resolve: { extensions: exts } } },
