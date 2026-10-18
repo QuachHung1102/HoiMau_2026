@@ -1422,6 +1422,7 @@ Kịch bản in tài khoản (`demo-<tên>@hoimau.test`, mật khẩu `matkhau12
 | `broken` | chuỗi 5, hôm qua bỏ lỡ và đã đóng: trong cửa sổ cứu chuỗi, `breakNotice.previous` là 5 | 07/03/2027 09:00 |
 | `rich` | cấp 8, 500 xu, 3 điểm đặc quyền (đã mở `TICKET_CAP_PLUS` và chủ đề `THEME_FOREST`). XP và xu được **cấp thẳng** qua `app._grant` bằng superuser (`ctx.grant`, chỉ cho tài khoản demo), không kiếm bằng cách chơi | 01/03/2027 09:00 |
 | `guild4` | tổ đội "Tổ Bốn Mùa" bốn người: An (tổ trưởng, tài khoản in ra), Bình, Chi, Dũng (`demo-guild4b`, `demo-guild4c`, `demo-guild4d@hoimau.test`, cùng mật khẩu). Thứ Hai An và Bình hoàn thành nhiệm vụ chính, Chi một nửa (chỉ bữa ăn); thứ Ba An hoàn thành lần nữa; Dũng không ghi gì và đã tắt nhắc nhở. Chạy lại: kịch bản xóa tổ đội cũ bằng `ctx.removeGuild` (cả khi nó còn đủ, mất tổ trưởng hay đã rỗng) trước khi xóa các tài khoản, để tên tổ đội được giải phóng; tổ đội trùng tên có người không phải tài khoản demo thì kịch bản **dừng với lỗi**, không xóa gì | 02/03/2027 12:00 |
+| `ticket` | như `broken` (chuỗi 5 gãy hôm qua, 09:00) cộng **một vé đóng băng chưa dùng**, có được nhờ một dòng nhật ký viết sáng nay (vé của tuần, `GRANTED`; kèm +15 XP). Dùng để thử cứu chuỗi trước 15:00 | 07/03/2027 09:00 |
 
 - **Cách dựng.** Đăng ký, onboarding (Hồ Chí Minh, số đo hợp lý), rồi mỗi ngày: đồng hồ tới 12:00 địa phương, ghi một bữa mà tổng nằm giữa `calorieWindow.min` và `.max` của `GET /day` (không tự tính dải), hoàn thành bài tập ngắn nhất của thư viện thật; đồng hồ tới 04:00 địa phương hôm sau (sau 03:00) và chạy `day-close`. Một ngày bỏ lỡ chỉ bỏ hai bước đầu.
 - **Ngày và giờ chỉ đến từ server.** Giờ địa phương được đặt từ `closesAt` của `GET /day` (03:00 hôm sau), không từ phép tính múi giờ của Node: Node và PostgreSQL lệch nhau ở bốn múi giờ (xem "Ngày và nhiệm vụ"). Cách trừ giờ từ `closesAt` chỉ đúng với múi giờ có độ lệch cố định; tài khoản demo luôn ở `Asia/Ho_Chi_Minh` (không đổi giờ mùa hè). Múi giờ khác thì phải hỏi server từng thời điểm.
@@ -1775,3 +1776,72 @@ Thành viên tổ đội gửi cho đồng đội một trong các câu mẫu c�
 - `progression_state FOR UPDATE` của người gửi là yêu cầu của bản đặc tả; khóa dòng `users` của người gửi (lấy trước nó) đã tuần tự hóa các lời nhắc của một người.
 
 Sửa `52-nudge.sql` thì chạy `npm run server:test` và `npm run db:api-check`; sửa `guild_overview` ở một trong hai file thì sửa cả file kia.
+
+## Nhật ký và vé đóng băng (`60-journal.sql`, `journalCrypto.ts`, `routes/journal.ts`, `routes/tickets.ts`, `readModels/tickets.ts`, `jobs/ticketGrant.ts`, `seed/quotes.ts`)
+
+Nhật ký riêng tư, mã hóa ở tầng ứng dụng, đáp lại bằng một câu trích dẫn; dòng đầu tiên của một ngày logic được +15 XP; mỗi tuần tối đa một vé đóng băng; vé giữ chuỗi cho hôm nay, hoặc cứu ngày hôm qua đã gãy cho tới 15:00 giờ địa phương (F-08, F-13, R-D04, AR-09, AR-10, §10.1). Hợp đồng: `JournalCreateRequest`, `JournalCreateResult`, `JournalList`, `JournalEntry`, `Tickets`, `TicketUseRequest` trong `docs/api/openapi.yaml`.
+
+### Mã hóa và `JOURNAL_KEY`
+
+- AES-256-GCM trong tiến trình Node (`server/src/journalCrypto.ts`): `encryptJournal(key, userId, entryId, text)`, `decryptJournal(key, userId, entryId, blob)`. Khóa là `ctx.journalKey` = `JOURNAL_KEY` (32 byte, base64 44 ký tự). IV ngẫu nhiên 12 byte cho mỗi dòng; dữ liệu xác thực kèm theo (AAD) là `"<userId>:<entryId>"`, nên một blob chép sang dòng khác hay người khác **không giải mã được**. Blob lưu = byte phiên bản `0x01` ‖ IV ‖ bản mã ‖ tag 16 byte.
+- **Cơ sở dữ liệu không bao giờ thấy chữ**: SQL chỉ nhận blob (`bytea`), nên không hàm, log, chỉ mục hay lỗi nào của PostgreSQL có thể chứa nó. `journal_entries` không có chỉ mục nào trên nội dung (chỉ khóa chính và `(user_id, created_at desc, id desc)`).
+- Chữ không bao giờ vào dòng log, thông báo lỗi, bảng `idempotency_keys` (câu trả lời của `POST /journal` không lặp lại chữ; `request_hash` là HMAC, xem mục Idempotency) hay chỉ mục. Giải mã thất bại → `500 INTERNAL`, log một dòng `{evt: 'journal_decrypt_failed', entryId}`, chỉ có id.
+- `JOURNAL_KEY`: `config.ts` từ chối khởi động khi thiếu hoặc không đúng 32 byte, thông báo chỉ nêu tên biến, không in giá trị; `server:dev` dùng khóa cố định của máy phát triển khi môi trường không đặt; test dùng `TEST_JOURNAL_KEY` của `test/http.ts`. **Mất hoặc đổi khóa = mọi dòng nhật ký cũ không đọc được** (`500`), và mọi câu trả lời idempotency đã lưu không còn khớp. Chưa có công cụ xoay khóa (ngoài phạm vi).
+
+### Bảng
+
+| Bảng | Lớp | Ghi chú |
+|---|---|---|
+| `quotes` | `content` (đọc) | khóa `code`, `text`, `author` (null); seed từ `server/content/quotes.ts` theo `code`, không bao giờ xóa |
+| `journal_entries` | `own_read` | khóa `id` = action id; `body_encrypted bytea` (CHECK: 30–20029 byte, byte đầu `0x01`), `quote_code` (khóa ngoại về `quotes`), `logical_date`; chỉ mục `(user_id, created_at desc, id desc)`, không chỉ mục nội dung |
+| `freeze_tickets`, `ticket_grant_weeks` | `own_read` | của `32-dayclose.sql` (xem mục đóng ngày) |
+
+### Hàm
+
+| Hàm | Vai trò | Việc |
+|---|---|---|
+| `app._ticket_cap(user)` | nội bộ | 2, hoặc 3 khi có đặc quyền `TICKET_CAP_PLUS` (`TICKET_CAP`). |
+| `app._ticket_grant_check(user, week_start)` → text | nội bộ | Tuần đã có dòng `ticket_grant_weeks` → `ALREADY_DECIDED`; vé chưa dùng ≥ trần → ghi `granted = false` → `AT_CAP` (tuần đó mất vé, kể cả khi sau đó dùng bớt vé); ngược lại thêm vé của tuần và `granted = true` → `GRANTED`. Quyết định ghi bằng `INSERT … ON CONFLICT DO NOTHING` trên khóa chính `(user_id, week_start)`: hàng rào cuối, cả khi job đọc danh sách trước khi khóa. Dòng quyết định mất mà vé của tuần còn (sửa tay) → vé đó tính là đã cấp, không thêm vé thứ hai. |
+| `app._ticket_needed(user, date)` → bool | nội bộ | Ngày **còn mở** (sau `last_closed_date`, từ ngày đầu): `streak_current > 0` và nhiệm vụ STORY của ngày đó chưa xong hết (`daily_logs.story_completed`). Ngày **đã đóng**: `break_date = date` và `streak_before_break` khác null. |
+| `app._ticket_block_reason(user, date)` → text | nội bộ | Gặp điều nào trước thì trả điều đó: `TICKET_DATE_NOT_ELIGIBLE` (không phải ngày logic hiện tại, cũng không phải hôm qua trong lúc giờ địa phương thuộc `[3, 15)`) → `TICKET_ALREADY_USED_FOR_DATE` → `NO_TICKET` → `TICKET_NOT_NEEDED` (`app._ticket_needed`); `NULL` = được dùng. |
+| `journal_create(p_id, p_body_encrypted)` → jsonb | `app_auth` | Thứ tự: `ONBOARDING_REQUIRED` → khóa (`app._lock_progression`: dòng `users` rồi `progression_state`) → câu trích dẫn: ngẫu nhiên trong những câu người gọi **chưa nhận trong 30 ngày qua**, nếu đã nhận hết thì câu nhận lâu nhất → chèn dòng (id đã là một dòng → `IDEMPOTENCY_KEY_REUSED`) → `app._grant(caller, 15, 0, 'JOURNAL', '<ngày logic>')` (AR-34: chỉ dòng đầu của ngày được trả) → `app._ticket_grant_check(caller, app.week_start(<ngày logic>))`. Trả `{entry, quote, grant, ticket: {outcome, available, cap}}`. |
+| `ticket_use(p_date, p_action_id)` | `app_auth` | Thứ tự: `ONBOARDING_REQUIRED` → khóa (như trên) → lý do của `app._ticket_block_reason` (raise). Vé chưa dùng **cũ nhất** nhận `used_at`, `used_for_date` (khóa duy nhất của ngày là hàng rào cuối → `TICKET_ALREADY_USED_FOR_DATE`). Ngày đã đóng: cứu chuỗi (`rescueWithTicket`): `streak_current = streak_before_break`, xóa hai trường gãy, `missed_run = greatest(0, missed_run − 1)`, `last_outcome = 'FROZEN'`; `streak_best` không đổi. Ngày còn mở: để `day-close` đọc vé (AR-10: vé + STORY xong hết → vẫn `COMPLETED`, vé vẫn mất). |
+| `ticket_overview()` → jsonb | `app_auth` | Màn hình của `GET /freeze-tickets`: `available`, `cap`, trạng thái chuỗi, và `eligible` (TODAY luôn có; YESTERDAY khi giờ địa phương thuộc `[3, 15)`) với `open`, `deadline` (15:00 địa phương của ngày sau ngày đó, tính trong SQL bằng múi giờ của người dùng), `needed` = `app._ticket_needed`, `alreadyUsed`. |
+| `job_ticket_grant(p_now)` → int | `app_job` | Lưới an toàn: với mỗi người đã onboarding, chưa xóa, có dòng nhật ký trong tuần của ngày logic của họ tại `p_now` mà tuần đó chưa có quyết định: khóa dòng `users` (`FOR NO KEY UPDATE`) rồi `progression_state`, theo id, rồi `app._ticket_grant_check`. Trả số tuần đã quyết định; bình thường là 0. |
+
+**Một luật, hai nơi đọc.** `ticket_use` raise đúng điều `app._ticket_block_reason` trả; `ticket_overview` hiện `needed` từ chính `app._ticket_needed` mà lý do đó dùng. Vì vậy màn hình và hàm không thể bất đồng: `needed` của một ngày đủ điều kiện là `true` đúng khi một lần dùng (có vé, ngày chưa dùng vé) sẽ thành công (test so trên từng fixture). Ngày hôm qua **còn mở** (từ 03:00 tới khi `day-close` chạy) được xem như ngày đang mở: số xem trước lấy `ticketPreview(state, 'TODAY')`; ngày đã đóng lấy `ticketPreview(state, 'YESTERDAY')`.
+
+**Thứ tự khóa** (thứ tự chung của mã nguồn): dòng `users` của người gọi, rồi `progression_state`, không khóa gì của người khác. `job_apply_day_close` cũng khóa dòng `users` trước và đọc lại các ngày (kể cả vé) dưới khóa đó: vé dùng cho hôm qua lúc 03:05 mà job đã đọc danh sách lúc 03:04 → lần áp dụng thấy ngày đã đổi, không áp dụng gì, đọc lại và đóng ngày thành `FROZEN`. Job đóng trước → ngày `MISSED`, gãy chuỗi; vé tới sau là một lần cứu. Kết quả như nhau.
+
+### Năm route và job
+
+| Route | Auth | Thành công | Lỗi riêng |
+|---|---|---|---|
+| `POST /journal` | `user`, idempotent (khóa = id của dòng), **10 lần/phút mỗi tài khoản** (AR-21) | `200 JournalCreateResult` (không lặp lại chữ) | `422 VALIDATION_FAILED` (`body` / `required`, `format`: chuỗi, `min`, `max`: sau khi cắt khoảng trắng hai đầu, 1–5000 **ký tự** đếm theo code point) |
+| `GET /journal?limit=&before=` | `user` | `200 JournalList`, mới nhất trước, `limit` 1–50 (mặc định 20), `preview` = 80 ký tự đầu của chữ đã giải mã, `nextBefore` = id của dòng cuối trang | `422` (`limit` / `format`, `min`, `max`; `before` / `format`: UUID) |
+| `GET /journal/{id}` | `user` | `200 JournalEntry` | `422` (`id` / `format`), `404 NOT_FOUND` (không có, hoặc của người khác: không phân biệt) |
+| `GET /freeze-tickets` | `user` | `200 Tickets` | – |
+| `POST /freeze-tickets/use` | `user`, idempotent | `200 Tickets` | `422 VALIDATION_FAILED` (`date` / `required`, `format`), `409 TICKET_DATE_NOT_ELIGIBLE`, `409 TICKET_ALREADY_USED_FOR_DATE`, `409 NO_TICKET`, `409 TICKET_NOT_NEEDED` |
+
+- Thứ tự lỗi `POST /journal`: `401` → `400 IDEMPOTENCY_KEY_REQUIRED` → `409 ONBOARDING_REQUIRED` → `422` → lỗi của `journal_create`. `POST /freeze-tickets/use`: `401` → `400` → `409 ONBOARDING_REQUIRED` → `422` → thứ tự của `app._ticket_block_reason`.
+- Con trỏ trang là id của dòng cuối, so theo `(created_at, id)`: hai dòng cùng `created_at` (đồng hồ test đứng yên) không bao giờ rơi cùng phía của một trang.
+- Gửi lại cùng khóa `POST /freeze-tickets/use` → cùng câu trả lời, chỉ tốn một vé.
+- Job `ticket-grant` (`jobs/ticketGrant.ts`) đến hạn mỗi giờ từ phút 20 và gọi `job_ticket_grant(now)`; kết quả `{decided}` ghi vào `job_runs`.
+
+### Mồi nhử, ca tấn công, test
+
+- `89-decoy-journal.sql`: một dòng nhật ký của `DECOY_1` với nội dung là byte ngẫu nhiên theo đúng bố cục và câu trích dẫn đã seed `Q001`. (Vé và tuần của mồi nhử ở `83-decoy-dayclose.sql`.)
+- `server/checks/attacks/journal.ts` (ba ca): `GET /journal/{id của dòng mồi nhử}` qua HTTP thật → `404`, danh sách rỗng; `app_auth` `SELECT` trên `journal_entries` không thấy dòng mồi nhử, `UPDATE`/`DELETE` → `permission denied for table`; `journal_create` với id của dòng mồi nhử → `IDEMPOTENCY_KEY_REUSED`, mồi nhử không đổi; `INSERT`/`UPDATE`/`DELETE` trên `freeze_tickets`, `ticket_grant_weeks`, `quotes` → `permission denied for table`; gọi `job_ticket_grant` và bốn hàm nội bộ → `permission denied for function`.
+- `server/src/journalCrypto.test.ts`: khứ hồi, bố cục, IV mới mỗi lần; đổi người, đổi dòng, đổi khóa, lật một byte, đổi phiên bản → lỗi với thông báo cố định.
+- `server/src/routes/journal.test.ts`: khứ hồi qua HTTP (tiếng Việt có dấu và emoji), `preview` 80 ký tự; byte lưu không chứa chữ UTF-8; tráo blob của hai người → `500` và dòng log chỉ có id; lật một byte → `500`; **câu canh gác** không có trong log nào (kể cả của một `422`, một `429` và một lần giải mã thất bại), không trong `idempotency_keys.response`, không trong byte lưu, không chỉ mục nào trên nội dung; XP: +15, 0 cùng ngày, 0 lúc 02:59 hôm sau, +15 từ 03:00; vé tuần: `GRANTED`, `ALREADY_DECIDED`, Chủ nhật 02:00 và thứ Hai 02:00 vẫn thuộc tuần cũ, thứ Hai 03:00 `GRANTED`, `AT_CAP` và vẫn mất sau khi dùng một vé, `TICKET_CAP_PLUS` → trần 3; lỗi và thứ tự lỗi (5000 emoji được, 5001 không); trang và con trỏ; quyền riêng tư của `GET /guilds/me` (lặp lại phép quét của Task 39, thêm câu canh gác nhật ký); hai dòng song song của một ngày mới → +15 một lần, một quyết định vé.
+- `server/src/routes/journal.quote.test.ts` (cơ sở dữ liệu riêng, kho câu còn 3 kể cả `Q001` của mồi nhử): ba dòng → ba câu khác nhau; dòng thứ tư → câu nhận lâu nhất; 31 ngày sau chỉ câu đã quá 30 ngày được chọn; giữa hai câu cùng tự do thì chọn ngẫu nhiên (cả hai đều xuất hiện).
+- `server/src/routes/tickets.test.ts`: giữ hôm nay (chuỗi 4) và `day-close` sau đó → chuỗi 4, `FROZEN`; `TICKET_NOT_NEEDED` khi chuỗi 0 hoặc STORY đã xong; cứu lúc 09:00 sau khi gãy chuỗi 5 → đúng `rescueWithTicket`; 14:59 được, 15:00 và 02:59 không, hôm kia và ngày mai không; mỗi ngày một vé, vé cũ nhất đi trước, gửi lại cùng khóa tốn một vé; **từng cặp kề nhau** của thứ tự lỗi và lỗi của route; `GET /freeze-tickets` so với `ticketPreview` và với một lần dùng thử (rollback) trên sáu fixture, hạn chót 15:00, `needed` hôm nay thành `false` khi STORY xong và lần dùng khi đó nhận `TICKET_NOT_NEEDED`; vé cho hôm qua lúc 03:05 được `day-close` tôn trọng; **cuộc đua** (khóa của owner ép thứ tự): hai lần dùng một vé → một thành công; dùng vé cho hôm qua và `day-close` của hôm qua theo cả hai thứ tự khóa và 5 vòng tự do → luôn `FROZEN`, chuỗi giữ nguyên.
+- `server/src/jobs/ticketGrant.test.ts`: không có việc → 0; sau khi xóa quyết định của tuần → tạo lại một lần, lần sau 0; tuần theo ngày logic; `journal_create` và job cho cùng người, cùng tuần theo cả hai thứ tự và vòng tự do → đúng một quyết định, một vé; đến hạn mỗi giờ từ phút 20.
+- Kịch bản `ticket`: xem "Kịch bản phát triển".
+
+### Phần ba cổng không nhìn thấy
+
+- Không một cổng nào đọc được chữ của nhật ký (nó không bao giờ tới cơ sở dữ liệu); việc chữ không lọt vào log hay bảng idempotency do test câu canh gác giữ.
+- Thứ tự khóa và việc lý do từ chối được tính sau khóa do các test cuộc đua giữ; cổng 1 và 3 không đọc thân hàm. Khóa chính của `ticket_grant_weeks` (cùng `ON CONFLICT`) là hàng rào thứ hai sau khóa dòng `users`.
+
+Sửa `60-journal.sql` thì chạy `npm run server:test` và `npm run db:api-check`.
