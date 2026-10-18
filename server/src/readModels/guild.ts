@@ -50,8 +50,10 @@ export async function buildGuild({ db, userId }: Pick<Ctx, 'db' | 'userId'>): Pr
     joinedDate,
     days,
   }));
-  // no member ever logged: counted from the day the guild was made
-  const since = guild.lastLogDate ?? localParts(Date.parse(guild.createdAt), 'Asia/Ho_Chi_Minh').date;
+  // from the later of the latest log of any member and the day the guild was made: a guild cannot
+  // have been quiet longer than it has existed
+  const created = localParts(Date.parse(guild.createdAt), 'Asia/Ho_Chi_Minh').date;
+  const since = guild.lastLogDate !== null && guild.lastLogDate > created ? guild.lastLogDate : created;
   const inactiveDays = Math.max(0, daysBetween(since, today));
   return {
     guild: {

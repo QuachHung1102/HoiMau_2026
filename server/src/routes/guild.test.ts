@@ -626,6 +626,29 @@ test(`inactive: ${GUILD_INACTIVE_DAYS} days after the last log of any member tru
   }
 });
 
+test(`inactive: counted from the creation day when every log is older: a guild made today is active; ${GUILD_INACTIVE_DAYS} days later with no new log it is not`, async () => {
+  try {
+    const { leader, members } = await guildOf(2);
+    const today = await ictToday();
+    await db.admin.query('INSERT INTO daily_logs (user_id, logical_date) VALUES ($1, $2), ($3, $2)', [
+      leader.userId,
+      addDays(today, -20),
+      members[0].userId,
+    ]);
+    const state = async () => {
+      const { guild } = await mine(leader);
+      return [guild.inactive, guild.inactiveDays];
+    };
+    assert.deepEqual(await state(), [false, 0]);
+    await setTestClock(db.admin, `${addDays(today, GUILD_INACTIVE_DAYS - 1)}T05:00:00.000Z`);
+    assert.deepEqual(await state(), [false, GUILD_INACTIVE_DAYS - 1]);
+    await setTestClock(db.admin, `${addDays(today, GUILD_INACTIVE_DAYS)}T05:00:00.000Z`);
+    assert.deepEqual(await state(), [true, GUILD_INACTIVE_DAYS]);
+  } finally {
+    await setTestClock(db.admin, NOON);
+  }
+});
+
 test('the members carry level from the XP sum and storyDoneToday; a member who left is gone from the list', async () => {
   const { leader, members } = await guildOf(3);
   await db.admin.query("SELECT app._grant($1, 1000, 0, 'TEST', $2)", [members[0].userId, randomUUID()]);
