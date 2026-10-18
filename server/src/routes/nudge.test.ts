@@ -343,6 +343,19 @@ test('replay with the same idempotency key: the same answer, one event, one noti
   assert.equal(next.body.senderRemainingToday, 1);
 });
 
+test('an action id that is already a nudge event, its stored answer gone, with another receiver: 409 IDEMPOTENCY_KEY_REUSED, no new row', async () => {
+  await clock(ICT_NOON);
+  const [a, b, c] = await ict(3);
+  const key = randomUUID();
+  assert.equal((await send(a, b.userId, TEMPLATE.code, key)).status, 200);
+  await db.admin.query('DELETE FROM idempotency_keys WHERE user_id = $1', [a.userId]);
+  const reused = await send(a, c.userId, TEMPLATE.code, key);
+  assert.deepEqual([reused.status, reused.body?.error?.code], [409, 'IDEMPOTENCY_KEY_REUSED']);
+  assert.equal((await eventsOf(c)).length, 0);
+  assert.equal((await nudgesOf(c)).length, 0);
+  assert.equal((await eventsOf(b)).length, 1);
+});
+
 test("each party's own logical date: a sender in Los Angeles is limited until 03:00 there, then fresh; the next day the receiver is fresh too", async () => {
   await clock(ICT_NOON);
   const [s, r1, r2, r3, r4, x] = await guildOf(

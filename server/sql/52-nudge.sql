@@ -156,6 +156,9 @@ BEGIN
     GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
     IF v_constraint = 'nudge_events_receiver_day_key' THEN
       RAISE EXCEPTION 'NUDGE_RECEIVER_LIMIT' USING ERRCODE = 'HM000', DETAIL = '{}';
+    ELSIF v_constraint = 'nudge_events_pkey' THEN
+      -- the action id is already an event (its stored answer is gone, or the key is reused)
+      RAISE EXCEPTION 'IDEMPOTENCY_KEY_REUSED' USING ERRCODE = 'HM000', DETAIL = '{}';
     END IF;
     RAISE;
   END;

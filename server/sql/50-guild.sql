@@ -253,6 +253,7 @@ BEGIN
   UPDATE guild_memberships SET role = 'LEADER' WHERE user_id = p_user_id;
 END $$;
 
+-- Re-created by 52-nudge.sql (adds nudge): edit the body there, and keep both in step.
 -- The caller's guild as buildGuild (readModels/guild.ts) needs it, or {"guild": null}. It has
 -- no parameter: the guild is the caller's, there is no other to ask for.
 --   {guild: {id, name, motto, inviteCode, createdAt, myRole,
