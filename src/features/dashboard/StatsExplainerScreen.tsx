@@ -14,7 +14,7 @@ import { useDay } from '../quests/api';
 
 const STATS = ['hp', 'en', 'str', 'spd'] as const;
 // Where the behaviour behind each stat is recorded.
-const ACTION = { hp: 'Today', en: 'ManualKcal', str: 'WorkoutCatalog', spd: 'WorkoutCatalog' } as const satisfies Record<StatKind, RouteName>;
+const ACTION = { hp: 'Today', en: 'MealPlan', str: 'WorkoutCatalog', spd: 'WorkoutCatalog' } as const satisfies Record<StatKind, RouteName>;
 
 /**
  * S47: what each of the four stats is made of, what goes into it right now, and where to act on it. The numbers are
