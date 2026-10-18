@@ -6,6 +6,7 @@ import { fireEvent, screen } from '@testing-library/react-native';
 import type { Progression } from '../../../domain/contract/core.ts';
 import { Text } from 'react-native';
 import * as pet from '../../shared/i18n/vi/pet';
+import { profileRows } from '../../shared/i18n/vi/progression';
 import * as vi from '../../shared/i18n/vi/shop';
 import { tabLabel } from '../../shared/i18n/vi/nav';
 import { useTheme } from '../../shared/theme/ThemeProvider';
@@ -52,7 +53,7 @@ export async function openPet(options: Parameters<typeof openToday>[0] = {}) {
   fireEvent.press(screen.getByRole('tab', { name: tabLabel.Profile }));
   await header(tabLabel.Profile);
   await landed();
-  fireEvent.press(screen.getByRole('button', { name: /^Mầm của bạn/ }));
+  fireEvent.press(screen.getByRole('button', { name: new RegExp(`^${profileRows.pet.title}`) }));
   await header(pet.petTitle);
   await landed();
   return view;
