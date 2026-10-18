@@ -630,12 +630,12 @@ describe('the demo above the ring', () => {
     });
     const view = await begin({ motion: 'FULL' });
     const live = () => loops.filter(loop => loop.stop.mock.calls.length === 0).length;
-    // one loop per track of the first move (other loops of the app may run beside them)
-    const tracks = moves[detail.steps[0].move.demoCode as string].tracks.length;
+    // one loop drives the figure of the first move (other loops of the app may run beside it)
+    expect(moves[detail.steps[0].move.demoCode as string].tracks.length).toBeGreaterThan(0);
     const running = live();
-    expect(running).toBeGreaterThanOrEqual(tracks);
+    expect(running).toBeGreaterThanOrEqual(1);
     press('Tạm dừng');
-    expect(running - live()).toBe(tracks);
+    expect(running - live()).toBe(1);
     press(CONTINUE);
     expect(live()).toBe(running);
     view.unmount();
@@ -648,15 +648,45 @@ describe('S82 from the session', () => {
     const view = await begin();
     await pass(10 * S);
     expect(left()).toBe('14:50');
+    keepAwake.mockClear();
     fireEvent.press(screen.getByRole('button', { name: 'Xem hướng dẫn: Xoay vai' }));
     expect(await screen.findByRole('header', { name: 'Xoay vai' })).toBeTruthy();
     expect(screen.getByText('Cách làm')).toBeTruthy();
+    // the session underneath still runs: the screen stays on
+    expect(keepAwake).not.toHaveBeenCalledWith(false);
     expect(header('Đang tập')).toBeNull();
     await pass(5 * S);
     fireEvent.press(screen.getByRole('button', { name: 'Quay lại buổi tập' }));
     expect(await screen.findByRole('header', { name: 'Đang tập' })).toBeTruthy();
     expect(left()).toBe('14:45');
+    expect(keepAwake).not.toHaveBeenCalledWith(false);
     expect(sessions()).toEqual([]);
+    view.unmount();
+  });
+
+  test('hardware Back (Android) on S82 closes S82, not the session: no dialog, the clock still running', async () => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    const handlers: (() => boolean | null | undefined)[] = [];
+    jest.spyOn(BackHandler, 'addEventListener').mockImplementation(((_event: string, handler: () => boolean) => {
+      handlers.push(handler);
+      return { remove: () => handlers.splice(handlers.indexOf(handler), 1) };
+    }) as never);
+    const view = await begin();
+    await pass(10 * S);
+    fireEvent.press(screen.getByRole('button', { name: 'Xem hướng dẫn: Xoay vai' }));
+    expect(await screen.findByRole('header', { name: 'Xoay vai' })).toBeTruthy();
+    await pass(5 * S);
+    // as the system does it: the handler registered last is asked first, and the first one to say "handled" ends it
+    let handled = false;
+    act(() => {
+      handled = [...handlers].reverse().some(handler => handler() === true);
+    });
+    expect(handled).toBe(true);
+    expect(await screen.findByRole('header', { name: 'Đang tập' })).toBeTruthy();
+    expect(screen.queryByText(EXIT)).toBeNull();
+    expect(left()).toBe('14:45');
+    await pass(5 * S);
+    expect(left()).toBe('14:40');
     view.unmount();
   });
 });

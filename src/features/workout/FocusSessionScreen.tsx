@@ -143,13 +143,15 @@ function Session({ detail, navigation }: { detail: WorkoutDetail; navigation: Sc
   useEffect(() => {
     if (Platform.OS !== 'android') return undefined;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      // S82 open above the session: its Back belongs to the navigator (pops S82), not to "end the session?".
+      if (!focused) return false;
       if (phase.at === 'running') askToLeave();
       else if (phase.at === 'failed') setConfirmLeave(true);
       else if (phase.at !== 'saving') leave();
       return true;
     });
     return () => subscription.remove();
-  }, [phase.at, askToLeave, leave]);
+  }, [focused, phase.at, askToLeave, leave]);
 
   const elapsed = Math.min(total, ended.current ?? elapsedSec(clock, now));
   const position = positionAt(schedule, elapsed);

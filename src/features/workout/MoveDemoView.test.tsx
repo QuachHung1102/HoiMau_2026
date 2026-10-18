@@ -115,7 +115,21 @@ test('the highlighted region is drawn tinted over its part; no other part is', (
     return count;
   };
   expect(tinted()).toBe(0);
-  // the head: its circle, hair and eye
-  expect(tinted('head')).toBe(3);
+  expect(tinted('head')).toBe(1);
   expect(tinted('belly')).toBe(1);
+});
+
+test('the head tinted: the tint lies on the face circle, under the hair and the eye, so the face stays visible', () => {
+  const move = moves['exercise-tha-long-tung-vung'];
+  const view = render(<Rig move={move} tracks={tracksOf(move)} at={0} highlight="head" />);
+  const head = view.UNSAFE_root.find(node => typeof node.type !== 'string' && node.props.id === 'head');
+  const fills = head.props.children.map((child: { props: { fill?: string } }) => child.props.fill);
+  expect(fills).toEqual(['#E8B08A', '#88D64B', '#182743', '#182743']);
+  view.unmount();
+});
+
+test('a scanned region changes with its breath label: every move with both has the same phase lengths', () => {
+  const both = Object.entries(moves).filter(([, move]) => move.highlight && move.pattern);
+  expect(both.map(([code]) => code)).toEqual(['exercise-tha-long-tung-vung']);
+  for (const [, move] of both) expect(move.highlight?.map(phase => phase.ms)).toEqual(move.pattern?.map(phase => phase.ms));
 });

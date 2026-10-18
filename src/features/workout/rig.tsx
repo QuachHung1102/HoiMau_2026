@@ -92,6 +92,11 @@ export function matrixAt(track: Track, progress: number): Matrix {
 const ELEMENTS: Record<string, ComponentType<Record<string, unknown>>> = { g: G, rect: Rect, line: Line, circle: Circle, ellipse: Ellipse, path: Path } as never;
 // The playground's highlight colour (a drop-shadow there; a tinted copy of the part here).
 const HIGHLIGHT = '#88D64B';
+const tintOf = (shape: Node) => {
+  const Shape = ELEMENTS[shape.tag];
+  const paint = { ...shape.attrs, ...(shape.attrs.fill && shape.attrs.fill !== 'none' ? { fill: HIGHLIGHT } : null), ...(shape.attrs.stroke ? { stroke: HIGHLIGHT } : null) };
+  return <Shape key="tint" {...paint} opacity={0.75} />;
+};
 
 type RigProps = {
   move: Move;
@@ -112,16 +117,10 @@ export function Rig({ move, tracks, at, groups, highlight }: RigProps) {
     if (node.id?.startsWith('prop-') && !shown(node.id)) return null;
     const Element = ELEMENTS[node.tag];
     const track = node.id ? byId.get(node.id) : undefined;
-    const tint =
-      node.id === highlight
-        ? node.children
-            .filter(child => child.tag !== 'g')
-            .map((child, i) => {
-              const Shape = ELEMENTS[child.tag];
-              const paint = { ...child.attrs, ...(child.attrs.fill && child.attrs.fill !== 'none' ? { fill: HIGHLIGHT } : null), ...(child.attrs.stroke ? { stroke: HIGHLIGHT } : null) };
-              return <Shape key={`tint${i}`} {...paint} opacity={0.75} />;
-            })
-        : [];
+    // The tint is a copy of the part's base shape (its first child), drawn right above it: what the part draws after
+    // it (the face on the head, a nested joint) stays on top and visible.
+    const [base, ...rest] = node.children;
+    const tinted = node.id === highlight && base && base.tag !== 'g';
     return (
       <Element
         key={key}
@@ -129,7 +128,7 @@ export function Rig({ move, tracks, at, groups, highlight }: RigProps) {
         {...node.attrs}
         {...(track ? { transform: matrixAt(track, at), ref: (group: Group) => groups?.set(track.id, group) } : null)}
       >
-        {[...node.children.map(draw), ...tint]}
+        {tinted ? [draw(base, 0), tintOf(base), ...rest.map((child, i) => draw(child, i + 1))] : node.children.map(draw)}
       </Element>
     );
   };
