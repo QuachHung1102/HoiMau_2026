@@ -185,6 +185,23 @@ export function makeCtx(opts: {
       }
       await admin.query('DELETE FROM users WHERE email = $1', [email]);
     },
+    async removeGuild(name) {
+      // one statement: the demo-only guard and the delete see the same members
+      const { rows } = await admin.query<{ others: number }>(
+        `WITH gone AS (
+           DELETE FROM guilds g
+            WHERE lower(g.name) = lower(normalize($1, NFC))
+              AND NOT EXISTS (SELECT 1 FROM guild_memberships m JOIN users u ON u.id = m.user_id
+                               WHERE m.guild_id = g.id AND u.email !~ $2)
+           RETURNING g.id)
+         SELECT count(*)::int AS others FROM guilds g
+          WHERE lower(g.name) = lower(normalize($1, NFC)) AND g.id NOT IN (SELECT id FROM gone)`,
+        [name, DEMO_EMAIL.source],
+      );
+      if (rows[0].others > 0) {
+        throw new Error(`removeGuild refuses "${name}": it has a member who is not a demo-<name>@hoimau.test account`);
+      }
+    },
     async grant(email, xp, coin) {
       if (!DEMO_EMAIL.test(email)) {
         throw new Error(`grant refuses ${email}: only demo-<name>@hoimau.test`);

@@ -17,7 +17,7 @@ export type CallOptions = {
 export type ScenarioCtx = {
   /** `path` is relative to /api/v1. Resolves to the parsed JSON body; any status outside 2xx throws. */
   call(method: string, path: string, opts?: CallOptions): Promise<any>;
-  /** Read-only (SELECT): only `setClock` and `reset` write through the superuser. */
+  /** Read-only (SELECT): only `setClock`, `reset` and `removeGuild` write through the superuser. */
   admin: pg.Pool;
   /** An ISO instant with a zone, or null to return to real time. */
   setClock(iso: string | null): Promise<void>;
@@ -25,6 +25,12 @@ export type ScenarioCtx = {
   runJob(name: string): Promise<unknown>;
   /** Hard-deletes the demo user with this email (and everything that cascades from it). */
   reset(email: string): Promise<void>;
+  /**
+   * Deletes the guild of this name (any case, NFC) when every member it has is a demo account,
+   * none included: what a hard-deleted demo leader leaves behind. Throws when the guild holds
+   * anyone else, and leaves it as it is.
+   */
+  removeGuild(name: string): Promise<void>;
   /**
    * XP and coins for the demo user with this email, through app._grant as the superuser (reason
    * SCENARIO): only for a state that playing days cannot reach in a demo. Say so in `describe`.
