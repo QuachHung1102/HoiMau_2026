@@ -33,6 +33,7 @@ installTodayTestEnv();
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const UNDO_GONE = 'Không hoàn tác được nữa, ghi nhận vẫn được giữ';
+const UNDO_COINS_SPENT = 'Không hoàn tác được vì xu của ghi nhận này đã được dùng. Ghi nhận vẫn được giữ.';
 const UNDO_NOT_SENT = 'Chưa hoàn tác được, ghi nhận vẫn được giữ';
 const record = () => fireEvent.press(screen.getByRole('button', { name: /^Ghi nhận nước/ }));
 const tracker = () => screen.getByRole('button', { name: /^Nước hôm nay/ });
@@ -423,6 +424,22 @@ describe('undo', () => {
     // the picture of the day was old: it is read again
     await settle();
     expect(requested('/day')).toBe(dayRequests + 1);
+    view.unmount();
+  });
+
+  test('409 UNDO_COINS_SPENT (a purchase inside the window): its own message, the record is kept, nothing to retry, one undo request', async () => {
+    // 78 coins: the tick makes 83, the purchase of a theme (80) leaves 3, and the 5 of the tick cannot be taken back
+    world.me = { ...world.me, progression: { ...(world.me.progression as NonNullable<typeof world.me.progression>), coin: 78 } };
+    const { view } = await recorded();
+    await act(() => api.write('POST', '/shop/THEME_FOREST/purchase'));
+    fireEvent.press(screen.getByRole('button', { name: 'Hoàn tác' }));
+    expect(await screen.findByText(UNDO_COINS_SPENT)).toBeTruthy();
+    expect(screen.queryByText(UNDO_GONE)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Thử lại' })).toBeNull();
+    expect(screen.getByText('4 / 8 phần')).toBeTruthy();
+    expect(screen.queryByText('Đã hoàn tác')).toBeNull();
+    await settle();
+    expect(undos()).toHaveLength(1);
     view.unmount();
   });
 
