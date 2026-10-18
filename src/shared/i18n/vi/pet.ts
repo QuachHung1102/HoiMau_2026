@@ -61,7 +61,7 @@ export const stagesSubtitle = 'Giai đoạn đã đạt sẽ không mất đi.';
 export type StageState = 'past' | 'current' | 'next';
 export const stageState: Record<StageState, string> = { past: 'Đã qua', current: 'Hiện tại', next: 'Sắp tới' };
 /** The XP earned inside a stage that completes it (R-D07), in words. */
-export const stageSize = (xp: number | null) => (xp === null ? 'Giai đoạn cuối, không cần thêm XP' : `Cần ${formatNumber(xp)} XP trong giai đoạn này`);
+export const stageSize = (xp: number | null) => (xp === null ? 'Giai đoạn cuối' : `${formatNumber(xp)} XP để lớn lên`);
 export const stagesFooter = 'Mầm lớn lên nhờ những việc bạn đã làm, không mua được bằng xu.';
 export const stageRowLabel = (name: string, state: StageState, size: string) => `${name}. ${stageState[state]}. ${size}`;
 
