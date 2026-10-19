@@ -81,7 +81,7 @@ test('round trip: create, list preview (80 characters), read back the trimmed te
   const mark = app.logs.length;
   assert.deepEqual(refused(await get(user, `/journal/${id}`)), [500, 'INTERNAL', undefined]);
   assert.deepEqual(refused(await get(other, `/journal/${otherId}`)), [500, 'INTERNAL', undefined]);
-  assert.deepEqual(refused(await get(user, '/journal')), [500, 'INTERNAL', undefined]);
+  assert.deepEqual(ok(await get(user, '/journal')), { entries: [], nextBefore: null });
   const failures = app.logs.slice(mark).filter(line => line.evt === 'journal_decrypt_failed');
   assert.deepEqual(
     failures.map(({ ts: _ts, ...rest }) => rest),
@@ -98,6 +98,49 @@ test('round trip: create, list preview (80 characters), read back the trimmed te
   tampered[20] = 255 - tampered[20];
   await db.admin.query('UPDATE journal_entries SET body_encrypted = $2 WHERE id = $1', [id, tampered]);
   assert.deepEqual(refused(await get(user, `/journal/${id}`)), [500, 'INTERNAL', undefined]);
+});
+
+test('one blob that does not open: GET /journal leaves that entry out and answers the others (paging intact), logged with its id only; GET /journal/{id} of it is 500 INTERNAL', async () => {
+  await clock('2027-03-10', '12:00');
+  const user = await newOnboardedUser(db);
+  const ids: string[] = [];
+  for (const [i, text] of ['Dòng một', 'Dòng hai', 'Dòng ba'].entries()) {
+    await clock('2027-03-10', `12:0${i}`);
+    const id = randomUUID();
+    ok(await write(user, text, id));
+    ids.push(id);
+  }
+  const [first, middle, last] = ids;
+  const blob = await blobOf(middle);
+  const broken = Buffer.from(blob);
+  broken[broken.length - 1] = 255 - broken[broken.length - 1];
+  await db.admin.query('UPDATE journal_entries SET body_encrypted = $2 WHERE id = $1', [middle, broken]);
+
+  const mark = app.logs.length;
+  const listed = ok(await get(user, '/journal'));
+  assert.deepEqual(
+    listed.entries.map((e: { id: string; preview: string }) => [e.id, e.preview]),
+    [
+      [last, 'Dòng ba'],
+      [first, 'Dòng một'],
+    ],
+  );
+  // a page that ends on the bad entry still points past it
+  const page = ok(await get(user, '/journal?limit=2'));
+  assert.deepEqual([page.entries.map((e: { id: string }) => e.id), page.nextBefore], [[last], middle]);
+  assert.deepEqual(ok(await get(user, `/journal?before=${middle}`)).entries.map((e: { id: string }) => e.id), [first]);
+  assert.deepEqual(refused(await get(user, `/journal/${middle}`)), [500, 'INTERNAL', undefined]);
+  assert.deepEqual(
+    app.logs
+      .slice(mark)
+      .filter(line => line.evt === 'journal_decrypt_failed')
+      .map(({ ts: _ts, ...rest }) => rest),
+    [
+      { level: 'error', evt: 'journal_decrypt_failed', entryId: middle },
+      { level: 'error', evt: 'journal_decrypt_failed', entryId: middle },
+      { level: 'error', evt: 'journal_decrypt_failed', entryId: middle },
+    ],
+  );
 });
 
 test('the sentinel sentence is in no log line (also of a 422, a 429 and a failed decryption), not in idempotency_keys.response, not in the stored bytes, and no index covers the body', async () => {
@@ -366,16 +409,32 @@ async function until(n: number) {
   }
   assert.equal(await waiting(), n, 'the requests did not line up behind the lock');
 }
-/** The owner holds the users row of `user` until the returned function is called. */
+/**
+ * The owner holds the users row of `user` until the returned function is called. The client goes
+ * back to the pool (max 2, and the race test uses both) whatever throws: a failed lock destroys it.
+ */
 async function holdUser(userId: string): Promise<() => Promise<void>> {
   const hold: PoolClient = await db.admin.connect();
-  await hold.query('BEGIN');
-  await hold.query('SELECT 1 FROM users WHERE id = $1 FOR NO KEY UPDATE', [userId]);
+  try {
+    await hold.query('BEGIN');
+    await hold.query('SELECT 1 FROM users WHERE id = $1 FOR NO KEY UPDATE', [userId]);
+  } catch (e) {
+    hold.release(true);
+    throw e;
+  }
   return async () => {
-    await hold.query('COMMIT');
-    hold.release();
+    try {
+      await hold.query('COMMIT');
+    } finally {
+      hold.release();
+    }
   };
 }
+
+test('a hold whose lock statement throws gives its client back to the pool', async () => {
+  await assert.rejects(holdUser('not a uuid'), /invalid input syntax for type uuid/);
+  assert.equal(db.admin.totalCount - db.admin.idleCount, 0, 'a client is still checked out');
+});
 
 test(`two entries of one fresh day at the same moment: both stored, +${JOURNAL_XP} once, one ticket decision`, async () => {
   await clock('2027-03-10', '12:00');
