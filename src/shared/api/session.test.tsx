@@ -549,7 +549,7 @@ describe('the stand-up countdown (timing only, standup:v1:<userId>)', () => {
       return removeMany(keys);
     });
     await act(() => session.signOut());
-    expect(order).toEqual(['cache', 'pending', key(USER), `celebrated:v1:${USER}`]);
+    expect(order).toEqual(['cache', 'pending', key(USER), `celebrated:v1:${USER}`, `celebratedStage:v1:${USER}`]);
     expect(await AsyncStorage.getItem(key(USER))).toBeNull();
     expect(await AsyncStorage.getItem(key('someone-else'))).toBe(kept);
   });
@@ -585,6 +585,32 @@ describe('the level last celebrated (celebrated:v1:<userId>, a level number only
     await screen.findByText('signedOut|-|ok');
     await act(() => session.signIn(TOKEN, USER));
     await AsyncStorage.setItem(key(USER), '6');
+    fetchMock.mockResolvedValue(sessionInvalid());
+    await act(() => api.get('/me').catch(() => undefined));
+    expect(await screen.findByText('signedOut|-|expired')).toBeTruthy();
+    expect(await AsyncStorage.getItem(key(USER))).toBeNull();
+  });
+});
+
+describe('the pet stage last celebrated (celebratedStage:v1:<userId>, an index only)', () => {
+  const key = (user: string) => `celebratedStage:v1:${user}`;
+
+  test('signing out removes the stage of this user and of nobody else', async () => {
+    mount();
+    await screen.findByText('signedOut|-|ok');
+    await act(() => session.signIn(TOKEN, USER));
+    await AsyncStorage.setItem(key(USER), '2');
+    await AsyncStorage.setItem(key('someone-else'), '3');
+    await act(() => session.signOut());
+    expect(await AsyncStorage.getItem(key(USER))).toBeNull();
+    expect(await AsyncStorage.getItem(key('someone-else'))).toBe('3');
+  });
+
+  test('a session the server ended removes it too', async () => {
+    mount();
+    await screen.findByText('signedOut|-|ok');
+    await act(() => session.signIn(TOKEN, USER));
+    await AsyncStorage.setItem(key(USER), '2');
     fetchMock.mockResolvedValue(sessionInvalid());
     await act(() => api.get('/me').catch(() => undefined));
     expect(await screen.findByText('signedOut|-|expired')).toBeTruthy();
