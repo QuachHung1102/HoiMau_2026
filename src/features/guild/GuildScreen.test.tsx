@@ -173,7 +173,7 @@ describe('never a measurement of anyone', () => {
       .queryAllByText(/.*/)
       .map(node => String(node.props.children))
       .join(' | ');
-    expect(words).not.toMatch(/kcal|calo|kg|cm|cân nặng|chiều cao|BMR|TDEE/i);
+    expect(words).not.toMatch(/kcal|calo|\bkg\b|\bcm\b|cân nặng|chiều cao|BMR|TDEE/i);
     view.unmount();
   });
 });

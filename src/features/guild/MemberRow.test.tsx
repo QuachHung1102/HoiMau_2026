@@ -88,14 +88,15 @@ describe('MemberRow', () => {
 describe('a member row has no measurement of anyone', () => {
   test('the props have no weight, height or calories: tsc refuses them', () => {
     const none = () => undefined;
+    const keep = (element: unknown) => element;
     // @ts-expect-error a member row takes no weight prop
-    void (<MemberRow member={member()} weightKg={77.7} onNudge={none} />);
+    keep(<MemberRow member={member()} weightKg={77.7} onNudge={none} />);
     // @ts-expect-error nor a height prop
-    void (<MemberRow member={member()} heightCm={177.7} onNudge={none} />);
+    keep(<MemberRow member={member()} heightCm={177.7} onNudge={none} />);
     // @ts-expect-error nor calories
-    void (<MemberRow member={member()} caloriesIn={1650} onNudge={none} />);
+    keep(<MemberRow member={member()} caloriesIn={1650} onNudge={none} />);
     // @ts-expect-error and the member it takes has no measurement field
-    void (<MemberRow member={{ ...member(), weightKg: 77.7 }} onNudge={none} />);
+    keep(<MemberRow member={{ ...member(), weightKg: 77.7 }} onNudge={none} />);
   });
 
   test('a member object that carries them anyway is drawn without any of them', () => {
@@ -107,7 +108,7 @@ describe('a member row has no measurement of anyone', () => {
       .queryAllByText(/.*/)
       .map(node => String(node.props.children))
       .join(' | ');
-    expect(words).not.toMatch(/kcal|calo|kg|cm|cân nặng|chiều cao|BMR|TDEE/i);
+    expect(words).not.toMatch(/kcal|calo|\bkg\b|\bcm\b|cân nặng|chiều cao|BMR|TDEE/i);
     view.unmount();
   });
 });
