@@ -9,6 +9,10 @@ import { SignUpScreen } from '../features/auth/SignUpScreen';
 import { WelcomeScreen } from '../features/auth/WelcomeScreen';
 import { StatsExplainerScreen } from '../features/dashboard/StatsExplainerScreen';
 import { TodayScreen } from '../features/dashboard/TodayScreen';
+import { GuildCreateScreen } from '../features/guild/GuildCreateScreen';
+import { GuildJoinScreen } from '../features/guild/GuildJoinScreen';
+import { GuildManageScreen } from '../features/guild/GuildManageScreen';
+import { GuildScreen } from '../features/guild/GuildScreen';
 import { ActivityStepScreen } from '../features/onboarding/ActivityStepScreen';
 import { ArchetypeStepScreen } from '../features/onboarding/ArchetypeStepScreen';
 import { ProfileStepScreen } from '../features/onboarding/ProfileStepScreen';
@@ -59,6 +63,7 @@ export const onboardingScreens: ScreenEntry[] = [
 export const tabRoots: TabRoot[] = [
   { name: 'Today', component: TodayScreen, label: tabLabel.Today, icon: 'Sun' },
   { name: 'Plan', component: PlanScreen, label: tabLabel.Plan, icon: 'Route' },
+  { name: 'Guild', component: GuildScreen, label: tabLabel.Guild, icon: 'Users' },
   { name: 'Profile', component: ProfileScreen, label: tabLabel.Profile, icon: 'User' },
 ];
 
@@ -82,6 +87,9 @@ export const detailScreens: ScreenEntry[] = [
   { name: 'Shop', component: ShopScreen },
   { name: 'ShopItem', component: ShopItemScreen },
   { name: 'Inventory', component: InventoryScreen },
+  { name: 'GuildJoin', component: GuildJoinScreen },
+  { name: 'GuildCreate', component: GuildCreateScreen },
+  { name: 'GuildManage', component: GuildManageScreen },
 ];
 
 /** Full-screen modal flow above the tabs; the tab bar cannot interrupt it. */
