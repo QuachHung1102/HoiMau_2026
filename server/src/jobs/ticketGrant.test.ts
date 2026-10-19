@@ -106,12 +106,12 @@ test('journal_create against the job for the same user and week, both orders and
       [job, entry] = [run(), write(user)];
     } else {
       const hold: PoolClient = await db.admin.connect();
-      await hold.query('BEGIN');
-      // the owner holds progression_state: the first to start takes the users row and waits here, the
-      // second waits for that users row. (Held on the users row instead, an HTTP request that already
-      // holds a key-share lock on it from its idempotency row would not queue behind the job.)
-      await hold.query('SELECT 1 FROM progression_state WHERE user_id = $1 FOR UPDATE', [user.userId]);
       try {
+        await hold.query('BEGIN');
+        // the owner holds progression_state: the first to start takes the users row and waits here, the
+        // second waits for that users row. (Held on the users row instead, an HTTP request that already
+        // holds a key-share lock on it from its idempotency row would not queue behind the job.)
+        await hold.query('SELECT 1 FROM progression_state WHERE user_id = $1 FOR UPDATE', [user.userId]);
         if (order === 'job first') {
           job = run();
           await until(1);
@@ -123,8 +123,8 @@ test('journal_create against the job for the same user and week, both orders and
         }
         await until(2);
       } finally {
-        await hold.query('COMMIT');
-        hold.release();
+        // COMMIT of a failed transaction rolls it back; the client goes back to the pool either way
+        await hold.query('COMMIT').finally(() => hold.release());
       }
     }
     const [decided, written] = await Promise.all([job, entry]);
