@@ -298,20 +298,22 @@ describe('a kind this app does not know', () => {
       inboxItem(4, 'ANOTHER_NEW' as never, null as never),
       inboxItem(5, 'GUILD_WEEKLY_RESULT', { rank: 'first', coins: 'many' }),
       inboxItem(6, 'NUDGE', { senderName: 7, text: { nested: true } }),
+      inboxItem(7, 'STREAK_MILESTONE', null as never),
     ];
     seedInbox(strange);
     const view = await opened();
     expect(screen.getAllByText('Thông báo mới')).toHaveLength(2);
     expect(screen.getAllByText('Nội dung này chưa hiển thị được ở phiên bản hiện tại.')).toHaveLength(2);
     expect(screen.getAllByText('Một thành viên đã nhắc bạn')).toHaveLength(2);
+    expect(screen.getAllByText('Một cột mốc mới')).toHaveLength(1);
     expect(screen.getAllByText('Kết quả tuần của tổ đội')).toHaveLength(2);
     expect(screen.queryByText(/Hạng/)).toBeNull();
-    expect(dots()).toHaveLength(6);
+    expect(dots()).toHaveLength(7);
     fireEvent.press(screen.getAllByRole('button', { name: /^Thông báo mới/ })[0]);
     await landed();
     expect(writesOf(READ).map(request => request.body)).toEqual([{ ids: [strange[0].id] }]);
     expect(linked()).toEqual([]);
-    expect(dots()).toHaveLength(5);
+    expect(dots()).toHaveLength(6);
     expect(screen.getByRole('header', { name: 'Hộp thư' })).toBeTruthy();
     view.unmount();
   });
