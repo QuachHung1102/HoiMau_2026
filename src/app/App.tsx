@@ -24,18 +24,18 @@ function App() {
             {/* Slot: a provider that must sit above every navigator wraps <AppNavigation /> right here.
                 OnboardingProvider keeps what was typed while Back moves between the onboarding steps. */}
             <MeTheme>
-            <OnboardingProvider>
-              <View style={styles.fill}>
-                {/* Offline / waiting-to-send (S38): its own row above the app, so it never covers a screen or the
-                    snackbar. It also runs the pending queue; mounted exactly once. */}
-                <PendingBanner />
-                {/* The overlays S65 / S66 are not routes: the host lives inside the container, above the navigators. */}
-                <AppNavigation>
-                  <CelebrationHost />
-                </AppNavigation>
-              </View>
-              <RejectedNotice />
-            </OnboardingProvider>
+              <OnboardingProvider>
+                <View style={styles.fill}>
+                  {/* Offline / waiting-to-send (S38): its own row above the app, so it never covers a screen or the
+                      snackbar. It also runs the pending queue; mounted exactly once. */}
+                  <PendingBanner />
+                  {/* The overlays S65 / S66 are not routes: the host lives inside the container, above the navigators. */}
+                  <AppNavigation>
+                    <CelebrationHost />
+                  </AppNavigation>
+                </View>
+                <RejectedNotice />
+              </OnboardingProvider>
             </MeTheme>
           </SessionProvider>
         </QueryClientProvider>
