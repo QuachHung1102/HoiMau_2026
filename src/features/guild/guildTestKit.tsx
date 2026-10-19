@@ -100,6 +100,15 @@ export async function openCreate(options: Parameters<typeof openToday>[0] = {}) 
   return view;
 }
 
+/** The guild tab, then "Xem bảng xếp hạng": S28 (S73 for a guild that is not on the board). */
+export async function openLeaderboard(options: Parameters<typeof openToday>[0] = {}) {
+  const view = await openGuild(options);
+  fireEvent.press(screen.getByRole('button', { name: vi.seeLeaderboard }));
+  await header(vi.boardTitle);
+  await landed();
+  return view;
+}
+
 /** The writes of one route, in order. */
 export const writesOf = (path: string) => writes().filter(request => request.path === path);
 /** Whether this text is anywhere in what the screen has drawn. */

@@ -1,6 +1,6 @@
 // The guild: the tab (S25 empty, S27 members, S76 quiet), joining (S26), creating (S42) and managing it (S54) (Task 42).
 import type { NudgeBlockReason } from '../../../../domain/contract/social.ts';
-import { GUILD_MAX_MEMBERS } from '../../../../domain/guild.ts';
+import { GUILD_MAX_MEMBERS, GUILD_MIN_ACTIVE } from '../../../../domain/guild.ts';
 import { LIMITS } from '../../../../domain/validation.ts';
 
 export const dot = ' · ';
@@ -110,3 +110,61 @@ export const notInGuild = 'Bạn không còn trong tổ đội này.';
 export const noGuildTitle = 'Bạn chưa có tổ đội';
 export const noGuildBody = 'Tạo một nhóm hoặc tham gia bằng mã mời từ bạn bè.';
 export const backToGuild = 'Về tab Tổ đội';
+
+// S28 and S73: the weekly ranking (Task 43)
+export const boardTitle = 'Bảng xếp hạng';
+export const boardSubtitle = 'Theo mức hoàn thành, không theo số đo.';
+export const weekChoice = 'Chọn tuần';
+export const weekCurrent = 'Tuần này';
+export const weekPrevious = 'Tuần trước';
+export const boardExplainTitle = 'Cùng đều đặn hơn';
+export const boardExplain = 'Điểm phản ánh tỉ lệ hoàn thành của nhóm, không phải nhóm nào đông hơn.';
+export const boardLine = (percent: number, active: number) => `${percent}% · ${active} bạn hoạt động`;
+export const yourGuild = 'Tổ đội của bạn';
+export const notRanked = { current: 'Chưa xếp hạng tuần này', previous: 'Chưa xếp hạng tuần trước' } as const;
+export const boardRowLabel = (rank: number | null, name: string, line: string) => [rank === null ? undefined : `Hạng ${rank}`, name, line].filter(Boolean).join('. ');
+export const updatedFooter = (time: string) => `Cập nhật lúc ${time} · kết quả tuần chốt vào sáng thứ Hai`;
+export const settledFooter = 'Kết quả đã chốt';
+export const boardLoadFailed = 'Chưa tải được bảng xếp hạng. Bạn thử lại nhé.';
+export const unrankedTitle = 'Chưa lên bảng tuần này';
+export const unrankedBody = (active: number) => `Cần ít nhất ${GUILD_MIN_ACTIVE} thành viên hoạt động trong tuần để lên bảng. Tuần này: ${active} thành viên hoạt động.`;
+export const inviteMore = 'Mời thêm bạn';
+export const noGuildBoardTitle = 'Bạn chưa có tổ đội';
+export const noGuildBoardBody = 'Vào tab Tổ đội để tạo nhóm hoặc tham gia bằng mã mời, rồi nhóm của bạn sẽ có mặt trên bảng.';
+export const toGuildTab = 'Đến tab Tổ đội';
+export const emptyBoardTitle = { current: 'Chưa có tổ đội nào lên bảng tuần này', previous: 'Chưa có kết quả tuần trước' } as const;
+export const emptyBoardBody = { current: 'Khi có nhóm đủ thành viên hoạt động, bảng sẽ hiện ở đây.', previous: 'Kết quả được chốt vào sáng thứ Hai. Bạn quay lại sau một chút nhé.' } as const;
+
+// S29 and S74: a nudge (Task 43)
+export const nudgeDailyLimit = 3;
+export const nudgeTitle = 'Gửi một lời nhắc';
+export const nudgeSubtitle = (name: string) => `Một lời mời nhẹ nhàng cho ${name}.`;
+export const templatesLabel = 'Lời nhắc có sẵn';
+export const templateKind = 'Mẫu lời nhắc';
+export const templatesFailed = 'Chưa tải được các lời nhắc. Bạn thử lại nhé.';
+export const templateGone = 'Lời nhắc này không còn nữa. Bạn chọn một lời nhắc khác nhé.';
+export const nudgeRules = (name: string) => `Chỉ gửi khi ${name} cho phép, trong giờ nhận nhắc và còn lượt gửi.`;
+export const pickTemplate = 'Chọn một lời nhắc để gửi';
+export const nudgeSend = (name: string) => `Gửi cho ${name}`;
+export const nudgeSent = 'Đã gửi lời nhắc';
+export const nudgeLeft = (left: number) => (left > 0 ? `Hôm nay bạn còn ${left} lượt nhắc.` : 'Hôm nay bạn đã gửi đủ lượt nhắc.');
+export const nudgeLater = 'Để lúc khác';
+export const nudgeClose = 'Đóng';
+export const nudgeBlockedTitle = 'Chưa gửi được lúc này';
+/** The calm reason a nudge is not sent, in the words of S74; a code that is none of the five rules is the generic line. */
+export function nudgeBlocked(code: string, name: string) {
+  switch (code) {
+    case 'NUDGE_RECEIVER_MUTED':
+      return 'Thành viên này đã tắt nhắc nhở';
+    case 'NUDGE_RECEIVER_LIMIT':
+      return `${name} đã nhận một lời nhắc hôm nay`;
+    case 'NUDGE_SENDER_LIMIT':
+      return `Bạn đã gửi đủ ${nudgeDailyLimit} lời nhắc hôm nay`;
+    case 'NUDGE_OUTSIDE_WINDOW':
+      return `Chỉ gửi được từ 12:00 đến 20:00 theo giờ của ${name}`;
+    case 'NUDGE_NOT_NEEDED':
+      return `${name} đã xong việc chính hôm nay`;
+    default:
+      return 'Chưa nhắc được lúc này';
+  }
+}

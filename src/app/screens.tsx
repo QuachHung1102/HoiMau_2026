@@ -13,6 +13,7 @@ import { GuildCreateScreen } from '../features/guild/GuildCreateScreen';
 import { GuildJoinScreen } from '../features/guild/GuildJoinScreen';
 import { GuildManageScreen } from '../features/guild/GuildManageScreen';
 import { GuildScreen } from '../features/guild/GuildScreen';
+import { LeaderboardScreen } from '../features/guild/LeaderboardScreen';
 import { ActivityStepScreen } from '../features/onboarding/ActivityStepScreen';
 import { ArchetypeStepScreen } from '../features/onboarding/ArchetypeStepScreen';
 import { ProfileStepScreen } from '../features/onboarding/ProfileStepScreen';
@@ -90,6 +91,7 @@ export const detailScreens: ScreenEntry[] = [
   { name: 'GuildJoin', component: GuildJoinScreen },
   { name: 'GuildCreate', component: GuildCreateScreen },
   { name: 'GuildManage', component: GuildManageScreen },
+  { name: 'Leaderboard', component: LeaderboardScreen },
 ];
 
 /** Full-screen modal flow above the tabs; the tab bar cannot interrupt it. */
