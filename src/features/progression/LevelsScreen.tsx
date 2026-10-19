@@ -15,6 +15,7 @@ import { levelTitleText } from '../../shared/i18n/vi/today';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { radius, spacing } from '../../shared/theme/tokens';
 import { AppText } from '../../shared/ui/AppText';
+import { useNumberRoll } from '../../shared/ui/Badges';
 import { Card, ListRow } from '../../shared/ui/Card';
 import { Icon, type IconName } from '../../shared/ui/Icon';
 import { ProgressBar } from '../../shared/ui/LevelStrip';
@@ -74,6 +75,8 @@ export function LevelsScreen({ navigation }: ScreenProps<'Levels'>) {
   const perks = usePerks().data?.perks;
   const [open, setOpen] = useState<PerkCode | null>(null);
   const progression = query.data;
+  // motion: number-roll (the points count to the server's new number; at once under reduced motion)
+  const points = useNumberRoll(progression?.perkPointsAvailable ?? 0);
   const header = { title: vi.levelsTitle, subtitle: vi.levelsSubtitle, onBack: navigation.canGoBack() ? navigation.goBack : undefined };
   if (!progression) {
     const code = query.error instanceof ApiError ? query.error.code : '';
@@ -101,7 +104,7 @@ export function LevelsScreen({ navigation }: ScreenProps<'Levels'>) {
             track="white"
           />
           <AppText variant="caption" weight="semibold" color="primary">
-            {vi.perkPoints(progression.perkPointsAvailable)}
+            {vi.perkPoints(points)}
           </AppText>
         </Card>
       </View>

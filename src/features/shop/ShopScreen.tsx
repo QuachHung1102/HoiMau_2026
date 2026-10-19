@@ -9,7 +9,7 @@ import { failureText } from '../../shared/i18n/vi/sync';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { radius } from '../../shared/theme/tokens';
 import { AppText } from '../../shared/ui/AppText';
-import { LockChip, OwnedChip } from '../../shared/ui/Badges';
+import { LockChip, OwnedChip, useNumberRoll } from '../../shared/ui/Badges';
 import { Button } from '../../shared/ui/Button';
 import { Card } from '../../shared/ui/Card';
 import { Icon, type IconName } from '../../shared/ui/Icon';
@@ -62,6 +62,8 @@ export function ShopScreen({ navigation }: ScreenProps<'Shop'>) {
   const query = useShop();
   const [kind, setKind] = useState<vi.Kind>('THEME');
   const shop = query.data;
+  // motion: number-roll (the balance counts to the server's new number; at once under reduced motion)
+  const coin = useNumberRoll(shop?.coin ?? 0);
   const header = { title: vi.shopTitle, subtitle: vi.shopSubtitle, onBack: navigation.canGoBack() ? navigation.goBack : undefined };
   if (!shop) {
     return (
@@ -78,7 +80,7 @@ export function ShopScreen({ navigation }: ScreenProps<'Shop'>) {
           <Icon name="Coins" size={28} />
           <View style={styles.name}>
             <AppText weight="semibold">{vi.coinCardTitle}</AppText>
-            <AppText variant="caption">{vi.coinCardLine(shop.coin)}</AppText>
+            <AppText variant="caption">{vi.coinCardLine(coin)}</AppText>
           </View>
         </View>
       </Card>

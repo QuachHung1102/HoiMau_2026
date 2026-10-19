@@ -61,7 +61,7 @@ export function PetScreen({ navigation }: ScreenProps<'Pet'>) {
       {/* motion: progress-fill (ProgressBar) */}
       <ProgressBar value={pet.growthPercent} max={100} label={growthText(pet)} />
       <View style={[styles.stage, { backgroundColor: palette.soft }]}>
-        {/* decorative: the mood line under it says the same; mam-idle (mam-tired when TIRED) lives in Mam */}
+        {/* decorative: the mood line under it says the same. motion: mam-idle, mam-tired (both live in Mam) */}
         <Mam stage={pet.stage} mood={pet.mood} skin={mamSkinOf(pet.skinCode)} size={176} animation="idle" decorative active={focused} />
       </View>
       <AppText variant="headline" accessibilityRole="header">

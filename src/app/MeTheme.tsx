@@ -11,5 +11,6 @@ import type { ThemeCode } from '../shared/theme/tokens';
  */
 export function MeTheme({ fallback = 'default', children }: { fallback?: ThemeCode; children: ReactNode }) {
   const code = useMe().data?.appearance?.themeCode;
+  // motion: theme-apply (static: the palette changes at once, when the server's appearance does)
   return <ThemeProvider theme={code === undefined ? fallback : themeCodeOf(code)}>{children}</ThemeProvider>;
 }

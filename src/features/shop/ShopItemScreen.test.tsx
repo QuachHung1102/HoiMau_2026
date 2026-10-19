@@ -198,6 +198,19 @@ describe('S72: the purchase', () => {
   });
 });
 
+describe('with motion on (purchase-unlock, number-roll of the catalog)', () => {
+  test('the item pops once the server has confirmed, and the balance of the shop counts to the number of the server and ends on it', async () => {
+    const view = await openItem('Rừng xanh', 'THEME', { motion: 'FULL' });
+    fireEvent.press(confirm());
+    expect(await screen.findByRole('header', { name: 'Đã mở khóa' })).toBeTruthy();
+    expect(screen.getByText('Còn 170 xu')).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Về cửa hàng' }));
+    expect(await screen.findByRole('header', { name: 'Cửa hàng' })).toBeTruthy();
+    expect(await screen.findByText('170 xu · không dùng tiền thật')).toBeTruthy();
+    view.unmount();
+  });
+});
+
 describe('S71: not enough coins', () => {
   test('known before pressing: no buy button, the shortfall from the balance of the server, a way to earn more', async () => {
     setWallet(100);
