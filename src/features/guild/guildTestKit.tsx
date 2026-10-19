@@ -109,6 +109,15 @@ export async function openLeaderboard(options: Parameters<typeof openToday>[0] =
   return view;
 }
 
+/** The guild tab, then the row of a member who can be nudged: S29, with its templates read. */
+export async function openNudge(name: string, options: Parameters<typeof openToday>[0] = {}) {
+  const view = await openGuild(options);
+  fireEvent.press(screen.getByRole('button', { name: new RegExp(`^${name}\\.`) }));
+  await header(vi.nudgeTitle);
+  await landed();
+  return view;
+}
+
 /** The writes of one route, in order. */
 export const writesOf = (path: string) => writes().filter(request => request.path === path);
 /** Whether this text is anywhere in what the screen has drawn. */
