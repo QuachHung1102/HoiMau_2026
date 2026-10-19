@@ -9,7 +9,7 @@ import { cumulativeXpForLevel, levelForXp, titleKeyForLevel } from '../../../dom
 import { tabLabel } from '../../shared/i18n/vi/nav';
 import { journeyTitle, historyTitle, levelsTitle, journeyRows } from '../../shared/i18n/vi/progression';
 import { seeJourney } from '../../shared/i18n/vi/today';
-import { celebratedKey } from '../../shared/storage/celebrated';
+import { celebratedKey, celebratedStageKey } from '../../shared/storage/celebrated';
 import { openToday, settle, USER, world } from '../dashboard/todayTestKit';
 
 export { dayOf, fetchMock, installTodayTestEnv, meOf, openToday, queryClient, requested, settle, USER, world, writes } from '../dashboard/todayTestKit';
@@ -62,6 +62,9 @@ export const milestoneItem = (id: string, days: 7 | 30 | 100 = 7, coins = 50): I
 /** The level this device last celebrated, as an earlier run of the app left it. */
 export const keepCelebrated = (level: number, userId = USER) => AsyncStorage.setItem(celebratedKey(userId), JSON.stringify(level));
 export const keptCelebrated = async (userId = USER) => AsyncStorage.getItem(celebratedKey(userId));
+/** The pet stage (index in PET_STAGES) this device last celebrated. */
+export const keepStage = (stageIndex: number, userId = USER) => AsyncStorage.setItem(celebratedStageKey(userId), JSON.stringify(stageIndex));
+export const keptStage = async (userId = USER) => AsyncStorage.getItem(celebratedStageKey(userId));
 
 const header = (name: string) => screen.findByRole('header', { name });
 /** What a screen has just asked for (the profile, the day, then the history that follows the day) has landed inside act(). */
