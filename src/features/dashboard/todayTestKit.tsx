@@ -6,19 +6,20 @@
 import { configure, screen } from '@testing-library/react-native';
 import type { ActionResult, GameEvent } from '../../../domain/contract/common.ts';
 import type { Inventory, Meal, MealPlanState, PurchaseResult, Shop, ShopItem, SwapCandidates } from '../../../domain/contract/content.ts';
-import type { DayDetail, DaySummary, DayState, InboxReadResult, Me, PerkCode, Perks, QuestState, Settings } from '../../../domain/contract/core.ts';
-import type { GuildRole, GuildState, NudgeBlockReason } from '../../../domain/contract/social.ts';
+import type { DayDetail, DaySummary, DayState, Inbox, InboxItem, InboxReadResult, Me, PerkCode, Perks, QuestState, Settings } from '../../../domain/contract/core.ts';
+import type { GuildRole, GuildState, Leaderboard, NudgeBlockReason, NudgeResult, NudgeTemplates } from '../../../domain/contract/social.ts';
 import { PERKS } from '../../../domain/economy.ts';
 import { calorieWindow } from '../../../domain/energy.ts';
 import { GUILD_INACTIVE_DAYS, GUILD_MAX_MEMBERS } from '../../../domain/guild.ts';
 import { findBannedTerms } from '../../../domain/language.ts';
-import { addDays, daysBetween } from '../../../domain/logicalDate.ts';
+import { addDays, daysBetween, weekStartOf } from '../../../domain/logicalDate.ts';
 import { rankMeals, slotTarget } from '../../../domain/mealPlan.ts';
 import { cumulativeXpForLevel, levelForXp, perkPointsEarned, titleKeyForLevel, xpRequiredForLevel } from '../../../domain/progression.ts';
 import { mapStats } from '../../../domain/stats.ts';
 import { INGREDIENT_TAGS, type IngredientTag, type MealSlot } from '../../../domain/types.ts';
 import { isDisplayName, LIMITS, stripUnseen } from '../../../domain/validation.ts';
 import { tabLabel } from '../../shared/i18n/vi/nav';
+import { NUDGE_TEMPLATES } from '../../../server/content/nudgeTemplates.ts';
 import { SHOP_ITEMS } from '../../../server/content/shopItems.ts';
 import fixture from '../nutrition/mealFixture.json';
 import { clearCelebrations } from '../progression/celebrations';
@@ -152,6 +153,8 @@ export const world = {} as {
   shop: ReturnType<typeof freshShop>;
   /** Every guild the server knows (the caller's own, when the caller is a member of one, among them) and the nudges the caller has sent today. */
   guild: ReturnType<typeof freshGuild>;
+  /** The caller's notifications (`GET /inbox`), in any order; `seedInbox` keeps the day's unread count in step with them. */
+  inbox: InboxItem[];
   answer?: (request: string, init: Init) => unknown;
 };
 
@@ -347,6 +350,25 @@ export function serverAnswer(request: string, init: Init): unknown {
     onboarded();
     return keyed(request, init, (_key, body) => transferGuild(body));
   });
+  if (request === 'GET /guilds/nudge-templates') return guard(() => {
+    onboarded();
+    return respond(200, { templates: [...NUDGE_TEMPLATES].sort((a, b) => (a.code < b.code ? -1 : 1)) } satisfies NudgeTemplates);
+  });
+  if (request === 'POST /guilds/nudge') return guard(() => {
+    limitNudges();
+    onboarded();
+    return keyed(request, init, (_key, body) => sendNudge(body));
+  });
+  const [, boardQuery] = /^GET \/leaderboard(?:\?(.*))?$/.exec(request) ?? [];
+  if (request.startsWith('GET /leaderboard')) return guard(() => {
+    onboarded();
+    return leaderboard(new URLSearchParams(boardQuery));
+  });
+  const [, inboxQuery] = /^GET \/inbox(?:\?(.*))?$/.exec(request) ?? [];
+  if (request.startsWith('GET /inbox')) return guard(() => {
+    onboarded();
+    return inboxPage(new URLSearchParams(inboxQuery));
+  });
   if (request === 'POST /perks/unlock') return guard(() => {
     onboarded();
     return keyed(request, init, (_key, body) => unlockPerk(body));
@@ -394,13 +416,20 @@ function history(route: string, query: URLSearchParams) {
   const date = dateOf(route.slice('/day/history/'.length), 'date');
   return respond(200, { summary: summaryOf(date), actions: world.history[date]?.actions ?? [] } satisfies DayDetail);
 }
-/** `POST /inbox/read`: `ids` absent = every unread item; else UUIDs. The unread count is the day's, less what was read. */
+/**
+ * `POST /inbox/read`: `ids` absent = every unread item; else UUIDs (an id that is not the caller's, or already read, changes
+ * nothing). The answer is the unread count: of `world.inbox` when it holds notifications, else the day's, less what was read.
+ */
 function inboxRead(_key: string, body: Record<string, unknown>) {
   const { ids } = body;
   if (ids !== undefined && (!Array.isArray(ids) || !ids.every(id => typeof id === 'string' && UUID.test(id)))) stop(422, 'VALIDATION_FAILED', [{ field: 'ids', rule: 'format' }]);
-  const read = world.day.celebrations.filter(item => ids === undefined || (ids as string[]).includes(item.id));
-  world.day = { ...world.day, celebrations: world.day.celebrations.filter(item => !read.includes(item)), unreadCount: Math.max(0, world.day.unreadCount - read.length) };
-  return respond(200, { unreadCount: world.day.unreadCount } satisfies InboxReadResult);
+  const named = (id: string) => ids === undefined || (ids as string[]).includes(id);
+  const read = world.day.celebrations.filter(item => named(item.id));
+  const stamp = new Date().toISOString();
+  world.inbox = world.inbox.map(item => (item.readAt === null && named(item.id) ? { ...item, readAt: stamp } : item));
+  const unread = world.inbox.length > 0 ? world.inbox.filter(item => item.readAt === null).length : Math.max(0, world.day.unreadCount - read.length);
+  world.day = { ...world.day, celebrations: world.day.celebrations.filter(item => !read.includes(item)), unreadCount: unread };
+  return respond(200, { unreadCount: unread } satisfies InboxReadResult);
 }
 
 /** One tick of a DAILY daily. Refusals in the server's order: unknown, not tickable, `occurredAt`, complete. */
@@ -733,7 +762,7 @@ export type Team = { id: string; name: string; motto: string; inviteCode: string
 const IDS = '00000000-0000-4000-9000-';
 /** The guilds of the stand-in; `world.guild` is reset to this before every test. */
 export function freshGuild() {
-  return { teams: [] as Team[], nudgesSent: 0, made: 0 };
+  return { teams: [] as Team[], nudgesSent: 0, made: 0, sent: [] as { receiverId: string; templateCode: string }[], nudgeCalls: [] as number[], boards: {} as { current?: Board; previous?: Board } };
 }
 /** A member as the server would read him or her; the facts a nudge depends on are the arguments. */
 export const mateOf = (n: number, displayName: string, more: Partial<Mate> = {}): Mate => ({
@@ -869,6 +898,112 @@ function transferGuild(body: Record<string, unknown>) {
   return respond(200, guildState());
 }
 
+// ---- the weekly ranking, the nudge and the inbox (server Tasks 40, 41 and 22: routes/leaderboard.ts, routes/nudge.ts, routes/inbox.ts) ----
+// Every route is for an onboarded user (409 ONBOARDING_REQUIRED first; the nudge is counted by the rate limit before that).
+// Not modelled: the computation of a board (a test gives the standings, best first), the cache that refreshes the running week
+// every few minutes, the Retry-After header, a nudge to a member in another time zone, a notification a nudge makes for the
+// receiver (the caller's own inbox is `world.inbox`).
+export type Standing = { guildName: string; avgCompletion: number; activeMembers: number };
+/** One week's ranked guilds, best first. `unranked`: the numbers of the caller's own guild when it is not among them. */
+export type Board = { weekStart?: string; updatedAt?: string; standings: Standing[]; unranked?: { avgCompletion: number; activeMembers: number } };
+const BOARD_TOP = 50;
+/**
+ * `GET /leaderboard?week`: 422 for a week that is not current / previous (required, format). The top 50 as entries, `isMine` on the
+ * caller's guild; `mine` is filled for a guild outside the top 50, unranked (rank null) when it is not on the board, null without a
+ * guild. `previous` before the rollover stored it: no entries, mine null, final, as of now.
+ */
+function leaderboard(query: URLSearchParams) {
+  const week = query.get('week');
+  if (week !== 'current' && week !== 'previous') stop(422, 'VALIDATION_FAILED', [{ field: 'week', rule: week === null ? 'required' : 'format' }]);
+  const monday = weekStartOf(world.day.logicalDate);
+  const board = world.guild.boards[week];
+  if (week === 'previous' && !board) return respond(200, { weekStart: addDays(monday, -7), final: true, updatedAt: new Date().toISOString(), entries: [], mine: null } satisfies Leaderboard);
+  const { standings = [], unranked, weekStart = week === 'current' ? monday : addDays(monday, -7), updatedAt = new Date().toISOString() } = board ?? {};
+  const own = myTeam();
+  const at = own ? standings.findIndex(standing => standing.guildName === own.name) : -1;
+  const mine: Leaderboard['mine'] = !own
+    ? null
+    : at >= 0
+      ? { ranked: true, rank: at + 1, avgCompletion: standings[at].avgCompletion, activeMembers: standings[at].activeMembers }
+      : { ranked: false, rank: null, avgCompletion: unranked?.avgCompletion ?? 0, activeMembers: unranked?.activeMembers ?? 0 };
+  const entries = standings.slice(0, BOARD_TOP).map((standing, n) => ({ rank: n + 1, ...standing, isMine: n === at }));
+  return respond(200, { weekStart, final: week === 'previous', updatedAt, entries, mine } satisfies Leaderboard);
+}
+
+/** AR-21: the 11th `POST /guilds/nudge` of one account within a minute is 429 RATE_LIMITED; refused requests count too. */
+function limitNudges() {
+  const now = Date.now();
+  const calls = (world.guild.nudgeCalls = world.guild.nudgeCalls.filter(at => at > now - 60_000));
+  if (calls.length >= 10) stop(429, 'RATE_LIMITED');
+  calls.push(now);
+}
+/**
+ * `POST /guilds/nudge`: the body (422, every wrong field named: receiverId then templateCode), then nudge_send: NUDGE_TEMPLATE_UNKNOWN
+ * (422), NOT_IN_GUILD (409), NUDGE_NOT_SAME_GUILD (403: the caller or a stranger), then the reasons of app._nudge_block_reason (409).
+ */
+function sendNudge(body: Record<string, unknown>) {
+  const { receiverId, templateCode } = body;
+  const fields: { field: string; rule: string }[] = [];
+  const receiver = typeof receiverId === 'string' && UUID.test(receiverId) ? receiverId.toLowerCase() : null;
+  if (receiver === null) fields.push({ field: 'receiverId', rule: receiverId === undefined ? 'required' : 'format' });
+  if (typeof templateCode !== 'string') fields.push({ field: 'templateCode', rule: templateCode === undefined ? 'required' : 'format' });
+  if (fields.length > 0) stop(422, 'VALIDATION_FAILED', fields);
+  if (!NUDGE_TEMPLATES.some(template => template.code === templateCode)) stop(422, 'NUDGE_TEMPLATE_UNKNOWN');
+  const team = myTeam();
+  if (!team) stop(409, 'NOT_IN_GUILD');
+  const mate = team.members.find(candidate => candidate.userId === receiver);
+  if (!mate || mate.userId === USER) stop(403, 'NUDGE_NOT_SAME_GUILD');
+  const reason = blockReason(mate);
+  if (reason) stop(409, reason);
+  mate.nudgedToday = true;
+  world.guild.nudgesSent += 1;
+  world.guild.sent.push({ receiverId: mate.userId, templateCode: templateCode as string });
+  return respond(200, { sentAt: new Date().toISOString(), senderRemainingToday: 3 - world.guild.nudgesSent } satisfies NudgeResult);
+}
+
+/** An item of the inbox, `n` minutes ago (the id and the time are made from `n`, so that two items never share either). */
+export function inboxItem(n: number, kind: InboxItem['kind'], payload: object, more: { minutesAgo?: number; read?: boolean } = {}): InboxItem {
+  const at = new Date(Date.UTC(2026, 9, 14, 12, 0, 0) - (more.minutesAgo ?? n) * 60_000).toISOString();
+  return { id: `${IDS}7${String(n).padStart(11, '0')}`, kind, payload, createdAt: at, readAt: more.read ? at : null } as InboxItem;
+}
+/** Puts these notifications on the server; the day's unread count is theirs, as `GET /day` has it. (Celebrations are not modelled here.) */
+export function seedInbox(items: InboxItem[]) {
+  world.inbox = items;
+  world.day = { ...world.day, unreadCount: items.filter(item => item.readAt === null).length };
+}
+const INBOX_DEFAULT = 20;
+const INBOX_MAX = 50;
+/** An instant the way `before` is read: seconds to the microsecond, an offset or Z, a date that exists. Null when it is none. */
+function instantAt(value: string) {
+  const [, year, month, day, , fraction = ''] = INSTANT.exec(value) ?? [];
+  const at = Date.parse(value);
+  if (!year || Number.isNaN(at) || new Date(Date.UTC(+year, +month - 1, +day)).getUTCDate() !== +day) return null;
+  return { ms: at, micros: Number(fraction.slice(4, 7).padEnd(3, '0')) };
+}
+/**
+ * `GET /inbox?limit&before`: newest first; `limit` 1..50 (default 20; 422 format, min, max), then `before` an instant that exists
+ * (422 format); `nextBefore` is the creation time of the last item of the page to the microsecond, null on the last page.
+ * `unreadCount` counts every unread item, not only the page.
+ */
+function inboxPage(query: URLSearchParams) {
+  const asked = query.get('limit');
+  let limit = INBOX_DEFAULT;
+  if (asked !== null) {
+    if (!/^[0-9]+$/.test(asked)) stop(422, 'VALIDATION_FAILED', [{ field: 'limit', rule: 'format' }]);
+    limit = Number(asked);
+    if (limit < 1) stop(422, 'VALIDATION_FAILED', [{ field: 'limit', rule: 'min' }]);
+    if (limit > INBOX_MAX) stop(422, 'VALIDATION_FAILED', [{ field: 'limit', rule: 'max' }]);
+  }
+  const text = query.get('before');
+  const before = text === null ? null : instantAt(text);
+  if (text !== null && before === null) stop(422, 'VALIDATION_FAILED', [{ field: 'before', rule: 'format' }]);
+  const newestFirst = [...world.inbox].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  const older = before ? newestFirst.filter(item => Date.parse(item.createdAt) < before.ms || (Date.parse(item.createdAt) === before.ms && before.micros > 0)) : newestFirst;
+  const items = older.slice(0, limit);
+  const nextBefore = older.length > limit ? `${items[items.length - 1].createdAt.slice(0, 23)}000Z` : null;
+  return respond(200, { items, unreadCount: world.inbox.filter(item => item.readAt === null).length, nextBefore } satisfies Inbox);
+}
+
 /** Keeps every `request` open until `release`; then the given response, or the server's own answer, comes back. */
 export function hold(request: string) {
   let open!: (answer: unknown) => void;
@@ -902,7 +1037,7 @@ export function installTodayTestEnv() {
   beforeEach(() => {
     replies.clear();
     ledger.clear();
-    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, hour: 19, closedDate: undefined, skew: 0, highWater: undefined, minutes: { resistance: 60, cardio: 45 }, history: {}, plan: freshPlan(), shop: freshShop(), guild: freshGuild(), answer: undefined });
+    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, hour: 19, closedDate: undefined, skew: 0, highWater: undefined, minutes: { resistance: 60, cardio: 45 }, history: {}, plan: freshPlan(), shop: freshShop(), guild: freshGuild(), inbox: [], answer: undefined });
     fetchMock.mockImplementation(async (url, init) => {
       const request = `${init.method} ${url.replace(BASE, '')}`;
       const taken = await world.answer?.(request, init);

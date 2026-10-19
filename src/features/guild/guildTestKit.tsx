@@ -10,8 +10,8 @@ import { mateOf, openToday, settle, USER, world, writes, type Mate, type Team } 
 
 export { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 export { openToday } from '../dashboard/todayTestKit';
-export { fetchMock, hold, installTodayTestEnv, mateOf, queryClient, refuse, requested, respond, serverAnswer, settle, USER, world, writes } from '../dashboard/todayTestKit';
-export type { Mate, Team } from '../dashboard/todayTestKit';
+export { fetchMock, hold, inboxItem, installTodayTestEnv, mateOf, queryClient, refuse, requested, respond, seedInbox, serverAnswer, settle, USER, world, writes } from '../dashboard/todayTestKit';
+export type { Board, Mate, Standing, Team } from '../dashboard/todayTestKit';
 
 export const CODE = 'NHJPM2K9';
 export const NAME = words.guildName;
