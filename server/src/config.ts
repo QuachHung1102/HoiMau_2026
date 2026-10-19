@@ -8,6 +8,9 @@ export type Config = {
 
 type Env = Record<string, string | undefined>;
 
+/** The journal keys anyone with the source has: scripts/dev.ts and test/http.ts. */
+const REPOSITORY_KEYS = [Buffer.alloc(32, 'hoi-mau-dev'), Buffer.alloc(32, 1)];
+
 /**
  * Reads the environment of the server process and fails fast. A message names the variable and
  * what is wrong with it, never its value: the URL holds the database password, the key is a secret.
@@ -34,6 +37,15 @@ export function loadConfig(env: Env = process.env): Config {
   ) {
     // Buffer.from skips what is not base64, so the round trip is what proves the format
     problems.push('JOURNAL_KEY is not 32 bytes in base64 (44 characters)');
+  } else if (
+    env.NODE_ENV !== 'development' &&
+    env.NODE_ENV !== 'test' &&
+    REPOSITORY_KEYS.some(known => known.equals(journalKey))
+  ) {
+    // fails closed like the outbox mailer (main.ts): production, staging, unset, any spelling
+    problems.push(
+      'JOURNAL_KEY is a key written in this repository, allowed only with NODE_ENV=development or test',
+    );
   }
 
   const port = Number(env.PORT ?? '8787');

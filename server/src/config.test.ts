@@ -122,3 +122,24 @@ test('a failure never prints the database password or the key', () => {
     );
   }
 });
+
+test('a journal key written in this repository (scripts/dev.ts, test/http.ts) starts only with NODE_ENV exactly development or test', () => {
+  for (const known of [Buffer.alloc(32, 'hoi-mau-dev'), Buffer.alloc(32, 1)]) {
+    const knownKey = known.toString('base64');
+    for (const NODE_ENV of ['development', 'test']) {
+      assert.ok(loadConfig({ DATABASE_URL, JOURNAL_KEY: knownKey, NODE_ENV }).journalKey.equals(known), NODE_ENV);
+    }
+    for (const NODE_ENV of ['production', 'Production', 'staging', '', undefined]) {
+      assert.throws(
+        () => loadConfig({ DATABASE_URL, JOURNAL_KEY: knownKey, NODE_ENV }),
+        (e: Error) =>
+          e.message ===
+            'Server configuration: JOURNAL_KEY is a key written in this repository, allowed only with NODE_ENV=development or test. See server/.env.example.' &&
+          !e.message.includes(knownKey),
+        String(NODE_ENV),
+      );
+    }
+  }
+  // any other key is a production key
+  assert.ok(loadConfig({ DATABASE_URL, JOURNAL_KEY, NODE_ENV: 'production' }).journalKey.equals(key));
+});
