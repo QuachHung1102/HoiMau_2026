@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react-native';
-import { fetchMock, FOREST, hold, installTodayTestEnv, landed, openLevels, refuse, setLevel, settle, world, writesOf } from './shopTestKit';
+import { act, fetchMock, FOREST, hold, installTodayTestEnv, landed, openLevels, refuse, queryClient, setLevel, settle, world, writesOf } from './shopTestKit';
 
 installTodayTestEnv();
 
@@ -92,6 +92,45 @@ describe('S46: the perk sheet', () => {
     await landed();
     expect(screen.getByText('2 điểm tiện ích')).toBeTruthy();
     expect(row('Chủ đề mới').props.accessibilityLabel).toMatch(/1 điểm$/);
+    view.unmount();
+  });
+
+  test('MEAL_SWAP_PLUS: the meal plan the app holds is read again (its swaps come from the perk)', async () => {
+    const view = await openSheet('Thêm lựa chọn đổi món');
+    act(() => queryClient().setQueryData(['mealPlan'], { swapsAllowed: 3 }));
+    expect(queryClient().getQueryState(['mealPlan'])?.isInvalidated).toBe(false);
+    fireEvent.press(unlockButton() as never);
+    await opened();
+    await landed();
+    expect(queryClient().getQueryState(['mealPlan'])?.isInvalidated).toBe(true);
+    view.unmount();
+  });
+
+  test('THEME_UNLOCK while the shop is loading: the loading state, not "every theme is owned"; once it lands, the choice', async () => {
+    setLevel(5, 340, { perkPointsAvailable: 3 });
+    const view = await openLevels();
+    const gate = hold('GET /shop');
+    open('Chủ đề mới');
+    await screen.findByRole('header', { name: 'Chủ đề mới' });
+    await landed();
+    expect(screen.getByRole('progressbar', { name: 'Đang tải' })).toBeTruthy();
+    expect(screen.queryByText('Bạn đã có mọi chủ đề đang mở. Chủ đề mới sẽ có khi bạn lên cấp.')).toBeNull();
+    gate.release();
+    expect(await screen.findByRole('radio', { name: /Rừng xanh/ })).toBeTruthy();
+    expect(screen.queryByRole('progressbar', { name: 'Đang tải' })).toBeNull();
+    view.unmount();
+  });
+
+  test('THEME_UNLOCK while the shop cannot be read (offline): the error and "Thử lại", not "every theme is owned"; the retry brings the choice', async () => {
+    setLevel(5, 340, { perkPointsAvailable: 3 });
+    const view = await openLevels();
+    world.answer = asked => (asked === 'GET /shop' ? refuse(500, 'INTERNAL') : undefined);
+    open('Chủ đề mới');
+    expect(await screen.findByText('Chưa tải được cửa hàng. Bạn thử lại nhé.')).toBeTruthy();
+    expect(screen.queryByText('Bạn đã có mọi chủ đề đang mở. Chủ đề mới sẽ có khi bạn lên cấp.')).toBeNull();
+    world.answer = undefined;
+    fireEvent.press(screen.getByRole('button', { name: 'Thử lại' }));
+    expect(await screen.findByRole('radio', { name: /Rừng xanh/ })).toBeTruthy();
     view.unmount();
   });
 

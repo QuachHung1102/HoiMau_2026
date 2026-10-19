@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { colors } from '../../shared/theme/tokens';
+import { app } from '../progression/progressionTestKit';
 import { FOREST, FOX, hold, installTodayTestEnv, landed, openInventory, primary, queryClient, refuse, settle, world, writesOf } from './shopTestKit';
 
 installTodayTestEnv();
@@ -17,7 +18,9 @@ describe('S24: the inventory', () => {
     expect(screen.getByRole('header', { name: 'Kho đồ của bạn' })).toBeTruthy();
     expect(screen.getByText('Những điều bạn đã mở khóa.')).toBeTruthy();
     for (const group of ['Chủ đề', 'Trang phục', 'Huy hiệu']) expect(screen.getByRole('header', { name: group })).toBeTruthy();
-    expect(row(/^Hồi Máu nguyên bản/).props.accessibilityState).toMatchObject({ checked: false });
+    // the one in use is the one checked, before anything is chosen
+    expect(row(/^Hồi Máu nguyên bản/).props.accessibilityState).toMatchObject({ checked: true });
+    expect(row(/^Rừng xanh/).props.accessibilityState).toMatchObject({ checked: false });
     expect(screen.getByText('Hồi Máu nguyên bản')).toBeTruthy();
     expect(screen.getByText('Rừng xanh')).toBeTruthy();
     expect(screen.getByText('Mầm nguyên bản')).toBeTruthy();
@@ -70,6 +73,27 @@ describe('S24: the inventory', () => {
     expect(writesOf(equipPath(FOREST))).toEqual([]);
     expect(primary()).toBe(colors.primary);
     second.unmount();
+  });
+
+  test('each kind is its own single-choice list: the item in use is checked at first, a choice in one kind leaves the others, and both are applied', async () => {
+    world.shop.owned = [FOREST, FOX];
+    const view = await openInventory();
+    for (const group of ['Chủ đề', 'Trang phục']) expect(screen.getByLabelText(group).props.accessibilityRole).toBe('radiogroup');
+    const checks = () => [/^Hồi Máu nguyên bản/, /^Mầm nguyên bản/, /^Rừng xanh/, /^Mũ cáo nhỏ/].map(name => row(name).props.accessibilityState.checked);
+    expect(checks()).toEqual([true, true, false, false]);
+    fireEvent.press(row(/^Rừng xanh/));
+    expect(checks()).toEqual([false, true, true, false]);
+    fireEvent.press(row(/^Mũ cáo nhỏ/));
+    expect(checks()).toEqual([false, false, true, true]);
+    fireEvent.press(apply());
+    expect(await screen.findByText('Đã áp dụng diện mạo')).toBeTruthy();
+    expect(writesOf(equipPath(FOREST))).toHaveLength(1);
+    expect(writesOf(equipPath(FOX))).toHaveLength(1);
+    await landed();
+    // what is in use is now what is checked, and nothing is left to apply
+    expect(checks()).toEqual([false, false, true, true]);
+    expect(isDisabled(apply())).toBe(true);
+    view.unmount();
   });
 
   test('equip posts the item code; the palette switches when the server\'s appearance says so, and the lists follow', async () => {
@@ -138,13 +162,14 @@ describe('S24: the inventory', () => {
     view.unmount();
   });
 
-  test('an item that is not owned (ITEM_NOT_OWNED): the words, the list read again, the palette unchanged', async () => {
+  test('an item that is not owned (ITEM_NOT_OWNED): the words and no "Thử lại" (an answer, not a lost connection), the list read again, the palette unchanged', async () => {
     world.shop.owned = [FOREST];
     const view = await openInventory();
     world.shop.owned = []; // gone from the server's side
     fireEvent.press(row(/^Rừng xanh/));
     fireEvent.press(apply());
     expect(await screen.findByText('Bạn chưa sở hữu vật phẩm này.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Thử lại' })).toBeNull();
     await landed();
     expect(screen.queryByText('Rừng xanh')).toBeNull();
     expect(primary()).toBe(colors.primary);
@@ -196,6 +221,31 @@ describe('S24: the inventory', () => {
     world.answer = undefined;
     fireEvent.press(screen.getByRole('button', { name: 'Thử lại' }));
     expect(await screen.findByText('Hồi Máu nguyên bản')).toBeTruthy();
+    view.unmount();
+  });
+});
+
+describe('the palette of the app follows me.appearance.themeCode', () => {
+  const wear = (themeCode: string) => {
+    world.me = { ...world.me, appearance: { themeCode, petSkinCode: 'SKIN_DEFAULT', badgeCode: null } };
+  };
+
+  test('a code this app has no palette for is the default palette', async () => {
+    wear(FOREST);
+    const view = await openInventory();
+    await waitFor(() => expect(primary()).toBe(colors.forestPrimary));
+    wear('THEME_FROM_A_NEWER_APP');
+    await act(() => queryClient().invalidateQueries({ queryKey: ['me'] }));
+    await waitFor(() => expect(primary()).toBe(colors.primary));
+    view.unmount();
+  });
+
+  test('signing out returns to the default palette: the next account does not start in this one', async () => {
+    wear(FOREST);
+    const view = await openInventory();
+    await waitFor(() => expect(primary()).toBe(colors.forestPrimary));
+    await act(() => app.session.signOut());
+    await waitFor(() => expect(primary()).toBe(colors.primary));
     view.unmount();
   });
 });

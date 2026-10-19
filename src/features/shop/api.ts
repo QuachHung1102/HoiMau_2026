@@ -5,7 +5,7 @@ import type { Pet, PerkCode, PerkUnlockRequest, Perks } from '../../../domain/co
 import { api, boundUserId } from '../../shared/api/client';
 import { useSession } from '../../shared/api/session';
 import { meKey, useMe } from '../auth/api';
-import { answered, failure, useAttemptKey } from '../nutrition/api';
+import { answered, failure, mealPlanKey, useAttemptKey } from '../nutrition/api';
 import { progressionKey } from '../progression/api';
 
 export const petKey = ['pet'] as const;
@@ -99,7 +99,7 @@ export function useEquip() {
   );
 }
 
-/** `POST /perks/unlock`: the answer is the perks; the points of the profile, the shop and the inventory are read again. */
+/** `POST /perks/unlock`: the answer is the perks; the points of the profile, the shop, the inventory and the meal plan (MEAL_SWAP_PLUS changes its swaps) are read again. */
 export function useUnlockPerk() {
   const queryClient = useQueryClient();
   return useServerWrite(
@@ -108,7 +108,7 @@ export function useUnlockPerk() {
       api.write<Perks>('POST', '/perks/unlock', { perkCode, ...(itemCode === undefined ? {} : { itemCode }) } satisfies PerkUnlockRequest, { idempotencyKey: key }),
     perks => {
       queryClient.setQueryData(perksKey, perks);
-      for (const queryKey of [progressionKey, meKey, shopKey, inventoryKey]) queryClient.invalidateQueries({ queryKey });
+      for (const queryKey of [progressionKey, meKey, shopKey, inventoryKey, mealPlanKey]) queryClient.invalidateQueries({ queryKey });
     },
   );
 }
