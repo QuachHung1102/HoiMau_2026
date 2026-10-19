@@ -26,13 +26,17 @@ type Created = {
 
 type Row = { id: string; created_at: Date; quote_code: string; body_encrypted: Buffer };
 
-/** The text of an entry; a blob that does not open is 500, logged with the entry id only. */
-function textOf(ctx: Ctx, row: Row): string {
+/**
+ * The text of an entry, or null for a blob that does not open (logged with the entry id only):
+ * GET /journal/{id} answers 500 for it, GET /journal leaves it out of the page (the contract's
+ * preview is a string, and one bad blob must not hide every other entry).
+ */
+function textOf(ctx: Ctx, row: Row): string | null {
   try {
     return decryptJournal(ctx.journalKey, ctx.userId as string, row.id, row.body_encrypted);
   } catch {
     ctx.log.line({ level: 'error', evt: 'journal_decrypt_failed', entryId: row.id });
-    throw new AppError('INTERNAL');
+    return null;
   }
 }
 
@@ -104,12 +108,19 @@ const routes: Route[] = [
       );
       const page = rows.slice(0, limit);
       const answer: JournalList = {
-        entries: page.map(row => ({
-          id: row.id,
-          createdAt: row.created_at.toISOString(),
-          preview: [...textOf(ctx, row)].slice(0, PREVIEW_CHARS).join(''),
-          quoteCode: row.quote_code,
-        })),
+        entries: page.flatMap(row => {
+          const text = textOf(ctx, row);
+          return text === null
+            ? []
+            : [
+                {
+                  id: row.id,
+                  createdAt: row.created_at.toISOString(),
+                  preview: [...text].slice(0, PREVIEW_CHARS).join(''),
+                  quoteCode: row.quote_code,
+                },
+              ];
+        }),
         nextBefore: rows.length > limit ? page[page.length - 1].id : null,
       };
       return { status: 200, body: answer };
@@ -134,10 +145,14 @@ const routes: Route[] = [
         throw new AppError('NOT_FOUND');
       }
       const [row] = rows;
+      const body = textOf(ctx, row);
+      if (body === null) {
+        throw new AppError('INTERNAL');
+      }
       const answer: JournalEntry = {
         id: row.id,
         createdAt: row.created_at.toISOString(),
-        body: textOf(ctx, row),
+        body,
         quote: { code: row.quote_code, text: row.text, author: row.author },
       };
       return { status: 200, body: answer };
