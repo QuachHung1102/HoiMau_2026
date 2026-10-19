@@ -15,11 +15,9 @@ import { useJoinGuild, useReadGuildAgain } from './api';
 /** The code as the person types it: capitals, no spaces. */
 const typed = (text: string) => text.replace(/\s/g, '').toUpperCase();
 
-/** Fields the answer of the server belongs to are marked at the field; the others are said above the button. */
+/** The words of the refusals said above the button; INVITE_CODE_INVALID is said at the field instead. */
 function refusalText(code: string) {
   switch (code) {
-    case 'INVITE_CODE_INVALID':
-      return vi.inviteCodeInvalid;
     case 'GUILD_FULL':
       return vi.guildFull;
     case 'ALREADY_IN_GUILD':
