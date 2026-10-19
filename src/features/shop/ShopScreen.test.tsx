@@ -32,7 +32,7 @@ describe('S23: the shop', () => {
     expect(view('Bầu trời')).toBeNull();
     expect(screen.getByText('Cấp 8')).toBeTruthy();
     expect(screen.getByText('Mở ở cấp 8')).toBeTruthy();
-    const notYet = screen.getByRole('button', { name: 'Chưa mở' });
+    const notYet = screen.getByRole('button', { name: 'Chưa mở Bầu trời' });
     expect(notYet.props.accessibilityState).toMatchObject({ disabled: true });
     expect(screen.getByText('Chủ đề giao diện · 300 xu')).toBeTruthy();
     // one "Xem", one lock, one chip: three cards, three affordances

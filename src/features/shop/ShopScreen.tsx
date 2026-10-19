@@ -46,7 +46,7 @@ function ItemCard({ item, onOpen }: { item: ShopItem; onOpen: () => void }) {
               <LockChip minLevel={item.minLevel} />
             </View>
             <AppText variant="caption">{vi.lockedAt(item.minLevel)}</AppText>
-            <Button variant="secondary" label={vi.notYet} disabled />
+            <Button variant="secondary" label={vi.notYet} accessibilityLabel={`${vi.notYet} ${item.name}`} disabled />
           </>
         ) : (
           <Button variant="secondary" label={vi.view} accessibilityLabel={`${vi.view} ${item.name}`} onPress={onOpen} />

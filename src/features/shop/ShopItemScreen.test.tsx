@@ -211,6 +211,22 @@ describe('with motion on (purchase-unlock, number-roll of the catalog)', () => {
   });
 });
 
+describe('an item the level has not opened', () => {
+  test('opened while the level lets it, then the level falls: no "Xác nhận mua", the level it opens at, a way back', async () => {
+    setLevel(8, 10);
+    setWallet(500);
+    const view = await openItem('Bầu trời');
+    expect(confirm()).toBeTruthy();
+    setLevel(5);
+    await act(() => queryClient().invalidateQueries({ queryKey: ['shop'] }));
+    expect(await screen.findByText('Vật phẩm này mở ở cấp 8. Xu của bạn chưa bị trừ.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Xác nhận mua' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Chưa mua' })).toBeTruthy();
+    expect(writesOf('/shop/THEME_SKY/purchase')).toEqual([]);
+    view.unmount();
+  });
+});
+
 describe('S71: not enough coins', () => {
   test('known before pressing: no buy button, the shortfall from the balance of the server, a way to earn more', async () => {
     setWallet(100);

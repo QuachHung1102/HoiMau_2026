@@ -33,7 +33,8 @@ export function PerkSheet({ code, onDismiss }: { code: PerkCode; onDismiss: () =
   const [openedTheme, setOpenedTheme] = useState<string | null>(null);
   const perks = perksQuery.data;
   const perk = perks?.perks.find(item => item.code === code);
-  const themes = (shopQuery.data?.items ?? []).filter(item => item.kind === 'THEME' && !item.owned);
+  const shop = shopQuery.data;
+  const themes = (shop?.items ?? []).filter(item => item.kind === 'THEME' && !item.owned);
   const chosen = themes.find(item => item.code === theme && !item.locked);
 
   const confirm = async () => {
@@ -87,7 +88,13 @@ export function PerkSheet({ code, onDismiss }: { code: PerkCode; onDismiss: () =
         ) : (
           <>
             {code === 'THEME_UNLOCK' ? (
-              themes.length === 0 ? (
+              !shop ? (
+                shopQuery.isError && !shopQuery.isFetching ? (
+                  <ErrorState message={vi.shopLoadFailed} onRetry={() => shopQuery.refetch()} />
+                ) : (
+                  <LoadingState />
+                )
+              ) : themes.length === 0 ? (
                 <AppText variant="secondary">{vi.noThemeLeft}</AppText>
               ) : (
                 <View accessibilityRole="radiogroup" accessibilityLabel={vi.pickTheme}>
