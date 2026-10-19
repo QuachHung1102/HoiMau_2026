@@ -149,9 +149,12 @@ export function NudgeScreen({ route, navigation }: ScreenProps<'Nudge'>) {
       {problem ? <InlineError message={problem.text} action={problem.again ? { label: retry, onPress: problem.again } : undefined} /> : null}
       <View>
         <Button
+          variant={sent ? 'secondary' : 'primary'}
           label={sent ? vi.nudgeSent : vi.nudgeSend(name)}
           loading={sending}
           disabled={picked === null || sent}
+          // Sent is a result, not a refusal: it keeps its full colour while it cannot be pressed again.
+          style={sent ? styles.done : undefined}
           onPress={() => picked && submit(picked)}
         />
         {sent && !reduced ? <Plane /> : null}
@@ -164,4 +167,5 @@ export function NudgeScreen({ route, navigation }: ScreenProps<'Nudge'>) {
 
 const styles = StyleSheet.create({
   plane: { position: 'absolute', right: 16, top: 12 },
+  done: { opacity: 1 },
 });

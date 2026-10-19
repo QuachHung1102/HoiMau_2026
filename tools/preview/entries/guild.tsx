@@ -7,7 +7,7 @@ import { app } from './today';
 
 // Illustrative values, as in frames S27 and S76: a guild of four, the week at 79 %. The server's `GuildState` is what the
 // screens read; nothing here holds a measurement of anyone (the type has none).
-const member = (userId: string, displayName: string, level: number, more: Partial<GuildMember> = {}): GuildMember => ({
+export const member = (userId: string, displayName: string, level: number, more: Partial<GuildMember> = {}): GuildMember => ({
   userId,
   displayName,
   level,
@@ -19,9 +19,9 @@ const member = (userId: string, displayName: string, level: number, more: Partia
   nudge: { allowed: true, reason: null },
   ...more,
 });
-const ME = '5f0c2a8e-1d37-4a55-9c1b-0c8a4d2e7b10';
+export const ME = '5f0c2a8e-1d37-4a55-9c1b-0c8a4d2e7b10';
 
-const guildOf = (more: { myRole?: 'LEADER' | 'MEMBER'; inactiveDays?: number; members?: GuildMember[] } = {}): GuildState => {
+export const guildOf = (more: { myRole?: 'LEADER' | 'MEMBER'; inactiveDays?: number; members?: GuildMember[] } = {}): GuildState => {
   const { myRole = 'MEMBER', inactiveDays = 0, members } = more;
   return {
     guild: {
@@ -42,10 +42,10 @@ const guildOf = (more: { myRole?: 'LEADER' | 'MEMBER'; inactiveDays?: number; me
     },
   };
 };
-const seen = (state: GuildState): [readonly unknown[], unknown][] => [[guildKey, state]];
+export const seen = (state: GuildState): [readonly unknown[], unknown][] => [[guildKey, state]];
 
 /** shot.mjs cannot press anything: this presses the first control `find` returns once it is on the page. */
-function PressWhen({ find }: { find: () => HTMLElement | null }) {
+export function PressWhen({ find }: { find: () => HTMLElement | null }) {
   useEffect(() => {
     const timer = setInterval(() => {
       const control = find();
@@ -57,7 +57,7 @@ function PressWhen({ find }: { find: () => HTMLElement | null }) {
   }, [find]);
   return null;
 }
-const byText = (role: string, text: string) => () => Array.from(document.querySelectorAll<HTMLElement>(`[role="${role}"]`)).find(node => node.textContent?.includes(text)) ?? null;
+export const byText = (role: string, text: string) => () => Array.from(document.querySelectorAll<HTMLElement>(`[role="${role}"]`)).find(node => node.textContent?.includes(text)) ?? null;
 
 const quiet = guildOf({
   inactiveDays: 14,
