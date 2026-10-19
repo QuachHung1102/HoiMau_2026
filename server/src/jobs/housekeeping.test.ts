@@ -65,34 +65,53 @@ async function referencing(userId: string): Promise<Record<string, number>> {
   return out;
 }
 
-test('every table holding user data cascades from users: each column naming a user is a key to users ON DELETE CASCADE, and each table of the key chain has one cascading path', async () => {
-  const { rows: columns } = await db.admin.query<{ table: string; column: string; cascades: boolean | null }>(
-    `SELECT cl.relname::text AS table, a.attname::text AS column,
-            (SELECT bool_or(k.confdeltype = 'c') FROM pg_constraint k
-              WHERE k.conrelid = cl.oid AND k.contype = 'f' AND k.confrelid = 'public.users'::regclass
-                AND k.conkey = ARRAY[a.attnum]) AS cascades
-       FROM pg_attribute a JOIN pg_class cl ON cl.oid = a.attrelid
-      WHERE cl.relnamespace = 'public'::regnamespace AND cl.relkind = 'r' AND a.attnum > 0 AND NOT a.attisdropped
-        AND a.attname IN ('user_id', 'sender_id', 'receiver_id')
-      ORDER BY 1, 2`,
+test('every table holding user data cascades from users: every key to users, whatever its column is named, is ON DELETE CASCADE; every key into a table of user data cascades but the listed exceptions; each table of the key chain has one cascading path', async () => {
+  const { rows: keys } = await db.admin.query<{ child: string; parent: string; columns: string; cascades: boolean }>(
+    `SELECT k.conrelid::regclass::text AS child, k.confrelid::regclass::text AS parent,
+            (SELECT string_agg(a.attname, ',' ORDER BY a.attnum) FROM pg_attribute a
+              WHERE a.attrelid = k.conrelid AND a.attnum = ANY (k.conkey)) AS columns,
+            k.confdeltype = 'c' AS cascades
+       FROM pg_constraint k WHERE k.contype = 'f' AND k.connamespace = 'public'::regnamespace
+      ORDER BY 1, 3`,
   );
-  assert.ok(columns.length > 10);
-  assert.ok(columns.some(c => c.column === 'sender_id') && columns.some(c => c.column === 'receiver_id'));
-  const bad = columns.filter(c => c.cascades !== true).map(c => `${c.table}.${c.column}`);
-  assert.deepEqual(bad, [], 'a column naming a user without a cascading key to users');
+  const toUsers = keys.filter(k => k.parent === 'users');
+  assert.ok(toUsers.length > 10);
+  assert.ok(toUsers.some(k => k.columns === 'sender_id') && toUsers.some(k => k.columns === 'receiver_id'));
+  assert.deepEqual(toUsers.filter(k => !k.cascades).map(k => `${k.child}.${k.columns}`), [], 'a key to users that does not cascade');
 
-  // the key chain of userDataTables: a table reached only through a key that does not cascade
-  // (RESTRICT, NO ACTION, SET NULL) would block or outlive the purge
-  const { rows: keys } = await db.admin.query<{ child: string; parent: string }>(
-    `SELECT k.conrelid::regclass::text AS child, k.confrelid::regclass::text AS parent FROM pg_constraint k
-      WHERE k.contype = 'f' AND k.confdeltype = 'c' AND k.connamespace = 'public'::regnamespace`,
-  );
-  const cascades = (table: string, seen: string[] = []): boolean =>
-    table === 'users' ||
-    keys.some(k => k.child === table && !seen.includes(k.parent) && cascades(k.parent, [...seen, table]));
+  // a key into a table of user data that does not cascade blocks or outlives the purge, unless
+  // both ends are rows of one user that the cascade from users removes in the same statement:
+  // logged_action_id is same-user by construction (nutrition_log_slot, 40-nutrition.sql)
+  const EXCEPTIONS = ['daily_meal_plans.logged_action_id'];
   const tables = (await userDataTables(db.admin)).map(t => t.name);
   assert.ok(tables.includes('nudge_events') && tables.includes('journal_entries'));
+  const into = keys.filter(k => tables.includes(k.parent) && !k.cascades).map(k => `${k.child}.${k.columns}`);
+  assert.deepEqual(into, EXCEPTIONS, 'a key into a table of user data that does not cascade');
+
+  // the key chain of userDataTables: a table reached only through a key that does not cascade
+  const cascades = (table: string, seen: string[] = []): boolean =>
+    table === 'users' ||
+    keys.some(k => k.cascades && k.child === table && !seen.includes(k.parent) && cascades(k.parent, [...seen, table]));
   assert.deepEqual(tables.filter(t => !cascades(t)), []);
+});
+
+test('every key the purge fires (its parent is not content) has an index that leads with its columns: the cascade and the NO ACTION checks never scan a whole table', async () => {
+  const { rows } = await db.admin.query<{ key: string; indexed: boolean }>(
+    `SELECT k.conrelid::regclass::text || '.' ||
+              (SELECT string_agg(a.attname, ',' ORDER BY a.attnum) FROM pg_attribute a
+                WHERE a.attrelid = k.conrelid AND a.attnum = ANY (k.conkey)) AS key,
+            EXISTS (SELECT 1 FROM pg_index i
+                     WHERE i.indrelid = k.conrelid AND i.indpred IS NULL
+                       AND (SELECT array_agg(c ORDER BY c) FROM unnest((i.indkey::int2[])[0:cardinality(k.conkey) - 1]) c)
+                         = (SELECT array_agg(c ORDER BY c) FROM unnest(k.conkey) c)) AS indexed
+       FROM pg_constraint k
+       JOIN meta.expected_tables t ON t.name = k.confrelid::regclass::text
+      WHERE k.contype = 'f' AND k.connamespace = 'public'::regnamespace AND t.class <> 'content'
+      ORDER BY 1`,
+  );
+  assert.ok(rows.some(r => r.key === 'daily_meal_plans.logged_action_id'));
+  assert.ok(rows.some(r => r.key === 'nudge_events.receiver_id'));
+  assert.deepEqual(rows.filter(r => !r.indexed).map(r => r.key), [], 'a key without an index leading with its columns');
 });
 
 test('purge: +29 days 0, +30 days every due account with everything that leads to it, a second run 0, the decoys stay, the email is free again; guilds left by any path get a leader or go', async () => {
@@ -231,6 +250,51 @@ test('auth purge: expired or revoked sessions, expired codes, throttle rows of a
   assert.deepEqual(await decoyRows(db.admin), decoysBefore);
 });
 
+test('the account purge takes at most 50 accounts per statement (the statement timeout); the job calls it until none is due', async () => {
+  const tag = randomUUID().slice(0, 8);
+  const { rows } = await db.admin.query<{ id: string }>(
+    `INSERT INTO users (email, display_name, terms_accepted_at, deleted_at, purge_after)
+     SELECT 'cap' || g || '-' || $2 || '@example.com', 'Đi', $1, $1, $1 FROM generate_series(1, 101) g RETURNING id`,
+    [NOON, tag],
+  );
+  assert.equal(await job('job_account_purge', new Date(NOON)), 50);
+  const result = await runJob('housekeeping', db.app, new Date(NOON), quiet);
+  assert.equal(result.accounts, 51);
+  const left = await db.admin.query('SELECT 1 FROM users WHERE id = ANY($1)', [rows.map(r => r.id)]);
+  assert.equal(left.rowCount, 0);
+});
+
+test('the three purges run apart: one that fails leaves the other two to run and commit; the run is recorded failed', async () => {
+  const user = await newOnboardedUser(db);
+  const key = randomUUID();
+  await db.admin.query(
+    `INSERT INTO idempotency_keys (user_id, key, request_hash, status, response, created_at)
+     VALUES ($1, $2, $3, 200, '{}', $4::timestamptz - interval '8 days')`,
+    [user.userId, key, randomBytes(32), NOON],
+  );
+  const session = randomUUID();
+  await db.admin.query(
+    "INSERT INTO sessions (id, user_id, token_hash, expires_at, revoked_at) VALUES ($2, $1, $3, $4::timestamptz + interval '1 day', $4)",
+    [user.userId, session, randomBytes(32), NOON],
+  );
+  // one frozen clock: the runs of earlier tests share ran_at and created_at with this one
+  await db.admin.query("DELETE FROM job_runs WHERE job = 'housekeeping'");
+  // the first purge fails (its function is gone for the length of the run)
+  await db.admin.query('ALTER FUNCTION job_account_purge(timestamptz) RENAME TO job_account_purge_off');
+  try {
+    await assert.rejects(runJob('housekeeping', db.app, new Date(NOON), quiet));
+  } finally {
+    await db.admin.query('ALTER FUNCTION job_account_purge_off(timestamptz) RENAME TO job_account_purge');
+  }
+  const { rows } = await db.admin.query(
+    `SELECT (SELECT count(*)::int FROM idempotency_keys WHERE key = $1) AS keys,
+            (SELECT count(*)::int FROM sessions WHERE id = $2) AS sessions,
+            (SELECT ok FROM job_runs WHERE job = 'housekeeping' ORDER BY ran_at DESC, created_at DESC LIMIT 1) AS ok`,
+    [key, session],
+  );
+  assert.deepEqual(rows[0], { keys: 0, sessions: 0, ok: false });
+});
+
 test('the job: due once a day from 04:00 Asia/Ho_Chi_Minh; a run reports its counts in job_runs', async () => {
   const four = Date.parse('2027-03-10T21:00:00.000Z'); // 2027-03-11 04:00 ICT
   assert.equal(housekeeping.due(new Date(four - 1), new Date(four - DAY_MS)), false);
@@ -238,6 +302,8 @@ test('the job: due once a day from 04:00 Asia/Ho_Chi_Minh; a run reports its cou
   assert.equal(housekeeping.due(new Date(four + 3_600_000), new Date(four)), false);
   assert.equal(housekeeping.due(new Date(four), null), true);
 
+  // one frozen clock: the runs of earlier tests share ran_at and created_at with this one
+  await db.admin.query("DELETE FROM job_runs WHERE job = 'housekeeping'");
   const result = await runJob('housekeeping', db.app, new Date(NOON), quiet);
   assert.deepEqual(Object.keys(result).sort(), ['accounts', 'authRows', 'idempotencyKeys']);
   const { rows } = await db.admin.query(

@@ -237,6 +237,37 @@ test('delete: 204, then login fails uniformly, the token is dead, the email stay
   assert.deepEqual(guild.guild.members.map((m: { userId: string }) => m.userId), [mate.userId]);
 });
 
+test('delete: the nudges of the sender leave the inboxes of the receivers at once (its display name does not outlive the deletion); a nudge another member sent stays', async () => {
+  const me = await account();
+  const mate = await account();
+  const other = await account();
+  await guildOf(mate, me, other);
+  ok(await post(me, '/guilds/nudge', { receiverId: mate.userId, templateCode: 'MOVE_TOGETHER' }));
+  ok(await post(mate, '/guilds/nudge', { receiverId: other.userId, templateCode: 'MOVE_TOGETHER' }));
+  const nudges = async (who: Account) =>
+    ok(await app.call('GET', '/inbox', { token: who.token })).items.filter((i: { kind: string }) => i.kind === 'NUDGE').length;
+  assert.deepEqual([await nudges(mate), await nudges(other)], [1, 1]);
+  assert.equal((await remove(me)).status, 204);
+  assert.deepEqual([await nudges(mate), await nudges(other)], [0, 1]);
+  const { rows } = await db.admin.query(
+    `SELECT count(*)::int AS n FROM notifications n JOIN nudge_events e ON n.dedupe_key = e.id::text
+      WHERE n.kind = 'NUDGE' AND e.sender_id = $1`,
+    [me.userId],
+  );
+  assert.equal(rows[0].n, 0);
+});
+
+test('delete: a session whose account is deleted between the session check and the salt (a concurrent delete) is 401 SESSION_INVALID, not 500', async () => {
+  const me = await account();
+  const route = (await import('./privacy.ts')).default.find(r => r.path === '/me/delete');
+  assert.ok(route?.prepare);
+  await db.admin.query('UPDATE users SET deleted_at = $2 WHERE id = $1', [me.userId, NOON]);
+  await assert.rejects(
+    route.prepare({ body: { password: PASSWORD }, pool: db.app, userId: me.userId } as never),
+    (e: { code?: string }) => e.code === 'SESSION_INVALID',
+  );
+});
+
 test('delete of a leader: with two other members the earliest-joined becomes LEADER; alone, the guild disappears', async () => {
   const leader = await account();
   const first = await account();
@@ -286,7 +317,10 @@ test('after delete no job processes the account: every row of it is unchanged, w
   try {
     const gone = await account();
     const twin = await account();
-    for (const who of [gone, twin]) {
+    // one ranked guild (four active members) holds both: the leaderboard input has a reason to name gone
+    const [third, fourth] = [await account(), await account()];
+    await guildOf(twin, gone, third, fourth);
+    for (const who of [gone, twin, third, fourth]) {
       ok(await post(who, '/day/quests/WATER_8/progress', {}));
       ok(await post(who, '/journal', { body: 'một dòng' }));
       await db.admin.query(
@@ -319,6 +353,7 @@ test('after delete no job processes the account: every row of it is unchanged, w
     const inputs = await asJob(db.app, c =>
       c.query('SELECT job_guild_week_inputs($1, $2) AS x', ['2027-03-15', '2027-03-21']),
     );
+    assert.ok(JSON.stringify(inputs.rows).includes(twin.userId), 'the input names nobody of the guild: the check proves nothing');
     assert.ok(!JSON.stringify(inputs.rows).includes(gone.userId));
   } finally {
     await setTestClock(db.admin, NOON);
