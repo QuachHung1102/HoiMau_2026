@@ -45,7 +45,8 @@ export type RootParamList = {
   Inventory: undefined;
   GuildJoin: undefined;
   GuildCreate: undefined;
-  GuildManage: undefined;
+  /** `focus: 'leave'` opens the screen scrolled to the leave card ("Tìm nhóm khác"). */
+  GuildManage: { focus?: 'leave' } | undefined;
   Leaderboard: undefined;
   Nudge: { receiverId: string; receiverName: string };
   Inbox: undefined;

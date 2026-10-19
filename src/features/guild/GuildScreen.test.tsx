@@ -1,4 +1,4 @@
-import { Share } from 'react-native';
+import { ScrollView, Share } from 'react-native';
 import { within } from '@testing-library/react-native';
 import { act, CODE, fireEvent, guildTab, installTodayTestEnv, landed, NAME, openGuild, openToday, queryClient, respond, screen, seedGuild, serverAnswer, world } from './guildTestKit';
 
@@ -218,6 +218,33 @@ describe('S76: a guild that has been quiet', () => {
     expect(await screen.findByRole('header', { name: 'Quản lý tổ đội' })).toBeTruthy();
     expect(screen.getByRole('header', { name: 'Rời tổ đội' })).toBeTruthy();
     share.mockRestore();
+    view.unmount();
+  });
+
+  test('"Tìm nhóm khác" opens S54 with focus on the leave card and S54 scrolls there, once', async () => {
+    const scrollTo = jest.mocked(ScrollView.prototype.scrollTo);
+    seedGuild({ inactiveDays: 20 });
+    const view = await openGuild();
+    fireEvent.press(screen.getByRole('button', { name: 'Tìm nhóm khác' }));
+    await screen.findByRole('header', { name: 'Quản lý tổ đội' });
+    scrollTo.mockClear();
+    fireEvent(screen.getByTestId('guild-leave'), 'layout', { nativeEvent: { layout: { x: 0, y: 640, width: 358, height: 220 } } });
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenCalledWith({ y: 640, animated: false });
+    fireEvent(screen.getByTestId('guild-leave'), 'layout', { nativeEvent: { layout: { x: 0, y: 640, width: 358, height: 220 } } });
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    view.unmount();
+  });
+
+  test('"Mời bạn & quản lý nhóm" opens S54 at the top: no scrolling', async () => {
+    const scrollTo = jest.mocked(ScrollView.prototype.scrollTo);
+    seedGuild();
+    const view = await openGuild();
+    fireEvent.press(screen.getByRole('button', { name: 'Mời bạn & quản lý nhóm' }));
+    await screen.findByRole('header', { name: 'Quản lý tổ đội' });
+    scrollTo.mockClear();
+    fireEvent(screen.getByTestId('guild-leave'), 'layout', { nativeEvent: { layout: { x: 0, y: 640, width: 358, height: 220 } } });
+    expect(scrollTo).not.toHaveBeenCalled();
     view.unmount();
   });
 

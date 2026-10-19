@@ -69,7 +69,7 @@ function QuietHint({ guild, navigation, focused }: { guild: Guild; navigation: S
       </Card>
       {shareFailed ? <InlineError message={vi.shareFailed} /> : null}
       <Button label={vi.shareCode} onPress={share} />
-      <Button variant="secondary" label={vi.findOtherGuild} onPress={() => navigation.navigate('GuildManage')} />
+      <Button variant="secondary" label={vi.findOtherGuild} onPress={() => navigation.navigate('GuildManage', { focus: 'leave' })} />
     </>
   );
 }
