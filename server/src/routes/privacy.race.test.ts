@@ -7,6 +7,8 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { after, before, test } from 'node:test';
 import type { Pool, PoolClient } from 'pg';
 import { asAnon, asJob, asUser, setTestClock } from '../../test/helpers.ts';
+import { setRole, withRole } from '../db.ts';
+import { sessionUser } from '../session.ts';
 import { newOnboardedUser, serverPool } from '../../test/http.ts';
 import { createTestDb } from '../../test/testdb.ts';
 import type { TestDb } from '../../test/testdb.ts';
@@ -265,4 +267,66 @@ test('race: the purge vs a login of the account: the login is null either way, t
     );
     assert.ok(again.rows[0].id);
   }
+});
+
+test('race: delete on device A vs a tick on device B on the day B\'s session slides, as requests run them (auth_session, then the handler): the tick holds its session row and comes to the users row while the delete waits; never a deadlock, both succeed', async () => {
+  const me = await user();
+  const [a, b] = [randomBytes(32), randomBytes(32)];
+  await db.admin.query(
+    `INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES
+       ($2, $1, $3, $5::timestamptz + interval '30 days'), ($4, $1, $6, $5::timestamptz + interval '10 days')`,
+    [me.userId, randomUUID(), a, randomUUID(), NOON, b],
+  );
+  /** One request transaction: the session as app_anon (sliding it), then the handler as the user. */
+  const request = (pool: Pool, hash: Buffer, handler: (c: PoolClient) => Promise<unknown>, pause = async () => {}) =>
+    withRole(pool, 'app_anon', null, async c => {
+      assert.equal(await sessionUser(c, hash), me.userId);
+      await pause();
+      await setRole(c, 'app_auth', me.userId);
+      return handler(c);
+    });
+  let open = () => {};
+  const gate = new Promise<void>(resolve => {
+    open = resolve;
+  });
+  let slid = () => {};
+  const atGate = new Promise<void>(resolve => {
+    slid = resolve;
+  });
+  // device B: its session row is slid (row-locked by the uncommitted UPDATE), then it waits
+  const ticking = request(second, b, c => c.query('SELECT quest_tick($1, $2, NULL)', ['WATER_8', randomUUID()]), () => {
+    slid();
+    return gate;
+  });
+  await atGate;
+  // device A: the delete runs until it waits for B's session row
+  const deleting = request(db.app, a, c =>
+    c.query<{ ok: boolean }>('SELECT account_delete($1) AS ok', [me.key]).then(r => assert.equal(r.rows[0].ok, true)),
+  );
+  try {
+    await waitForLockWaiters(1);
+  } finally {
+    open();
+  }
+  const done = (await Promise.allSettled([ticking, deleting])).map(outcome);
+  assert.deepEqual(done, ['ok', 'ok']);
+  assert.deepEqual([await deleted(me), await ticks(me)], [true, 1]);
+});
+
+test('race: the purge never waits for a guild another transaction holds: the member of that guild is skipped and purged by the next run, the others are purged now', async () => {
+  const purge = () =>
+    asJob(second, c => c.query<{ n: number }>('SELECT job_account_purge($1) AS n', [NOON])).then(r => r.rows[0].n);
+  // deleted by another path than account_delete: still a member of the guild
+  const [leader, member, free] = [await user(), await user(), await user()];
+  const g = await guild(leader, member);
+  await db.admin.query('UPDATE users SET deleted_at = $2, purge_after = $2 WHERE id = ANY($1)', [[member.userId, free.userId], NOON]);
+  const release = await hold('SELECT 1 FROM guilds WHERE id = $1 FOR UPDATE', [g.id]);
+  try {
+    assert.equal(await purge(), 1);
+  } finally {
+    await release();
+  }
+  assert.equal((await db.admin.query('SELECT 1 FROM users WHERE id = $1', [free.userId])).rowCount, 0);
+  assert.equal(await purge(), 1);
+  assert.deepEqual(await members(g.id), [`${leader.userId}:LEADER`]);
 });
