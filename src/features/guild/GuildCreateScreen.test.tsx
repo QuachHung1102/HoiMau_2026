@@ -149,6 +149,8 @@ describe('S42: making a guild', () => {
     fill('tổ khác');
     fireEvent.press(submit());
     expect(await screen.findByText('Tên này đã có tổ đội dùng rồi, bạn chọn tên khác nhé')).toBeTruthy();
+    // at the name field itself, not above the button
+    expect(screen.getByLabelText('Tên tổ đội, lỗi: Tên này đã có tổ đội dùng rồi, bạn chọn tên khác nhé')).toBeTruthy();
     expect(screen.getByRole('header', { name: 'Tạo tổ đội' })).toBeTruthy();
     expect(world.guild.teams).toHaveLength(1);
     view.unmount();
