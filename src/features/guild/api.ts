@@ -1,14 +1,14 @@
 import { Share } from 'react-native';
 import { skipToken, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import type { GuildCreateRequest, GuildJoinRequest, GuildState, TransferRequest } from '../../../domain/contract/social.ts';
+import type { GuildCreateRequest, GuildJoinRequest, GuildState, Leaderboard, NudgeRequest, NudgeResult, NudgeTemplates, TransferRequest } from '../../../domain/contract/social.ts';
 import { api } from '../../shared/api/client';
 import { useSession } from '../../shared/api/session';
 import * as vi from '../../shared/i18n/vi/guild';
 import { useServerWrite } from '../shop/api';
 
 export const guildKey = ['guild'] as const;
-// The weekly ranking (Task 43) shows the caller's own guild: a guild that was made, joined or left changes it.
-const leaderboardKey = ['leaderboard'] as const;
+// The weekly ranking shows the caller's own guild: a guild that was made, joined or left changes it.
+export const leaderboardKey = ['leaderboard'] as const;
 
 /** `GET /guilds/me`: the own guild with its members, or `{ guild: null }`. Idle while signed out. */
 export function useGuild() {
@@ -69,6 +69,30 @@ export function useTransferGuild() {
     (userId: string) => userId,
     (key, userId: string) => api.write<GuildState>('POST', '/guilds/me/transfer', { userId } satisfies TransferRequest, { idempotencyKey: key }),
     state => confirmed(queryClient, state),
+  );
+}
+
+export type BoardWeek = 'current' | 'previous';
+/** `GET /leaderboard?week`: one read per week (the key carries it), so switching weeks asks again and keeps the other week's board. */
+export function useLeaderboard(week: BoardWeek) {
+  const { status } = useSession();
+  return useQuery({ queryKey: [...leaderboardKey, week], queryFn: status === 'signedIn' ? ({ signal }) => api.get<Leaderboard>('/leaderboard', { week }, { signal }) : skipToken });
+}
+
+export const nudgeTemplatesKey = ['nudge-templates'] as const;
+/** `GET /guilds/nudge-templates`: the fixed texts, ordered by code. `enabled` false (a nudge that cannot be sent anyway) asks nothing. */
+export function useNudgeTemplates(enabled: boolean) {
+  const { status } = useSession();
+  return useQuery({ queryKey: nudgeTemplatesKey, queryFn: enabled && status === 'signedIn' ? ({ signal }) => api.get<NudgeTemplates>('/guilds/nudge-templates', undefined, { signal }) : skipToken });
+}
+
+/** `POST /guilds/nudge` (online only): the receiver's row now says "already nudged", so the guild is read again. */
+export function useSendNudge() {
+  const queryClient = useQueryClient();
+  return useServerWrite(
+    (receiverId: string, templateCode: string) => `${receiverId}:${templateCode}`,
+    (key, receiverId: string, templateCode: string) => api.write<NudgeResult>('POST', '/guilds/nudge', { receiverId, templateCode } satisfies NudgeRequest, { idempotencyKey: key }),
+    () => queryClient.invalidateQueries({ queryKey: guildKey }),
   );
 }
 
