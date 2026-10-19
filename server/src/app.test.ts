@@ -274,7 +274,23 @@ const probes: Route[] = [
       return seen(ctx);
     },
   },
+  {
+    method: 'POST',
+    path: '/probe/session-prepare',
+    auth: 'session',
+    rateLimit: { perMinute: 2 },
+    prepare: async pre => {
+      sessionPrepares.push(pre.userId);
+      return { prepareUser: pre.userId };
+    },
+    handler: async ctx => ({
+      status: 200,
+      body: { prepared: ctx.prepared, userId: ctx.userId },
+    }),
+  },
 ];
+/** pre.userId of every run of the prepare of /probe/session-prepare. */
+const sessionPrepares: (string | null)[] = [];
 
 let db: TestDb;
 let app: TestApp;
@@ -429,21 +445,10 @@ test('a route table that cannot be served as declared is refused at startup', as
       }),
     /a route without a transaction must be anon/,
   );
-  // prepare runs before the session is known: only an anon route may have one
-  for (const auth of ['session', 'user'] as const) {
-    assert.throws(
-      () =>
-        createApp({
-          ...deps,
-          routes: [route({ auth, prepare: async () => {} })],
-        }),
-      /^Error: POST \/x: prepare is for anon routes only$/,
-    );
+  // prepare on any kind of route: on one with a session it runs after the session is looked up
+  for (const auth of ['anon', 'session', 'user'] as const) {
+    createApp({ ...deps, routes: [route({ auth, prepare: async () => {} })] });
   }
-  createApp({
-    ...deps,
-    routes: [route({ auth: 'anon', prepare: async () => {} })],
-  });
   // handler and direct exclude each other; tsc says so too, a cast gets past it
   const direct = async () => ({ status: 200 });
   const anonymous = { method: 'GET', path: '/x', auth: 'anon' };
@@ -1164,6 +1169,7 @@ test('prepare runs before the transaction, with no pooled client held, and hands
       'pool',
       'query',
       'tokenHash',
+      'userId',
     ],
   });
   assert.equal(result.body.role, 'app_anon');
@@ -1178,6 +1184,40 @@ test('prepare runs before the transaction, with no pooled client held, and hands
     fields: [{ field: 'refuse', rule: 'enum' }],
   });
   assert.equal(handlerRuns, runs);
+});
+
+test('prepare on a session route: only for a live session, with its user, counted on the account before it runs', async () => {
+  const { token, userId } = await newUser(db);
+  sessionPrepares.length = 0;
+  const ok = await app.call('POST', '/probe/session-prepare', { token });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(ok.body, { prepared: { prepareUser: userId }, userId });
+  // a token that names no session: 401, and prepare never ran
+  const unknown = await app.call('POST', '/probe/session-prepare', {
+    token: 'A'.repeat(43),
+  });
+  assert.equal(unknown.status, 401);
+  assert.equal(unknown.body.error.code, 'SESSION_INVALID');
+  // a revoked session: the same
+  await db.admin.query('UPDATE sessions SET revoked_at = now() WHERE user_id = $1', [userId]);
+  const revoked = await app.call('POST', '/probe/session-prepare', { token });
+  assert.equal(revoked.status, 401);
+  assert.deepEqual(sessionPrepares, [userId]);
+
+  // the per-account limit refuses before prepare, and a request is counted once, not twice
+  const limited = await startTestApp(db, { rateLimits: true, routes: probes });
+  try {
+    const other = await newUser(db);
+    sessionPrepares.length = 0;
+    const statuses: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      statuses.push((await limited.call('POST', '/probe/session-prepare', { token: other.token })).status);
+    }
+    assert.deepEqual(statuses, [200, 200, 429]);
+    assert.deepEqual(sessionPrepares, [other.userId, other.userId]);
+  } finally {
+    await limited.close();
+  }
 });
 
 // ---------------------------------------------------------------------------------------------

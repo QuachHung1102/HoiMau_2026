@@ -83,11 +83,12 @@ export type Ctx = {
   afterCommit(run: () => Promise<void>): void;
 };
 
-/** What exists before the request transaction: no client, no user, no clock. */
-export type PreCtx = Omit<
-  Ctx,
-  'db' | 'userId' | 'now' | 'prepared' | 'afterCommit'
->;
+/**
+ * What exists before the request transaction: no client, no clock. `userId` is null on an
+ * `anon` route; before the `prepare` of any other route it is the user of the session, looked
+ * up in a transaction of its own (the request transaction looks it up again).
+ */
+export type PreCtx = Omit<Ctx, 'db' | 'now' | 'prepared' | 'afterCommit'>;
 
 export type RouteResponse = { status: number; body?: unknown };
 
@@ -104,10 +105,11 @@ type RouteBase = {
 export type Route =
   | (RouteBase & {
       /**
-       * On an `anon` route only. Runs before the request transaction is opened, while the
-       * request holds no pooled client: the place for slow work (scrypt), and the only place
-       * that may take a pooled client of its own (`withRole(pre.pool, …)`, a short transaction
-       * that is over before the request transaction starts). Throw `AppError` to refuse.
+       * Runs before the request transaction is opened, while the request holds no pooled
+       * client: the place for slow work (scrypt), and the only place that may take a pooled
+       * client of its own (`withRole(pre.pool, …)`, a short transaction that is over before the
+       * request transaction starts). Throw `AppError` to refuse. On a route with a session it
+       * runs only for a live session (`pre.userId`) that is within the per-account limits.
        */
       prepare?: (pre: PreCtx) => Promise<unknown>;
       /**
@@ -184,11 +186,6 @@ function compile(all: Route[]): (method: string, path: string) => Found | null {
     }
     if (direct !== undefined && route.auth !== 'anon') {
       throw new Error(`${name}: a route without a transaction must be anon`);
-    }
-    // prepare runs before the session is looked up: on any other route it would work for
-    // whoever sends a well-formed token
-    if (prepare !== undefined && route.auth !== 'anon') {
-      throw new Error(`${name}: prepare is for anon routes only`);
     }
   }
   // literal paths first, so that '/guilds/me' is never taken for '/guilds/:id'
@@ -371,6 +368,7 @@ export function createApp(deps: AppDeps): Server {
     const body = write ? await readJsonBody(req) : undefined;
 
     const pre: PreCtx = {
+      userId: null,
       params,
       query: target.query,
       body,
@@ -386,6 +384,33 @@ export function createApp(deps: AppDeps): Server {
       return out(await route.direct(pre));
     }
     const { handler } = route;
+    /** The limits of the account, counted once per request: the refusal, or 0. */
+    const accountLimited = (userId: string) =>
+      overLimit([
+        [
+          `user ${userId}`,
+          write ? WRITES_PER_MINUTE.account : undefined,
+          MINUTE_MS,
+        ],
+        ...ownWindows(`user ${userId}`),
+      ]);
+    // The work of prepare is done for a live session only, and counted on its account first: a
+    // stolen or made-up token buys no derivation.
+    let counted = false;
+    if (route.prepare && tokenHash !== null) {
+      const hash = tokenHash;
+      pre.userId = await withRole(pool, 'app_anon', null, db =>
+        sessionUser(db, hash),
+      );
+      if (pre.userId === null) {
+        return unauthorized();
+      }
+      const byAccount = accountLimited(pre.userId);
+      if (byAccount > 0) {
+        return retryAfter(byAccount);
+      }
+      counted = true;
+    }
     // before the transaction opens: slow work must never hold it, or a pooled client
     const prepared = route.prepare ? await route.prepare(pre) : undefined;
 
@@ -395,19 +420,13 @@ export function createApp(deps: AppDeps): Server {
       let userId: string | null = null;
       if (tokenHash !== null) {
         userId = await sessionUser(db, tokenHash);
-        if (userId === null) {
+        // a session revoked since prepare looked is no session; a token names one user
+        if (userId === null || (counted && userId !== pre.userId)) {
           return unauthorized();
         }
         await setRole(db, 'app_auth', userId);
         seen.userId = userId;
-        const byAccount = overLimit([
-          [
-            `user ${userId}`,
-            write ? WRITES_PER_MINUTE.account : undefined,
-            MINUTE_MS,
-          ],
-          ...ownWindows(`user ${userId}`),
-        ]);
+        const byAccount = counted ? 0 : accountLimited(userId);
         if (byAccount > 0) {
           return retryAfter(byAccount);
         }
