@@ -157,7 +157,7 @@ describe('never a measurement of anyone', () => {
     seedGuild();
     world.answer = request => {
       if (request !== 'GET /guilds/me') return undefined;
-      const state = serverAnswer(request, { headers: {} }) as { text(): Promise<string> };
+      const state = serverAnswer(request, { headers: {} } as never) as { text(): Promise<string> };
       return state.text().then(text => {
         const body = JSON.parse(text);
         body.guild.members = body.guild.members.map((member: object) => ({ ...member, weightKg: 77.7, heightCm: 177.7, caloriesIn: 9876, calorieTarget: 8765, bmr: 1666.5, tdee: 2555.5 }));
@@ -207,7 +207,7 @@ describe('S76: a guild that has been quiet', () => {
   });
 
   test('"Chia sẻ mã mời" shares the invitation with the code; "Tìm nhóm khác" opens S54 where the guild can be left', async () => {
-    const share = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' });
+    const share = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction', activityType: undefined });
     seedGuild({ inactiveDays: 20 });
     const view = await openGuild();
     fireEvent.press(screen.getByRole('button', { name: 'Chia sẻ mã mời' }));
