@@ -298,14 +298,13 @@ describe('a kind this app does not know', () => {
       inboxItem(4, 'ANOTHER_NEW' as never, null as never),
       inboxItem(5, 'GUILD_WEEKLY_RESULT', { rank: 'first', coins: 'many' }),
       inboxItem(6, 'NUDGE', { senderName: 7, text: { nested: true } }),
-      inboxItem(7, 'STREAK_MILESTONE', null as never),
+      inboxItem(7, 'NUDGE', null as never),
     ];
     seedInbox(strange);
     const view = await opened();
     expect(screen.getAllByText('Thông báo mới')).toHaveLength(2);
     expect(screen.getAllByText('Nội dung này chưa hiển thị được ở phiên bản hiện tại.')).toHaveLength(2);
-    expect(screen.getAllByText('Một thành viên đã nhắc bạn')).toHaveLength(2);
-    expect(screen.getAllByText('Một cột mốc mới')).toHaveLength(1);
+    expect(screen.getAllByText('Một thành viên đã nhắc bạn')).toHaveLength(3);
     expect(screen.getAllByText('Kết quả tuần của tổ đội')).toHaveLength(2);
     expect(screen.queryByText(/Hạng/)).toBeNull();
     expect(dots()).toHaveLength(7);
