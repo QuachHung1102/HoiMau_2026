@@ -83,17 +83,19 @@ export async function mountApp({ signedIn = true, motion = 'REDUCED', extra, ins
       <ThemeProvider>
         <MotionPreferenceProvider value={motion}>
           <QueryClientProvider client={client}>
-            <SessionProvider><MeTheme>
-              <OnboardingProvider>
-                <View style={styles.fill}>
-                  <PendingBanner />
-                  <AppNavigation>{inside}</AppNavigation>
-                </View>
-                <RejectedNotice />
-                <Recorder />
-                {extra}
-              </OnboardingProvider>
-            </MeTheme></SessionProvider>
+            <SessionProvider>
+              <MeTheme>
+                <OnboardingProvider>
+                  <View style={styles.fill}>
+                    <PendingBanner />
+                    <AppNavigation>{inside}</AppNavigation>
+                  </View>
+                  <RejectedNotice />
+                  <Recorder />
+                  {extra}
+                </OnboardingProvider>
+              </MeTheme>
+            </SessionProvider>
           </QueryClientProvider>
         </MotionPreferenceProvider>
       </ThemeProvider>

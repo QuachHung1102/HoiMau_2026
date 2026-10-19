@@ -48,13 +48,15 @@ export function withApp(node: ReactElement | null, opts: EntryOptions = {}): Rea
       <ThemeProvider theme={opts.theme}>
         <MotionPreferenceProvider value={opts.motion ?? 'FULL'}>
           <QueryClientProvider client={client}>
-            <SessionProvider><MeTheme fallback={opts.theme}>
-              {route ? (
-                <AppNavigation initialState={stateForRoute(route.name, route.params)}>{node}</AppNavigation>
-              ) : (
-                <SnackbarProvider>{node}</SnackbarProvider>
-              )}
-            </MeTheme></SessionProvider>
+            <SessionProvider>
+              <MeTheme fallback={opts.theme}>
+                {route ? (
+                  <AppNavigation initialState={stateForRoute(route.name, route.params)}>{node}</AppNavigation>
+                ) : (
+                  <SnackbarProvider>{node}</SnackbarProvider>
+                )}
+              </MeTheme>
+            </SessionProvider>
           </QueryClientProvider>
         </MotionPreferenceProvider>
       </ThemeProvider>
