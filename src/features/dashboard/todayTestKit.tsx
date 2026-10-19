@@ -7,13 +7,17 @@ import { configure, screen } from '@testing-library/react-native';
 import type { ActionResult, GameEvent } from '../../../domain/contract/common.ts';
 import type { Inventory, Meal, MealPlanState, PurchaseResult, Shop, ShopItem, SwapCandidates } from '../../../domain/contract/content.ts';
 import type { DayDetail, DaySummary, DayState, InboxReadResult, Me, PerkCode, Perks, QuestState, Settings } from '../../../domain/contract/core.ts';
+import type { GuildRole, GuildState, NudgeBlockReason } from '../../../domain/contract/social.ts';
 import { PERKS } from '../../../domain/economy.ts';
 import { calorieWindow } from '../../../domain/energy.ts';
+import { GUILD_INACTIVE_DAYS, GUILD_MAX_MEMBERS } from '../../../domain/guild.ts';
+import { findBannedTerms } from '../../../domain/language.ts';
 import { addDays, daysBetween } from '../../../domain/logicalDate.ts';
 import { rankMeals, slotTarget } from '../../../domain/mealPlan.ts';
 import { cumulativeXpForLevel, levelForXp, perkPointsEarned, titleKeyForLevel, xpRequiredForLevel } from '../../../domain/progression.ts';
 import { mapStats } from '../../../domain/stats.ts';
 import { INGREDIENT_TAGS, type IngredientTag, type MealSlot } from '../../../domain/types.ts';
+import { isDisplayName, LIMITS, stripUnseen } from '../../../domain/validation.ts';
 import { tabLabel } from '../../shared/i18n/vi/nav';
 import { SHOP_ITEMS } from '../../../server/content/shopItems.ts';
 import fixture from '../nutrition/mealFixture.json';
@@ -146,6 +150,8 @@ export const world = {} as {
   plan: ReturnType<typeof freshPlan>;
   /** What the shop knows of this person: items bought, the item equipped per kind, perks unlocked. */
   shop: ReturnType<typeof freshShop>;
+  /** Every guild the server knows (the caller's own, when the caller is a member of one, among them) and the nudges the caller has sent today. */
+  guild: ReturnType<typeof freshGuild>;
   answer?: (request: string, init: Init) => unknown;
 };
 
@@ -320,6 +326,26 @@ export function serverAnswer(request: string, init: Init): unknown {
   if (equipCode) return guard(() => {
     onboarded();
     return keyed(request, init, () => equip(decodeURIComponent(equipCode)), true);
+  });
+  if (request === 'GET /guilds/me') return guard(() => {
+    onboarded();
+    return respond(200, guildState());
+  });
+  if (request === 'POST /guilds') return guard(() => {
+    onboarded();
+    return keyed(request, init, (_key, body) => createGuild(body));
+  });
+  if (request === 'POST /guilds/join') return guard(() => {
+    onboarded();
+    return keyed(request, init, (_key, body) => joinGuild(body));
+  });
+  if (request === 'POST /guilds/me/leave') return guard(() => {
+    onboarded();
+    return keyed(request, init, leaveGuild, true);
+  });
+  if (request === 'POST /guilds/me/transfer') return guard(() => {
+    onboarded();
+    return keyed(request, init, (_key, body) => transferGuild(body));
   });
   if (request === 'POST /perks/unlock') return guard(() => {
     onboarded();
@@ -696,6 +722,153 @@ function unlockPerk(body: Record<string, unknown>) {
   return respond(200, perksState());
 }
 
+// ---- the guild (server Tasks 39 and 41: routes/guild.ts, sql/50-guild.sql, readModels/guild.ts, sql/52-nudge.sql) ----
+// Every route is for an onboarded user (409 ONBOARDING_REQUIRED first) and every write is idempotent. The statuses, the
+// order of the refusals and the shape of `GuildState` are the server's; so is the nudge of each member row: the reason
+// is worked out from what the member is (muted, done, already nudged) in the order of app._nudge_block_reason, and the
+// caller's own row is `{ allowed: false, reason: null }`. Not modelled: a member in another time zone (every member
+// shares `world.hour`), a member who joins or leaves on their own, the week and the weekly rewards (a test sets the numbers).
+export type Mate = { userId: string; displayName: string; role: GuildRole; level: number; daysCompleted: number; daysCounted: number; storyDone: boolean; muted: boolean; nudgedToday: boolean };
+export type Team = { id: string; name: string; motto: string; inviteCode: string; weekCompletion: number; inactiveDays: number; members: Mate[] };
+const IDS = '00000000-0000-4000-9000-';
+/** The guilds of the stand-in; `world.guild` is reset to this before every test. */
+export function freshGuild() {
+  return { teams: [] as Team[], nudgesSent: 0, made: 0 };
+}
+/** A member as the server would read him or her; the facts a nudge depends on are the arguments. */
+export const mateOf = (n: number, displayName: string, more: Partial<Mate> = {}): Mate => ({
+  userId: `${IDS}${String(n).padStart(12, '0')}`,
+  displayName,
+  role: 'MEMBER',
+  level: 3,
+  daysCompleted: 4,
+  daysCounted: 7,
+  storyDone: false,
+  muted: false,
+  nudgedToday: false,
+  ...more,
+});
+const myTeam = () => world.guild.teams.find(team => team.members.some(mate => mate.userId === USER));
+/** What nudge_send would raise for this receiver, in the order of app._nudge_block_reason (the same guild is known). */
+function blockReason(mate: Mate): NudgeBlockReason | null {
+  if (mate.muted) return 'NUDGE_RECEIVER_MUTED';
+  if (mate.storyDone) return 'NUDGE_NOT_NEEDED';
+  if (world.hour < 12 || world.hour >= 20) return 'NUDGE_OUTSIDE_WINDOW';
+  if (mate.nudgedToday) return 'NUDGE_RECEIVER_LIMIT';
+  if (world.guild.nudgesSent >= 3) return 'NUDGE_SENDER_LIMIT';
+  return null;
+}
+/** `GuildState`: `{ guild: null }` outside a guild. `inactive` is the server's rule on `inactiveDays`. */
+function guildState(): GuildState {
+  const team = myTeam();
+  if (!team) return { guild: null };
+  const me = team.members.find(mate => mate.userId === USER) as Mate;
+  return {
+    guild: {
+      id: team.id,
+      name: team.name,
+      motto: team.motto,
+      inviteCode: team.inviteCode,
+      myRole: me.role,
+      weekCompletion: team.weekCompletion,
+      inactive: team.inactiveDays >= GUILD_INACTIVE_DAYS,
+      inactiveDays: team.inactiveDays,
+      members: team.members.map(mate => {
+        const own = mate.userId === USER;
+        const reason = own ? null : blockReason(mate);
+        return {
+          userId: mate.userId,
+          displayName: mate.displayName,
+          level: mate.level,
+          role: mate.role,
+          isMe: own,
+          daysCompletedThisWeek: mate.daysCompleted,
+          daysCountedThisWeek: mate.daysCounted,
+          storyDoneToday: mate.storyDone,
+          nudge: { allowed: !own && reason === null, reason },
+        };
+      }),
+    },
+  };
+}
+/** The route's `nameOf`: NFC, trimmed, 3 to 30 code points, the format of a display name. */
+function guildName(value: unknown, fields: { field: string; rule: string }[]) {
+  const name = typeof value === 'string' ? value.normalize('NFC').trim() : '';
+  const length = [...name].length;
+  let rule: string | null = null;
+  if (typeof value !== 'string') rule = value === undefined ? 'required' : 'format';
+  else if (length < LIMITS.guildName.min) rule = 'min';
+  else if (length > LIMITS.guildName.max) rule = 'max';
+  else if (!isDisplayName(name)) rule = 'format';
+  if (rule !== null) fields.push({ field: 'name', rule });
+  return name;
+}
+/** The route's `mottoOf`: optional; NFC, trimmed; at most 80 code points; no unseen character. */
+function guildMotto(value: unknown, fields: { field: string; rule: string }[]) {
+  if (value === undefined || value === null) return '';
+  const motto = typeof value === 'string' ? value.normalize('NFC').trim() : '';
+  if (typeof value !== 'string' || stripUnseen(motto) !== motto) fields.push({ field: 'motto', rule: 'format' });
+  else if ([...motto].length > LIMITS.guildMotto.max) fields.push({ field: 'motto', rule: 'max' });
+  return motto;
+}
+const INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+/** `POST /guilds`: the body (422, every wrong field named), the banned terms (422), then guild_create: ALREADY_IN_GUILD, GUILD_NAME_TAKEN. */
+function createGuild(body: Record<string, unknown>) {
+  const fields: { field: string; rule: string }[] = [];
+  const name = guildName(body.name, fields);
+  const motto = guildMotto(body.motto, fields);
+  if (fields.length > 0) stop(422, 'VALIDATION_FAILED', fields);
+  if (findBannedTerms(name).length > 0 || findBannedTerms(motto).length > 0) stop(422, 'NAME_NOT_ALLOWED');
+  if (myTeam()) stop(409, 'ALREADY_IN_GUILD');
+  if (world.guild.teams.some(team => team.name.toLowerCase() === name.toLowerCase())) stop(409, 'GUILD_NAME_TAKEN');
+  const n = (world.guild.made += 1);
+  world.guild.teams.push({
+    id: `${IDS}9${String(n).padStart(11, '0')}`,
+    name,
+    motto,
+    inviteCode: `NEW${[...String(n).padStart(5, '0')].map(digit => INVITE_ALPHABET[(+digit % 8) + 24]).join('')}`,
+    weekCompletion: 0,
+    inactiveDays: 0,
+    members: [{ ...mateOf(0, world.me.user.displayName, { role: 'LEADER' }), userId: USER }],
+  });
+  return respond(200, guildState());
+}
+/** `POST /guilds/join`: the body (422), then guild_join: INVITE_CODE_INVALID (404), ALREADY_IN_GUILD, GUILD_FULL. */
+function joinGuild(body: Record<string, unknown>) {
+  const { inviteCode } = body;
+  if (typeof inviteCode !== 'string') stop(422, 'VALIDATION_FAILED', [{ field: 'inviteCode', rule: inviteCode === undefined ? 'required' : 'format' }]);
+  const code = (inviteCode as string).trim().toUpperCase();
+  const team = /^[A-HJ-NP-Z2-9]{8}$/.test(code) ? world.guild.teams.find(candidate => candidate.inviteCode === code) : undefined;
+  if (!team) stop(404, 'INVITE_CODE_INVALID');
+  if (myTeam()) stop(409, 'ALREADY_IN_GUILD');
+  if (team.members.length >= GUILD_MAX_MEMBERS) stop(409, 'GUILD_FULL');
+  team.members.push({ ...mateOf(0, world.me.user.displayName), userId: USER });
+  return respond(200, guildState());
+}
+/** `POST /guilds/me/leave` (204): NOT_IN_GUILD, LEADER_MUST_TRANSFER for a leader with other members; a lone leader's guild goes with the leader. */
+function leaveGuild() {
+  const team = myTeam();
+  if (!team) stop(409, 'NOT_IN_GUILD');
+  const me = team.members.find(mate => mate.userId === USER) as Mate;
+  if (me.role === 'LEADER' && team.members.length > 1) stop(409, 'LEADER_MUST_TRANSFER');
+  team.members = team.members.filter(mate => mate !== me);
+  if (team.members.length === 0) world.guild.teams = world.guild.teams.filter(candidate => candidate !== team);
+  return respond(204);
+}
+/** `POST /guilds/me/transfer`: the body (422), then guild_transfer: NOT_LEADER (403; in no guild too), TRANSFER_TARGET_INVALID (422; the caller or a stranger). */
+function transferGuild(body: Record<string, unknown>) {
+  const { userId } = body;
+  if (typeof userId !== 'string' || !UUID.test(userId)) stop(422, 'VALIDATION_FAILED', [{ field: 'userId', rule: userId === undefined ? 'required' : 'format' }]);
+  const team = myTeam();
+  const me = team?.members.find(mate => mate.userId === USER);
+  if (!team || me?.role !== 'LEADER') stop(403, 'NOT_LEADER');
+  const target = team.members.find(mate => mate.userId === (userId as string).toLowerCase());
+  if (!target || target === me) stop(422, 'TRANSFER_TARGET_INVALID');
+  me.role = 'MEMBER';
+  target.role = 'LEADER';
+  return respond(200, guildState());
+}
+
 /** Keeps every `request` open until `release`; then the given response, or the server's own answer, comes back. */
 export function hold(request: string) {
   let open!: (answer: unknown) => void;
@@ -729,7 +902,7 @@ export function installTodayTestEnv() {
   beforeEach(() => {
     replies.clear();
     ledger.clear();
-    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, hour: 19, closedDate: undefined, skew: 0, highWater: undefined, minutes: { resistance: 60, cardio: 45 }, history: {}, plan: freshPlan(), shop: freshShop(), answer: undefined });
+    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, hour: 19, closedDate: undefined, skew: 0, highWater: undefined, minutes: { resistance: 60, cardio: 45 }, history: {}, plan: freshPlan(), shop: freshShop(), guild: freshGuild(), answer: undefined });
     fetchMock.mockImplementation(async (url, init) => {
       const request = `${init.method} ${url.replace(BASE, '')}`;
       const taken = await world.answer?.(request, init);
