@@ -117,6 +117,9 @@ describe('POST /guilds/nudge', () => {
     const none = await post(NUDGE, {});
     expect([code(none), fields(none)]).toEqual(['422 VALIDATION_FAILED', [{ field: 'receiverId', rule: 'required' }, { field: 'templateCode', rule: 'required' }]]);
     expect(fields(await post(NUDGE, { receiverId: 'nope', templateCode: 5 }))).toEqual([{ field: 'receiverId', rule: 'format' }, { field: 'templateCode', rule: 'format' }]);
+    // one wrong field is named alone
+    expect(fields(await post(NUDGE, { receiverId: newActionId() }))).toEqual([{ field: 'templateCode', rule: 'required' }]);
+    expect(fields(await post(NUDGE, { templateCode: TEMPLATE }))).toEqual([{ field: 'receiverId', rule: 'required' }]);
     // a template nobody has is judged before the guild: no guild and no such template is the template's refusal
     expect(code(await post(NUDGE, { receiverId: newActionId(), templateCode: 'NO_SUCH' }))).toBe('422 NUDGE_TEMPLATE_UNKNOWN');
     expect(code(await post(NUDGE, { receiverId: newActionId(), templateCode: TEMPLATE }))).toBe('409 NOT_IN_GUILD');
