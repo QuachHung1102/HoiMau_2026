@@ -9,10 +9,12 @@
 --
 -- Rules for whoever edits this file:
 --   * lock order: account_delete takes the auth advisory lock of the email first (as auth_login,
---     auth_reset_request and auth_reset_confirm do), then the caller's users row FOR NO KEY
---     UPDATE, then the guild (FOR UPDATE), then guild_memberships: the order of 50-guild.sql
---     after the advisory lock. The purge takes the users row FOR UPDATE (SKIP LOCKED: a user
---     busy right now is purged on the next run), then its guild, then memberships;
+--     auth_reset_request and auth_reset_confirm do), then the user's sessions, then the users
+--     row, then the guild (FOR UPDATE), then guild_memberships. Sessions before users because
+--     every request does it that way: auth_session slides (row-locks) its session before the
+--     handler locks the users row; the other order deadlocks with a request of another device.
+--     The purge takes the users row FOR UPDATE, then its guild, then memberships, each SKIP
+--     LOCKED: a user or a guild busy right now is purged on the next run, never waited for;
 --   * a job never touches a decoy (an email under @decoy.invalid, 80-decoy-base.sql), whatever
 --     its dates say;
 --   * a wrong password is a return value (false), never an exception: the caller commits, and
@@ -85,8 +87,9 @@ $$;
 -- attempt changed, for a wrong key or from the sixth attempt of the 15-minute window of
 -- 'login:<email>' on (the same counter as auth_login: a stolen session cannot guess the
 -- password faster than a login can). On success: deleted_at = app.now(), purge_after 30 days
--- later, every session revoked, every unused reset code used up, the guild left
--- (app._guild_depart). The email stays taken while the row exists.
+-- later, every session revoked, every unused reset code used up, the NUDGE notifications it sent
+-- deleted from the receivers' inboxes, the guild left (app._guild_depart). The email stays taken
+-- while the row exists.
 CREATE OR REPLACE FUNCTION account_delete(p_key bytea) RETURNS boolean
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $$
@@ -107,17 +110,22 @@ BEGIN
   -- the account goes, or sees it gone
   PERFORM pg_advisory_xact_lock(hashtextextended('auth:' || v_email, 0));
   v_attempts := app._throttle_hit('login:' || v_email, interval '15 minutes');
+  -- no row lock: every auth function of this email waits on the advisory lock above
   SELECT c.key INTO v_stored
     FROM users u JOIN credentials c ON c.user_id = u.id
-   WHERE u.id = v_user AND u.deleted_at IS NULL
-     FOR NO KEY UPDATE OF u;
+   WHERE u.id = v_user AND u.deleted_at IS NULL;
   IF NOT app._same_bytes(v_stored, p_key) OR v_attempts > 5 THEN
     RETURN false;
   END IF;
 
-  UPDATE users SET deleted_at = app.now(), purge_after = app.now() + interval '30 days' WHERE id = v_user;
   UPDATE sessions SET revoked_at = app.now() WHERE user_id = v_user AND revoked_at IS NULL;
+  UPDATE users SET deleted_at = app.now(), purge_after = app.now() + interval '30 days' WHERE id = v_user;
   UPDATE reset_codes SET used_at = app.now() WHERE user_id = v_user AND used_at IS NULL;
+  -- the nudges this user sent leave the receivers' inboxes now: the payload names the sender
+  -- (the dedupe key of a NUDGE is its event id, 52-nudge.sql). A nudge sent in flight holds the
+  -- users row; this statement runs after it and sees what it wrote.
+  DELETE FROM notifications n USING nudge_events e
+   WHERE e.sender_id = v_user AND n.user_id = e.receiver_id AND n.kind = 'NUDGE' AND n.dedupe_key = e.id::text;
   PERFORM app._guild_depart(v_user);
   RETURN true;
 END $$;
@@ -148,8 +156,11 @@ SELECT meta.expect_function('export_nudges()', 'definer', '{app_auth}');
 -- cascades from users. A user still in a guild leaves it first (AR-30). Then, for guilds left
 -- by any other path (a users row deleted by hand): a guild with members and no leader gets the
 -- earliest-joined live member as LEADER, a guild without members is deleted. Returns the number
--- of users deleted.
--- ponytail: one statement for every due user; add a batch limit if a day ever brings thousands.
+-- of users deleted: at most 50 per call (the housekeeping job calls it again until 0). A user
+-- whose guild another transaction holds is skipped, never waited for (the next run takes it).
+-- ponytail: 50 accounts per statement, each with its cascade, under the 10 s statement timeout
+-- of the pool (every key of the cascade is indexed, a test pins that); a user with years of
+-- data, or a slower disk, lowers it. Upgrade path: per-user transactions in the job.
 CREATE OR REPLACE FUNCTION job_account_purge(p_now timestamptz) RETURNS int
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $$
@@ -164,6 +175,12 @@ BEGIN
      ORDER BY u.id
        FOR UPDATE SKIP LOCKED
   LOOP
+    EXIT WHEN v_count >= 50;
+    SELECT m.guild_id INTO v_guild FROM guild_memberships m WHERE m.user_id = v_user;
+    IF v_guild IS NOT NULL THEN
+      PERFORM 1 FROM guilds g WHERE g.id = v_guild FOR UPDATE SKIP LOCKED;
+      CONTINUE WHEN NOT FOUND;
+    END IF;
     PERFORM app._guild_depart(v_user);
     DELETE FROM users WHERE id = v_user;
     v_count := v_count + 1;
