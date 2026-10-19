@@ -10,7 +10,7 @@ import { useStandUpHold } from '../quests/useStandUp';
 import { refuse, TOKEN } from '../sync/syncTestKit';
 import { CelebrationHost } from './CelebrationHost';
 import { pushCelebrations, useCelebrationQueue } from './celebrations';
-import { app, dayOf, installTodayTestEnv, keepCelebrated, keptCelebrated, milestoneItem, openToday, queryClient, requested, seedQueue, setLevel, settle, USER, world, writes } from './progressionTestKit';
+import { app, dayOf, installTodayTestEnv, keepCelebrated, keepStage, keptCelebrated, keptStage, milestoneItem, openToday, queryClient, requested, seedQueue, setLevel, settle, USER, world, writes } from './progressionTestKit';
 import { stored } from '../sync/syncTestKit';
 
 // `navigate` of the host, recorded on its way to the navigator: "Xem huy hiệu" goes to a route nobody has registered yet.
@@ -203,6 +203,7 @@ describe('S69: Mầm evolves', () => {
 
   test('"Xem Mầm" closes it and opens the pet screen; the stage on it is the one the server has', async () => {
     await keepCelebrated(5);
+    await keepStage(1);
     world.me = { ...world.me, pet: { ...(world.me.pet as NonNullable<typeof world.me.pet>), stage: 'JUVENILE', stageIndex: 2, growthPercent: 0, nextStage: 'ADULT' } };
     const view = await open();
     await push(stageUp);
@@ -227,6 +228,68 @@ describe('S69: Mầm evolves', () => {
     act(() => setHold(false));
     expect(await screen.findByRole('header', { name: 'Mầm đã thành Chồi non' })).toBeTruthy();
     view.unmount();
+  });
+});
+
+describe('S69: from the server\'s profile, where no answer came back', () => {
+  const juvenile = () => {
+    world.me = { ...world.me, pet: { ...(world.me.pet as NonNullable<typeof world.me.pet>), stage: 'JUVENILE', stageIndex: 2, growthPercent: 0, nextStage: 'ADULT' } };
+  };
+
+  test('the first profile after sign-in only seeds the stage: nothing is shown, the stage is kept', async () => {
+    await keepCelebrated(5);
+    juvenile();
+    const view = await open();
+    await settle();
+    expect(title('Mầm đã thành Chồi non')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Xem Mầm' })).toBeNull();
+    await waitFor(async () => expect(await keptStage()).toBe('2'));
+    view.unmount();
+  });
+
+  test('a stage the profile reached with no event (the offline queue, another device) is celebrated once, and kept', async () => {
+    await keepCelebrated(5);
+    await keepStage(1);
+    juvenile();
+    const view = await open();
+    expect(await screen.findByRole('header', { name: 'Mầm đã thành Chồi non' })).toBeTruthy();
+    await waitFor(async () => expect(await keptStage()).toBe('2'));
+    await closeIt('Để sau');
+    await settle();
+    expect(title('Mầm đã thành Chồi non')).toBeNull();
+    expect(queued()).toEqual([]);
+    view.unmount();
+    // the next start: the same stage is not celebrated again
+    const again = await open();
+    await settle();
+    expect(title('Mầm đã thành Chồi non')).toBeNull();
+    again.unmount();
+  });
+
+  test('an event and the derived stage for one stage are one overlay, whichever comes first', async () => {
+    await keepCelebrated(5);
+    await keepStage(1);
+    // the event is queued before the profile is known
+    act(() => pushCelebrations([{ type: 'PET_STAGE_UP', stage: 'JUVENILE' }]));
+    juvenile();
+    const first = await open();
+    expect(await screen.findByRole('header', { name: 'Mầm đã thành Chồi non' })).toBeTruthy();
+    expect(queued()).toEqual([]);
+    await closeIt('Để sau');
+    await settle();
+    expect(title('Mầm đã thành Chồi non')).toBeNull();
+    first.unmount();
+
+    // the derived stage is shown first; the server\'s event for it arrives later and is dropped
+    await keepStage(1);
+    const second = await open();
+    expect(await screen.findByRole('header', { name: 'Mầm đã thành Chồi non' })).toBeTruthy();
+    await closeIt('Để sau');
+    await push({ type: 'PET_STAGE_UP', stage: 'JUVENILE' });
+    await settle();
+    expect(title('Mầm đã thành Chồi non')).toBeNull();
+    expect(queued()).toEqual([]);
+    second.unmount();
   });
 });
 
@@ -530,6 +593,17 @@ describe('the account', () => {
     await settle();
     expect(requested('/auth/logout')).toBe(1);
     expect(await keptCelebrated()).toBeNull();
+    view.unmount();
+  });
+
+  test('signing out removes the kept pet stage too', async () => {
+    await keepCelebrated(5);
+    await keepStage(1);
+    const view = await open();
+    await settle();
+    await act(() => app.session.signOut());
+    await settle();
+    expect(await keptStage()).toBeNull();
     view.unmount();
   });
 });

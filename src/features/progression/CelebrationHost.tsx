@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { TitleKey } from '../../../domain/contract/common.ts';
 import type { Me } from '../../../domain/contract/core.ts';
+import { PET_STAGES } from '../../../domain/pet.ts';
 import { titleKeyForLevel } from '../../../domain/progression.ts';
 import type { PetStage } from '../../../domain/types.ts';
 import type { RootParamList } from '../../app/routes';
@@ -11,7 +12,7 @@ import { useSession } from '../../shared/api/session';
 import * as petVi from '../../shared/i18n/vi/pet';
 import * as vi from '../../shared/i18n/vi/progression';
 import { levelTitleText } from '../../shared/i18n/vi/today';
-import { loadCelebratedLevel, saveCelebratedLevel } from '../../shared/storage/celebrated';
+import { loadCelebratedLevel, loadCelebratedStage, saveCelebratedLevel, saveCelebratedStage } from '../../shared/storage/celebrated';
 import { OverlayCelebration } from '../../shared/ui/OverlayCelebration';
 import { meKey } from '../auth/api';
 import { petKey } from '../shop/api';
@@ -77,6 +78,8 @@ export function CelebrationOverlay({ shown, stage, skin, onClose, onSee }: Props
   );
 }
 
+const stageOrder = (stage: PetStage) => PET_STAGES.findIndex(item => item.stage === stage);
+
 /**
  * The profile the screens have read, without asking for it: the host watches the cache and is no observer of the query, so
  * mounting it costs no request (and cannot bring back an older answer); it follows every read the screens make.
@@ -104,7 +107,10 @@ function useKnownMe(): Me | undefined {
  * - A milestone is shown once per item id and `POST /inbox/read` goes out when it is shown. If that fails the item stays
  *   unread on the server and is shown again the next time the app starts: acceptable, nothing is lost.
  * - Nothing is laid over the focus flow (`useFocusHeld`); what is queued is shown after it closes.
- * - `PET_STAGE_UP` (S69) is shown once per event, after the levels in the queue, and leaves the queue as it is shown.
+ * - `PET_STAGE_UP` (S69) is shown once per stage, after the levels in the queue, and leaves the queue as it is shown. Like
+ *   the level, the highest stage celebrated is kept per user and seeded silently, and a stage the profile (`me.pet`) has
+ *   reached with no event for it (the offline queue, another device) is celebrated from the profile; an event for a stage
+ *   at or below the kept one is dropped, so an event and a derived stage for the same stage are one overlay.
  * Mount it once, inside the navigation container (`AppNavigation` children).
  */
 export function CelebrationHost() {
@@ -127,13 +133,18 @@ function ActiveHost({ userId }: { userId: string }) {
   const celebrated = useRef<number | null>(null);
   const items = useRef(new Set<string>());
   const stageUps = useRef(0);
+  // The highest pet stage celebrated, as an index in PET_STAGES (null: not seeded yet).
+  const celebratedStage = useRef<number | null>(null);
   const level = me?.progression?.level;
+  const stage = me?.pet?.stage;
+  const stageIndex = me?.pet?.stageIndex;
 
   useEffect(() => {
     let alive = true;
-    loadCelebratedLevel(userId).then(stored => {
+    Promise.all([loadCelebratedLevel(userId), loadCelebratedStage(userId)]).then(([storedLevel, storedStage]) => {
       if (!alive || boundUserId() !== userId) return;
-      celebrated.current = stored ?? null;
+      celebrated.current = storedLevel ?? null;
+      celebratedStage.current = storedStage ?? null;
       setReady(true);
     });
     return () => {
@@ -158,13 +169,27 @@ function ActiveHost({ userId }: { userId: string }) {
     if (level > covered) pushCelebrations([{ type: 'LEVEL_UP', level, titleKey: titleKeyForLevel(level), perkPointsGained: level - covered }]);
   }, [ready, level, queue, userId]);
 
+  // The same for Mầm's stage: seed it, or queue the stage reached that no event of the server covers.
+  useEffect(() => {
+    if (!ready || stage === undefined || stageIndex === undefined) return;
+    const known = celebratedStage.current;
+    if (known === null) {
+      celebratedStage.current = stageIndex;
+      if (boundUserId() === userId) saveCelebratedStage(userId, stageIndex);
+      return;
+    }
+    const covered = queue.reduce((highest, event) => (event.type === 'PET_STAGE_UP' ? Math.max(highest, stageOrder(event.stage)) : highest), known);
+    if (stageIndex > covered) pushCelebrations([{ type: 'PET_STAGE_UP', stage }]);
+  }, [ready, stage, stageIndex, queue, userId]);
+
   // What is next, when nothing is on screen and nothing holds it.
   useEffect(() => {
     const known = celebrated.current;
     if (!ready || held || shown || known === null) return;
     const levels = queue.flatMap(event => (event.type === 'LEVEL_UP' ? [event] : []));
     // Already celebrated (a replayed answer, or the other way in): dropped without a word.
-    const stale = levels.filter(event => event.level <= known);
+    const knownStage = celebratedStage.current ?? -1;
+    const stale = [...levels.filter(event => event.level <= known), ...queue.filter(event => event.type === 'PET_STAGE_UP' && stageOrder(event.stage) <= knownStage)];
     if (stale.length > 0) {
       stale.forEach(event => dismissCelebration(event));
       return;
@@ -179,6 +204,8 @@ function ActiveHost({ userId }: { userId: string }) {
     }
     const stageUp = queue.find(event => event.type === 'PET_STAGE_UP');
     if (stageUp?.type === 'PET_STAGE_UP') {
+      celebratedStage.current = stageOrder(stageUp.stage);
+      if (boundUserId() === userId) saveCelebratedStage(userId, celebratedStage.current);
       dismissCelebration(stageUp);
       stageUps.current += 1;
       setShown({ id: `pet-stage-up:${stageUps.current}`, kind: 'PET_STAGE_UP', stage: stageUp.stage });
