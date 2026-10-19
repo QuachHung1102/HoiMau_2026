@@ -10,6 +10,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, mock, test } from 'node:test';
+import { isDeepStrictEqual } from 'node:util';
 import type { Pool, PoolClient } from 'pg';
 import { rankGuilds, scoreGuildWeek } from '../../../domain/guild.ts';
 import type { MemberWeek } from '../../../domain/guild.ts';
@@ -693,17 +694,17 @@ test('a failed rollover is retried 15 minutes later, not next Monday: every fail
 // ---------------------------------------------------------------------------------------------
 // Races: job_apply_guild_week against the guild functions, two pools, no deadlock
 
-const waitForLockWaiter = async () => {
+const waitForLockWaiter = async (n = 1) => {
   for (let i = 0; i < 200; i++) {
     const { rows } = await db.admin.query(
       "SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'",
     );
-    if (rows[0].n > 0) {
+    if (rows[0].n >= n) {
       return;
     }
     await new Promise(resolve => setTimeout(resolve, 10));
   }
-  throw new Error('nobody waits for a lock');
+  throw new Error(`fewer than ${n} wait for a lock`);
 };
 
 /** A transaction that ran `first` and stays open until release() is called. */
@@ -798,20 +799,29 @@ test('race: an inactive member leaves and a newcomer joins while the apply holds
     await settle.started;
     const leave = asUser(second, i.userId, c => c.query('SELECT guild_leave()'));
     const joining = asUser(second, z.userId, c => c.query('SELECT guild_join($1)', [code]));
-    await waitForLockWaiter();
+    await waitForLockWaiter(2);
     settle.release();
     await Promise.all([settle.done, leave, joining]);
     assert.deepEqual([...(await coinsOf(ws)).keys()].sort(), [a.userId, x.userId, y.userId].sort());
   }
   for (let round = 0; round < 10; round++) {
-    const { ws, a, x, y } = await raceGuild();
+    const { ws, g, a, x, y } = await raceGuild();
     const results = await Promise.allSettled([
       asJob(round % 2 === 0 ? db.app : second, c => settleWeek(c, ws)),
       asUser(round % 2 === 0 ? second : db.app, x.userId, c => c.query('SELECT guild_leave()')),
     ]);
     assert.deepEqual(results.map(r => (r.status === 'fulfilled' ? 'ok' : (r.reason as Error).message)), ['ok', 'ok']);
-    const paid = [...(await coinsOf(ws)).keys()];
-    assert.ok(paid.includes(a.userId) && paid.includes(y.userId), `round ${round}`);
+    // unforced, so any serial order: the leave committed before the job read the members → X is
+    // not counted, 2 active, unranked, nobody paid; else 3 active, ranked, A and Y paid, and X too
+    // when the apply locked X's row before the leave did
+    const [, active, rank] = (await storedScores(ws, [g.id])).get(g.id)!;
+    const seen = [active, rank !== null, [...(await coinsOf(ws)).keys()].sort()];
+    const serial = [
+      [2, false, []],
+      [3, true, [a.userId, y.userId].sort()],
+      [3, true, [a.userId, x.userId, y.userId].sort()],
+    ];
+    assert.ok(serial.some(want => isDeepStrictEqual(seen, want)), `round ${round}: ${JSON.stringify(seen)}`);
   }
 });
 
