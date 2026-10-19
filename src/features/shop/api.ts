@@ -41,7 +41,7 @@ export type WriteOutcome<R> = { state: 'done'; result: R } | { state: 'failed'; 
  *   its key, so the server replays it and never applies it twice; any answer of the server, a refusal included, ends it;
  * - nothing is changed on screen until the server has answered: `accept` gets the confirmed answer.
  */
-function useServerWrite<A extends unknown[], R>(tag: (...args: A) => string, call: (key: string, ...args: A) => Promise<R>, accept: (result: R) => void) {
+export function useServerWrite<A extends unknown[], R>(tag: (...args: A) => string, call: (key: string, ...args: A) => Promise<R>, accept: (result: R) => void) {
   const { userId } = useSession();
   const key = useAttemptKey();
   const sending = useRef(false);

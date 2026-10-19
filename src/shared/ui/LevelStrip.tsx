@@ -8,9 +8,12 @@ import { AppText } from './AppText';
 import { useNumberRoll } from './Badges';
 import { Touchable } from './Touchable';
 
+const ON_PRIMARY_TRACK = 'rgba(255,255,255,0.3)';
+
 /** The drawn bar only. Callers always put the number next to it as text. `ratio` is 0-1. */
 export type Track = 'soft' | 'line' | 'white';
-export function BarTrack({ ratio, track = 'soft' }: { ratio: number; track?: Track }) {
+/** `onPrimary`: drawn on a primary-coloured card, where the fill is lime and the track a paler blue. */
+export function BarTrack({ ratio, track = 'soft', onPrimary = false }: { ratio: number; track?: Track; onPrimary?: boolean }) {
   const palette = useTheme();
   const reduced = useReducedMotion();
   const [stretch] = useState(() => new Animated.Value(1));
@@ -34,10 +37,11 @@ export function BarTrack({ ratio, track = 'soft' }: { ratio: number; track?: Tra
       stretch.setValue(1);
     };
   }, [ratio, reduced, stretch]);
+  const trackColor = onPrimary ? ON_PRIMARY_TRACK : palette[track];
   return (
-    <View style={[styles.track, { backgroundColor: palette[track] }]}>
+    <View style={[styles.track, { backgroundColor: trackColor }]}>
       <Animated.View
-        style={[styles.fill, { width: `${ratio * 100}%`, backgroundColor: palette.primary, transform: [{ scaleX: stretch }] }]}
+        style={[styles.fill, { width: `${ratio * 100}%`, backgroundColor: onPrimary ? palette.lime : palette.primary, transform: [{ scaleX: stretch }] }]}
       />
     </View>
   );
