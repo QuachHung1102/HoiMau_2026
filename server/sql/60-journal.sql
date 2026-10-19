@@ -94,34 +94,60 @@ BEGIN
   RETURN 'GRANTED';
 END $$;
 
+-- The dates a ticket may be applied to now, for p_user: TODAY (the current logical date) always,
+-- YESTERDAY while the local hour is in [3, 15). The one source of that window: ticket_use (through
+-- app._ticket_block_reason) and ticket_overview both read it. No row for an unknown user.
+CREATE OR REPLACE FUNCTION app._ticket_dates(p_user uuid) RETURNS TABLE (day date, target text)
+LANGUAGE sql STABLE SET search_path = public, pg_temp
+AS $$
+  SELECT d.day, d.target
+    FROM users u
+   CROSS JOIN LATERAL (SELECT app.logical_date(app.now(), u.timezone) AS today,
+                              extract(hour FROM app.now() AT TIME ZONE u.timezone)::int AS hour) x
+   CROSS JOIN LATERAL (SELECT x.today AS day, 'TODAY' AS target
+                       UNION ALL
+                       SELECT x.today - 1, 'YESTERDAY' WHERE x.hour >= 3 AND x.hour < 15) d
+   WHERE u.id = p_user
+$$;
+
 -- Whether a ticket on p_date protects anything for p_user (null date or no state: false).
--- A date that is still open (after last_closed_date, from the first day on): the streak is
--- above 0 and that day's STORY quests are not all completed. A closed date: it is the break
+-- A date that is still open (after last_closed_date, from the first day on): that day's STORY
+-- quests are not all completed, and the streak it would freeze is above 0 -- the streak as the
+-- day-close will leave it once the open days before p_date are closed (closeDays of
+-- domain/streak.ts over app._close_days, the very input the close reads): walking back from
+-- p_date - 1, the first day that is not frozen decides (completed: above 0, missed: 0); every
+-- day frozen, or none open: streak_current > 0. So TODAY while yesterday is open and about to
+-- break is not needed: that ticket would freeze a streak of 0. A closed date: it is the break
 -- date and the streak before the break is kept (a rescue restores it).
 CREATE OR REPLACE FUNCTION app._ticket_needed(p_user uuid, p_date date) RETURNS boolean
 LANGUAGE sql STABLE SET search_path = public, pg_temp
 AS $$
   SELECT coalesce((
     SELECT CASE
-      WHEN p_date > coalesce(s.last_closed_date, s.onboard_date - 1)
-        THEN s.streak_current > 0
+      WHEN p_date > c.closed
+        THEN coalesce((SELECT (a.d->>'storyCompleted')::boolean
+                         FROM jsonb_array_elements(app._close_days(p_user, c.closed + 1, p_date - 1))
+                              WITH ORDINALITY a(d, n)
+                        WHERE (a.d->>'storyCompleted')::boolean OR NOT (a.d->>'ticketApplied')::boolean
+                        ORDER BY a.n DESC LIMIT 1),
+                      s.streak_current > 0)
              AND NOT coalesce((SELECT d.story_completed FROM daily_logs d
                                 WHERE d.user_id = p_user AND d.logical_date = p_date), false)
       ELSE s.break_date = p_date AND s.streak_before_break IS NOT NULL
     END
-      FROM progression_state s WHERE s.user_id = p_user), false)
+      FROM progression_state s
+     CROSS JOIN LATERAL (SELECT coalesce(s.last_closed_date, s.onboard_date - 1) AS closed) c
+     WHERE s.user_id = p_user), false)
 $$;
 
 -- Why a ticket may not be applied to p_date now, or null when it may. First match wins:
--- TICKET_DATE_NOT_ELIGIBLE (not the current logical date, nor yesterday while the local hour is
--- in [3, 15)), TICKET_ALREADY_USED_FOR_DATE, NO_TICKET (no unused ticket), TICKET_NOT_NEEDED
--- (app._ticket_needed).
+-- TICKET_DATE_NOT_ELIGIBLE (not one of app._ticket_dates), TICKET_ALREADY_USED_FOR_DATE,
+-- NO_TICKET (no unused ticket), TICKET_NOT_NEEDED (app._ticket_needed).
 CREATE OR REPLACE FUNCTION app._ticket_block_reason(p_user uuid, p_date date) RETURNS text
 LANGUAGE sql STABLE SET search_path = public, pg_temp
 AS $$
   SELECT CASE
-    WHEN p_date IS NULL OR x.today IS NULL
-      OR NOT (p_date = x.today OR (p_date = x.today - 1 AND x.hour >= 3 AND x.hour < 15))
+    WHEN p_date IS NULL OR NOT EXISTS (SELECT 1 FROM app._ticket_dates(p_user) e WHERE e.day = p_date)
       THEN 'TICKET_DATE_NOT_ELIGIBLE'
     WHEN EXISTS (SELECT 1 FROM freeze_tickets t WHERE t.user_id = p_user AND t.used_for_date = p_date)
       THEN 'TICKET_ALREADY_USED_FOR_DATE'
@@ -129,17 +155,15 @@ AS $$
       THEN 'NO_TICKET'
     WHEN NOT app._ticket_needed(p_user, p_date) THEN 'TICKET_NOT_NEEDED'
   END
-    FROM (SELECT app.logical_date(app.now(), u.timezone) AS today,
-                 extract(hour FROM app.now() AT TIME ZONE u.timezone)::int AS hour
-            FROM (SELECT 1) one LEFT JOIN users u ON u.id = p_user) x
 $$;
 
 REVOKE ALL ON FUNCTION
-  app._ticket_cap(uuid), app._ticket_grant_check(uuid, date), app._ticket_needed(uuid, date),
-  app._ticket_block_reason(uuid, date)
+  app._ticket_cap(uuid), app._ticket_grant_check(uuid, date), app._ticket_dates(uuid),
+  app._ticket_needed(uuid, date), app._ticket_block_reason(uuid, date)
   FROM PUBLIC, app_anon, app_auth, app_job;
 SELECT meta.expect_function('app._ticket_cap(uuid)', 'invoker', '{}');
 SELECT meta.expect_function('app._ticket_grant_check(uuid, date)', 'invoker', '{}');
+SELECT meta.expect_function('app._ticket_dates(uuid)', 'invoker', '{}');
 SELECT meta.expect_function('app._ticket_needed(uuid, date)', 'invoker', '{}');
 SELECT meta.expect_function('app._ticket_block_reason(uuid, date)', 'invoker', '{}');
 
@@ -174,6 +198,9 @@ BEGIN
   SELECT app.logical_date(app.now(), u.timezone) INTO v_date FROM users u WHERE u.id = v_user;
   v_ref := to_char(v_date, 'YYYY-MM-DD');
 
+  -- ponytail: the LATERAL max() reads the caller's entries once per quote (no (user_id,
+  -- quote_code) index): O(quotes x entries) a write, fine at launch scale. Upgrade: one
+  -- GROUP BY quote_code subquery over the caller's entries, joined to quotes.
   SELECT q.* INTO v_quote
     FROM quotes q
     LEFT JOIN LATERAL (SELECT max(e.created_at) AS last FROM journal_entries e
@@ -250,9 +277,10 @@ END $$;
 
 -- What GET /freeze-tickets shows of the caller, as of app.now():
 --   {available, cap, state: StreakState of domain/streak.ts, eligible: [{date, target, open,
---    deadline, needed, alreadyUsed}]}
--- eligible: TODAY always, YESTERDAY while the local hour is in [3, 15); deadline: 15:00 local
--- of the day after the date; open: the date is not closed yet; needed: app._ticket_needed.
+--    before, deadline, needed, alreadyUsed}]}
+-- eligible: app._ticket_dates (the window ticket_use enforces); deadline: 15:00 local of the
+-- day after the date; open: the date is not closed yet; before: app._close_days of the open days
+-- before the date ('[]' for none), what the close will read; needed: app._ticket_needed.
 -- Null for a caller who is not onboarded.
 CREATE OR REPLACE FUNCTION ticket_overview() RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
@@ -267,18 +295,16 @@ AS $$
     'eligible', (
       SELECT jsonb_agg(jsonb_build_object(
                'date', to_char(e.day, 'YYYY-MM-DD'), 'target', e.target,
-               'open', e.day > coalesce(s.last_closed_date, s.onboard_date - 1),
+               'open', e.day > c.closed,
+               'before', app._close_days(u.id, c.closed + 1, e.day - 1),
                'deadline', ((e.day + 1) + time '15:00') AT TIME ZONE u.timezone,
                'needed', app._ticket_needed(u.id, e.day),
                'alreadyUsed', EXISTS (SELECT 1 FROM freeze_tickets t WHERE t.user_id = u.id AND t.used_for_date = e.day))
              ORDER BY e.day DESC)
-        FROM (SELECT x.today AS day, 'TODAY' AS target
-              UNION ALL
-              SELECT x.today - 1, 'YESTERDAY' WHERE x.hour >= 3 AND x.hour < 15) e))
+        FROM app._ticket_dates(u.id) e))
     FROM users u
     JOIN progression_state s ON s.user_id = u.id
-   CROSS JOIN LATERAL (SELECT app.logical_date(app.now(), u.timezone) AS today,
-                              extract(hour FROM app.now() AT TIME ZONE u.timezone)::int AS hour) x
+   CROSS JOIN LATERAL (SELECT coalesce(s.last_closed_date, s.onboard_date - 1) AS closed) c
    WHERE u.id = app.current_user_id() AND u.onboarded_at IS NOT NULL AND u.deleted_at IS NULL
 $$;
 

@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, test } from 'node:test';
 import type { PoolClient } from 'pg';
-import { rescueWithTicket, ticketPreview } from '../../../domain/streak.ts';
+import { closeDays, rescueWithTicket, ticketPreview } from '../../../domain/streak.ts';
 import type { StreakState } from '../../../domain/streak.ts';
 import { asUser, setTestClock } from '../../test/helpers.ts';
 import { newOnboardedUser, newUser, startTestApp } from '../../test/http.ts';
@@ -45,6 +45,16 @@ function ok(result: CallResult): any {
   return result.body;
 }
 const code = (result: CallResult) => (result.status === 200 ? 'ok' : result.body?.error?.code);
+/** The date labels strictly between `from` and `to`. */
+function daysBetween(from: string, to: string): string[] {
+  const days: string[] = [];
+  for (let d = new Date(`${from}T00:00:00Z`); ; ) {
+    d = new Date(d.getTime() + 86_400_000);
+    const label = d.toISOString().slice(0, 10);
+    if (label >= to) return days;
+    days.push(label);
+  }
+}
 
 type Fixture = {
   streakCurrent: number;
@@ -315,7 +325,9 @@ test('GET /freeze-tickets: previews equal ticketPreview, deadlines are 15:00 loc
     );
     for (const e of answer.eligible as Eligible[]) {
       const open = e.date > (lastClosed ?? '');
-      const preview = ticketPreview(state, open ? 'TODAY' : 'YESTERDAY');
+      // an open date: on the state the close leaves once the open days before it are closed (none done, no ticket)
+      const openBefore = daysBetween(lastClosed ?? '2027-02-28', e.date).map(date => ({ date, storyCompleted: false, ticketApplied: false }));
+      const preview = open ? ticketPreview(closeDays(state, openBefore).state, 'TODAY') : ticketPreview(state, 'YESTERDAY');
       assert.deepEqual([e.withoutTicket, e.withTicket], [preview.withoutTicket, preview.withTicket], `${name} ${e.date}`);
       // the brief's rule, computed here independently: the preview's needed, and for an open day its STORY not done
       const rule = preview.needed && (open || state.breakDate === e.date);
@@ -339,6 +351,74 @@ test('GET /freeze-tickets: previews equal ticketPreview, deadlines are 15:00 loc
     ],
   );
   assert.equal(code(await spend(user, TODAY)), 'TICKET_NOT_NEEDED');
+});
+
+test('the yesterday window at its edges (02:59, 03:00, 14:59, 15:00 local): GET /freeze-tickets offers YESTERDAY exactly when ticket_use lets the date through', async () => {
+  for (const [day, hhmm, today, offered] of [
+    ['2027-03-11', '02:59', TODAY, false], // still the logical 10th, and before 03:00
+    [TODAY, '03:00', TODAY, true],
+    [TODAY, '14:59', TODAY, true],
+    [TODAY, '15:00', TODAY, false],
+  ] as const) {
+    await clock(day, hhmm);
+    const user = await userWith({ streakCurrent: 4, lastClosed: YESTERDAY }, 0);
+    const answer = await tickets(user);
+    const yesterday = daysBetween('2027-03-08', today).at(-1) as string;
+    assert.deepEqual(
+      answer.eligible.map((e: Eligible) => [e.target, e.date]),
+      [['TODAY', today], ...(offered ? [['YESTERDAY', yesterday]] : [])],
+      `${day} ${hhmm}`,
+    );
+    // no ticket: an eligible date gets as far as NO_TICKET, one outside the window stops at the date
+    assert.equal(await wouldUse(user, yesterday), offered ? 'NO_TICKET' : 'TICKET_DATE_NOT_ELIGIBLE', `${day} ${hhmm}`);
+    assert.equal(await wouldUse(user, today), 'NO_TICKET', `${day} ${hhmm}`);
+  }
+});
+
+test('TODAY while yesterday is still open: the ticket would freeze the streak the close leaves, so it is not needed when yesterday is about to break, and needed once yesterday is protected or done', async () => {
+  await clock(TODAY, '03:10');
+  const user = await userWith({ streakCurrent: 3, lastClosed: '2027-03-08', lastOutcome: 'COMPLETED' }, 2);
+  const state = await stateOf(user);
+  // the waste the rule prevents: yesterday missed, then a ticket on today freezes a streak of 0
+  const wasted = closeDays(state, [
+    { date: YESTERDAY, storyCompleted: false, ticketApplied: false },
+    { date: TODAY, storyCompleted: false, ticketApplied: true },
+  ]).state;
+  assert.deepEqual([wasted.streakCurrent, wasted.lastOutcome], [0, 'FROZEN']);
+
+  const view = async () =>
+    (await tickets(user)).eligible.map((e: Eligible) => [e.target, e.needed, e.withoutTicket, e.withTicket]);
+  assert.deepEqual(await view(), [
+    ['TODAY', false, 0, 0],
+    ['YESTERDAY', true, 0, 3],
+  ]);
+  assert.equal(code(await spend(user, TODAY)), 'TICKET_NOT_NEEDED');
+  assert.deepEqual((await ticketRows(user)).map(r => r.used_for), [null, null]);
+  // yesterday protected: today now freezes the 3 the close keeps
+  ok(await spend(user, YESTERDAY));
+  assert.deepEqual(await view(), [
+    ['TODAY', true, 0, 3],
+    ['YESTERDAY', true, 0, 3],
+  ]);
+  ok(await spend(user, TODAY));
+  await runJob('day-close', db.app, new Date(at(TODAY, '03:20')), quiet);
+  await clock('2027-03-11', '04:00');
+  await runJob('day-close', db.app, new Date(at('2027-03-11', '04:00')), quiet);
+  const closed = await stateOf(user);
+  assert.deepEqual([closed.streakCurrent, closed.lastOutcome, closed.lastClosed], [3, 'FROZEN', TODAY]);
+  assert.deepEqual([await outcomeOf(user, YESTERDAY), await outcomeOf(user, TODAY)], ['FROZEN', 'FROZEN']);
+
+  // yesterday done but not closed yet, streak 0: today protects the 1 the close will give
+  await clock(TODAY, '03:10');
+  const done = await userWith({ streakCurrent: 0, lastClosed: '2027-03-08', lastOutcome: 'MISSED', missedRun: 1 }, 1);
+  await db.admin.query('INSERT INTO daily_logs (user_id, logical_date, story_completed) VALUES ($1, $2, true)', [done.userId, YESTERDAY]);
+  const doneView = (await tickets(done)).eligible.map((e: Eligible) => [e.target, e.needed, e.withTicket]);
+  assert.deepEqual(doneView, [
+    ['TODAY', true, 1],
+    ['YESTERDAY', false, 0],
+  ]);
+  assert.equal(await wouldUse(done, YESTERDAY), 'TICKET_NOT_NEEDED');
+  assert.equal(await wouldUse(done, TODAY), 'ok');
 });
 
 test('a ticket applied to yesterday between 03:00 and the day-close run is honoured by the run: FROZEN, streak kept', async () => {
@@ -371,18 +451,35 @@ async function until(n: number) {
   }
   assert.equal(await waiting(), n, 'the transactions did not line up behind the lock');
 }
-/** The owner holds one row lock until the returned function is called. */
+/**
+ * The owner holds one row lock until the returned function is called. The client goes back to the
+ * pool (max 2, and a race test uses both) whatever throws: a failed lock destroys it.
+ */
 async function hold(sql: string, userId: string): Promise<() => Promise<void>> {
   const client: PoolClient = await db.admin.connect();
-  await client.query('BEGIN');
-  await client.query(sql, [userId]);
+  try {
+    await client.query('BEGIN');
+    await client.query(sql, [userId]);
+  } catch (e) {
+    client.release(true);
+    throw e;
+  }
   return async () => {
-    await client.query('COMMIT');
-    client.release();
+    try {
+      await client.query('COMMIT');
+    } finally {
+      client.release();
+    }
   };
 }
+
 const HOLD_USER = 'SELECT 1 FROM users WHERE id = $1 FOR NO KEY UPDATE';
 const HOLD_STATE = 'SELECT 1 FROM progression_state WHERE user_id = $1 FOR UPDATE';
+
+test('a hold whose lock statement throws gives its client back to the pool', async () => {
+  await assert.rejects(hold(HOLD_USER, 'not a uuid'), /invalid input syntax for type uuid/);
+  assert.equal(db.admin.totalCount - db.admin.idleCount, 0, 'a client is still checked out');
+});
 
 test('two uses with one ticket at the same moment: one goes through (same date: the other ALREADY_USED_FOR_DATE; another date: NO_TICKET)', async () => {
   await clock(TODAY, '09:00');
