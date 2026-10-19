@@ -8,7 +8,7 @@ import * as vi from '../../shared/i18n/vi/guild';
 import { tabLabel } from '../../shared/i18n/vi/nav';
 import { mateOf, openToday, settle, USER, world, writes, type Mate, type Team } from '../dashboard/todayTestKit';
 
-export { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
+export { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 export { openToday } from '../dashboard/todayTestKit';
 export { fetchMock, hold, installTodayTestEnv, mateOf, queryClient, refuse, requested, respond, serverAnswer, settle, USER, world, writes } from '../dashboard/todayTestKit';
 export type { Mate, Team } from '../dashboard/todayTestKit';

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ComponentRef, ReactNode, Ref } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 import * as vi from '../i18n/vi/common';
@@ -18,10 +18,12 @@ type Props = {
   hasInputs?: boolean;
   /** Safe-area edges to pad; a tab root lets the tab bar own the bottom edge. */
   edges?: readonly Edge[];
+  /** The scroll view, for a screen that scrolls itself to a place on arrival. */
+  scrollRef?: Ref<ComponentRef<typeof ScrollView>>;
   children?: ReactNode;
 };
 
-export function Screen({ title, subtitle, onBack, scroll = true, hasInputs = false, edges, children }: Props) {
+export function Screen({ title, subtitle, onBack, scroll = true, hasInputs = false, edges, scrollRef, children }: Props) {
   const palette = useTheme();
   const body = (
     <>
@@ -48,7 +50,7 @@ export function Screen({ title, subtitle, onBack, scroll = true, hasInputs = fal
         style={styles.fill}
       >
         {scroll ? (
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <ScrollView ref={scrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             {body}
           </ScrollView>
         ) : (

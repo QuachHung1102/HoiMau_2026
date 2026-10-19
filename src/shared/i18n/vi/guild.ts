@@ -32,7 +32,6 @@ export const nameLine = (name: string, isMe: boolean) => (isMe ? `${name}${dot}$
 export const levelLine = (level: number, done: number, counted: number) => `Cấp ${level}${dot}${done}/${counted} ngày`;
 export const doneToday = 'đã xong hôm nay';
 export const canNudge = 'có thể nhắc';
-export const nudgeAction = (name: string) => `Nhắc ${name}`;
 /** Why a member cannot be nudged right now, said where it is (the row), never as a tap that does nothing. */
 export const notNudgeable: Record<NudgeBlockReason | 'NOT_IN_GUILD' | 'NUDGE_NOT_SAME_GUILD', string> = {
   NUDGE_RECEIVER_MUTED: 'Đã tắt nhận nhắc nhở',

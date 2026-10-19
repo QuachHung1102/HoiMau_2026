@@ -36,6 +36,15 @@ describe('S26: the invite code', () => {
     view.unmount();
   });
 
+  test('a pasted code with spaces around it becomes the code; the field itself does not cut it (the typed length is kept by the screen, not by maxLength)', async () => {
+    seedOtherGuild({ inviteCode: 'ABCD2345' });
+    const view = await openJoin();
+    typeCode(' abcd2345 ');
+    expect(field().props.value).toBe('ABCD2345');
+    expect(field().props.maxLength).toBeUndefined();
+    view.unmount();
+  });
+
   test('success: the guild is read again from the server and the tab shows S27 with the person among the members', async () => {
     const guild = seedOtherGuild();
     const view = await openJoin();

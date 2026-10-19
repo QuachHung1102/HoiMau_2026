@@ -1,5 +1,5 @@
 import { Share } from 'react-native';
-import { act, CODE, fireEvent, hold, installTodayTestEnv, landed, mateOf, mates, NAME, openManage, queryClient, screen, seedGuild, settle, USER, world, writesOf } from './guildTestKit';
+import { act, CODE, fireEvent, hold, installTodayTestEnv, landed, mateOf, mates, NAME, openManage, queryClient, requested, screen, seedGuild, settle, USER, within, world, writesOf } from './guildTestKit';
 
 // The nudge settings are Task 47's screen: a probe answers the route and shows its params.
 jest.mock('../../app/screens', () => require('./guildProbes').withProbes(jest.requireActual('../../app/screens')));
@@ -15,6 +15,9 @@ const leaveButton = () => screen.getByRole('button', { name: 'Xem xác nhận r�
 const LEADER_RULE = 'Bạn đang là trưởng nhóm và còn thành viên khác. Hãy chuyển vai trò trưởng nhóm cho một người rồi mới rời được.';
 const reread = () => act(() => queryClient().invalidateQueries({ queryKey: ['guild'] }));
 const linh = () => world.guild.teams[0].members[1];
+const members = () => within(screen.getByTestId('guild-members'));
+const leaveCard = () => within(screen.getByTestId('guild-leave'));
+const OFFLINE = 'Không kết nối được mạng. Bạn kiểm tra kết nối rồi thử lại nhé.';
 const mateNamed = (name: string) => world.guild.teams[0].members.find(mate => mate.displayName === name)!;
 
 describe('S54: the code and sharing it', () => {
@@ -198,6 +201,39 @@ describe('S54: handing over leadership', () => {
     view.unmount();
   });
 
+  test('a transfer that was refused is said in the members section beside its result, with its own "Thử lại"; the leave card stays clean', async () => {
+    seedGuild({ role: 'LEADER' });
+    const view = await openManage();
+    fireEvent.press(transferTo('Linh'));
+    world.down = true;
+    fireEvent.press(await screen.findByRole('button', { name: 'Chuyển vai trò' }));
+    await screen.findByText(OFFLINE);
+    expect(members().getByText(OFFLINE)).toBeTruthy();
+    expect(members().getByRole('button', { name: 'Thử lại' })).toBeTruthy();
+    expect(leaveCard().queryByText(OFFLINE)).toBeNull();
+    expect(leaveCard().queryByRole('button', { name: 'Thử lại' })).toBeNull();
+    world.down = false;
+    fireEvent.press(members().getByRole('button', { name: 'Thử lại' }));
+    await screen.findByText('Linh đã là trưởng nhóm.');
+    expect(writesOf(transferPath)).toHaveLength(2);
+    expect(writesOf(leavePath)).toEqual([]);
+    expect(screen.queryByText(OFFLINE)).toBeNull();
+    view.unmount();
+  });
+
+  test('a transfer refused by the server (NOT_LEADER) is also said in the members section, not under the leave button', async () => {
+    seedGuild({ role: 'LEADER' });
+    const view = await openManage();
+    mateNamed('Linh').role = 'LEADER';
+    world.guild.teams[0].members.find(mate => mate.userId === USER)!.role = 'MEMBER';
+    fireEvent.press(transferTo('Minh'));
+    fireEvent.press(await screen.findByRole('button', { name: 'Chuyển vai trò' }));
+    await screen.findByText('Bạn không còn là trưởng nhóm nên chưa chuyển được.');
+    expect(members().getByText('Bạn không còn là trưởng nhóm nên chưa chuyển được.')).toBeTruthy();
+    expect(leaveCard().queryByText('Bạn không còn là trưởng nhóm nên chưa chuyển được.')).toBeNull();
+    view.unmount();
+  });
+
   test('a refused transfer ends the attempt: the same member again is a new request with a new key', async () => {
     seedGuild({ role: 'LEADER' });
     const view = await openManage();
@@ -324,6 +360,38 @@ describe('S54: leaving', () => {
     const sent = writesOf(leavePath);
     expect(sent).toHaveLength(2);
     expect(sent[1].id).toBe(sent[0].id);
+    view.unmount();
+  });
+
+  test('a leave that was refused is said in the leave card with its own "Thử lại", which sends the leave and no transfer; the members section stays clean', async () => {
+    seedGuild({ role: 'LEADER', members: [mates()[0]] });
+    const view = await openManage();
+    fireEvent.press(leaveButton());
+    world.down = true;
+    fireEvent.press(await screen.findByRole('button', { name: 'Rời tổ đội' }));
+    await screen.findByText(OFFLINE);
+    expect(leaveCard().getByText(OFFLINE)).toBeTruthy();
+    expect(members().queryByText(OFFLINE)).toBeNull();
+    expect(members().queryByRole('button', { name: 'Thử lại' })).toBeNull();
+    world.down = false;
+    fireEvent.press(leaveCard().getByRole('button', { name: 'Thử lại' }));
+    expect(await screen.findByRole('header', { name: 'Đi cùng người quen' })).toBeTruthy();
+    expect(writesOf(leavePath)).toHaveLength(2);
+    expect(writesOf(transferPath)).toEqual([]);
+    view.unmount();
+  });
+
+  test('a confirmed leave reads /guilds/me again and marks the weekly ranking old (the cache is not trusted after leaving)', async () => {
+    seedGuild();
+    const view = await openManage();
+    queryClient().setQueryData(['leaderboard'], { entries: [] });
+    const reads = requested('/guilds/me');
+    fireEvent.press(leaveButton());
+    fireEvent.press(await screen.findByRole('button', { name: 'Rời tổ đội' }));
+    await screen.findByRole('header', { name: 'Đi cùng người quen' });
+    await landed();
+    expect(requested('/guilds/me')).toBeGreaterThan(reads);
+    expect(queryClient().getQueryState(['leaderboard'])?.isInvalidated).toBe(true);
     view.unmount();
   });
 

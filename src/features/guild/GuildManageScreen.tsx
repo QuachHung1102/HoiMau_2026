@@ -1,6 +1,6 @@
 import { useIsFocused } from '@react-navigation/native';
-import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useRef, useState, type ComponentRef } from 'react';
+import { StyleSheet, View, type LayoutChangeEvent, type ScrollView } from 'react-native';
 import type { GuildMember } from '../../../domain/contract/social.ts';
 import type { ScreenProps } from '../../app/routes';
 import { ApiError } from '../../shared/api/client';
@@ -18,7 +18,8 @@ import { TextField } from '../../shared/ui/TextField';
 import { shareInvitation, useGuild, useLeaveGuild, useReadGuildAgain, useTransferGuild } from './api';
 
 type Asked = { kind: 'transfer'; member: Pick<GuildMember, 'userId' | 'displayName'> } | { kind: 'leave' };
-type Refused = { text: string; again?: () => void };
+/** Which write was refused decides where the refusal is said: next to its own result. */
+type Refused = { on: 'transfer' | 'leave'; text: string; again?: () => void };
 
 /** The refusals of the two writes, in words; a connection that was lost can be tried again with the same request. */
 function refusalText(code: string) {
@@ -39,8 +40,10 @@ function refusalText(code: string) {
 const stale = (code: string) => ['NOT_LEADER', 'TRANSFER_TARGET_INVALID', 'LEADER_MUST_TRANSFER', 'NOT_IN_GUILD'].includes(code);
 
 /** S54: the invite code and sharing it, the members and their roles, the nudge settings and leaving. */
-export function GuildManageScreen({ navigation }: ScreenProps<'GuildManage'>) {
+export function GuildManageScreen({ navigation, route }: ScreenProps<'GuildManage'>) {
   const focused = useIsFocused();
+  const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
+  const scrolled = useRef(false);
   const query = useGuild();
   const [transfer] = useTransferGuild();
   const [leave] = useLeaveGuild();
@@ -74,8 +77,8 @@ export function GuildManageScreen({ navigation }: ScreenProps<'GuildManage'>) {
   const others = guild.members.length > 1;
   const leaderBlocked = isLeader && others;
 
-  const failed = (code: string, again: () => void) => {
-    setRefused({ text: refusalText(code), again: code === 'NETWORK' || code === 'TIMEOUT' ? again : undefined });
+  const failed = (on: Refused['on'], code: string, again: () => void) => {
+    setRefused({ on, text: refusalText(code), again: code === 'NETWORK' || code === 'TIMEOUT' ? again : undefined });
     if (stale(code)) readAgain();
   };
   const doTransfer = async (member: Pick<GuildMember, 'userId' | 'displayName'>) => {
@@ -85,7 +88,7 @@ export function GuildManageScreen({ navigation }: ScreenProps<'GuildManage'>) {
     if (!outcome) return;
     setAsked(null);
     if (outcome.state === 'done') setTransferredTo(member.displayName);
-    else failed(outcome.code, () => doTransfer(member));
+    else failed('transfer', outcome.code, () => doTransfer(member));
   };
   const doLeave = async () => {
     setRefused(null);
@@ -94,7 +97,15 @@ export function GuildManageScreen({ navigation }: ScreenProps<'GuildManage'>) {
     if (!outcome) return;
     setAsked(null);
     if (outcome.state === 'done') navigation.navigate('Guild');
-    else failed(outcome.code, doLeave);
+    else failed('leave', outcome.code, doLeave);
+  };
+  const refusal = (on: Refused['on']) =>
+    refused?.on === on ? <InlineError message={refused.text} action={refused.again ? { label: retry, onPress: refused.again } : undefined} /> : null;
+  // The route may ask for the leave card ("Tìm nhóm khác"): scroll to it once, when it is first laid out.
+  const toLeave = (event: LayoutChangeEvent) => {
+    if (route.params?.focus !== 'leave' || scrolled.current) return;
+    scrolled.current = true;
+    scroller.current?.scrollTo({ y: event.nativeEvent.layout.y, animated: false });
   };
   const share = () => {
     setShareFailed(false);
@@ -102,12 +113,12 @@ export function GuildManageScreen({ navigation }: ScreenProps<'GuildManage'>) {
   };
 
   return (
-    <Screen {...header} subtitle={guild.name} hasInputs>
+    <Screen {...header} subtitle={guild.name} hasInputs scrollRef={scroller}>
       <TextField label={vi.inviteCodeLabel} value={guild.inviteCode} editable={false} selectTextOnFocus />
       {shareFailed ? <InlineError message={vi.shareFailed} /> : null}
       <Button label={vi.shareCode} onPress={share} />
 
-      <View style={styles.section}>
+      <View testID="guild-members" style={styles.section}>
         <AppText variant="title" accessibilityRole="header">
           {vi.membersTitle}
         </AppText>
@@ -125,19 +136,22 @@ export function GuildManageScreen({ navigation }: ScreenProps<'GuildManage'>) {
             <AppText variant="secondary">{vi.transferred(transferredTo)}</AppText>
           </View>
         ) : null}
+        {refusal('transfer')}
       </View>
 
       <ListRow icon="Bell" title={vi.nudgeSettingsTitle} description={vi.nudgeSettingsHint} onPress={() => navigation.navigate('NotificationSettings')} />
 
-      <Card>
-        <AppText variant="title" accessibilityRole="header">
-          {vi.leaveTitle}
-        </AppText>
-        <AppText variant="secondary">{vi.leaveBody}</AppText>
-        {leaderBlocked ? <DisabledReason reason={vi.leaderMustTransfer} /> : null}
-        {refused ? <InlineError message={refused.text} action={refused.again ? { label: retry, onPress: refused.again } : undefined} /> : null}
-        <Button variant="secondary" label={vi.leaveAction} disabled={leaderBlocked} onPress={() => setAsked({ kind: 'leave' })} />
-      </Card>
+      <View testID="guild-leave" onLayout={toLeave}>
+        <Card>
+          <AppText variant="title" accessibilityRole="header">
+            {vi.leaveTitle}
+          </AppText>
+          <AppText variant="secondary">{vi.leaveBody}</AppText>
+          {leaderBlocked ? <DisabledReason reason={vi.leaderMustTransfer} /> : null}
+          {refusal('leave')}
+          <Button variant="secondary" label={vi.leaveAction} disabled={leaderBlocked} onPress={() => setAsked({ kind: 'leave' })} />
+        </Card>
+      </View>
 
       {asked?.kind === 'transfer' ? (
         <Dialog

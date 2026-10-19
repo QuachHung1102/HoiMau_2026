@@ -65,7 +65,6 @@ export function GuildJoinScreen({ navigation }: ScreenProps<'GuildJoin'>) {
         autoCapitalize="characters"
         autoCorrect={false}
         spellCheck={false}
-        maxLength={vi.codeLength}
         returnKeyType="done"
         onSubmitEditing={submit}
       />

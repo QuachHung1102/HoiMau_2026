@@ -79,4 +79,16 @@ export const entries: Entries = {
   's76-guild-quiet': () => app({ route: 'Guild', queries: seen(quiet) }),
   's54-guild-manage': () => app({ route: 'GuildManage', queries: seen(guildOf()) }),
   's54-guild-manage-leader': () => app({ route: 'GuildManage', queries: seen(guildOf({ myRole: 'LEADER' })) }),
+  // The leader hands over to the first member and confirms; the preview has no network, so the refusal that follows is the lost connection.
+  's54-guild-manage-transfer-failed': () =>
+    app({
+      route: 'GuildManage',
+      queries: seen(guildOf({ myRole: 'LEADER' })),
+      extra: (
+        <>
+          <PressWhen find={byText('button', vi.transferAction)} />
+          <PressWhen find={() => Array.from(document.querySelectorAll<HTMLElement>('[role="button"]')).find(node => node.textContent === vi.transferConfirm) ?? null} />
+        </>
+      ),
+    }),
 };
