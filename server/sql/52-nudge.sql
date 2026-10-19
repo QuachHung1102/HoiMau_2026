@@ -77,8 +77,11 @@ AS $$
     WHEN (SELECT count(*) FROM nudge_events e WHERE e.sender_id = p_sender AND e.sender_date = y.sender_day) >= 3
       THEN 'NUDGE_SENDER_LIMIT'
   END
-    FROM (SELECT (SELECT m.guild_id FROM guild_memberships m WHERE m.user_id = p_sender) AS sender_guild,
-                 (SELECT m.guild_id FROM guild_memberships m WHERE m.user_id = p_receiver) AS receiver_guild,
+    -- a deleted user (deleted_at set) is in no guild, as sender and as receiver
+    FROM (SELECT (SELECT m.guild_id FROM guild_memberships m JOIN users u ON u.id = m.user_id
+                   WHERE m.user_id = p_sender AND u.deleted_at IS NULL) AS sender_guild,
+                 (SELECT m.guild_id FROM guild_memberships m JOIN users u ON u.id = m.user_id
+                   WHERE m.user_id = p_receiver AND u.deleted_at IS NULL) AS receiver_guild,
                  (SELECT u.timezone FROM users u WHERE u.id = p_sender) AS sender_tz,
                  (SELECT u.timezone FROM users u WHERE u.id = p_receiver) AS receiver_tz,
                  app.now() AS now) x
@@ -124,7 +127,7 @@ BEGIN
   WITH locked AS (
     SELECT u.id FROM users u
      WHERE (u.id = v_user AND u.deleted_at IS NULL AND u.onboarded_at IS NOT NULL)
-        OR (u.id = p_receiver_id AND u.id IS DISTINCT FROM v_user AND EXISTS (
+        OR (u.id = p_receiver_id AND u.id IS DISTINCT FROM v_user AND u.deleted_at IS NULL AND EXISTS (
               SELECT 1 FROM guild_memberships s JOIN guild_memberships r ON r.guild_id = s.guild_id
                WHERE s.user_id = v_user AND r.user_id = u.id))
      ORDER BY u.id
