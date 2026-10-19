@@ -46,8 +46,9 @@ const routes: Route[] = [
         db.query<{ salt: Buffer | null }>('SELECT account_salt() AS salt'),
       );
       const salt = rows[0].salt;
+      // the account went since the session was checked (a concurrent delete): no session now
       if (salt === null) {
-        throw new Error('account_salt: a live session without a salt');
+        throw new AppError('SESSION_INVALID');
       }
       return { key: await deriveKey(password, salt) };
     },
