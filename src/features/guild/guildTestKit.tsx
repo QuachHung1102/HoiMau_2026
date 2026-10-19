@@ -2,6 +2,7 @@
 // Test kit for the guild screens (used by *.test.tsx files; never imported by app code). The whole app against the stand-in
 // server of the home-tab kit, which holds the guilds (`world.guild`) and answers the guild routes as server Tasks 39 and 41 do.
 import { fireEvent, screen } from '@testing-library/react-native';
+import words from './guildFixture.json';
 import { GUILD_MAX_MEMBERS } from '../../../domain/guild.ts';
 import * as vi from '../../shared/i18n/vi/guild';
 import { tabLabel } from '../../shared/i18n/vi/nav';
@@ -13,7 +14,7 @@ export { fetchMock, hold, installTodayTestEnv, mateOf, queryClient, refuse, requ
 export type { Mate, Team } from '../dashboard/todayTestKit';
 
 export const CODE = 'NHJPM2K9';
-export const NAME = 'Nhịp sống mới';
+export const NAME = words.guildName;
 
 /** The reads a screen has just asked for have landed inside act(). */
 export const landed = async () => {
@@ -27,7 +28,7 @@ export const mates = (): Mate[] => [
   { ...mateOf(0, 'An', { level: 5, daysCompleted: 6, daysCounted: 7 }), userId: USER },
   mateOf(1, 'Linh', { level: 7, daysCompleted: 7, daysCounted: 7, storyDone: true }),
   mateOf(2, 'Minh', { level: 3, daysCompleted: 4, daysCounted: 7 }),
-  mateOf(3, 'Hà', { level: 6, daysCompleted: 5, daysCounted: 7, muted: true }),
+  mateOf(3, words.ha, { level: 6, daysCompleted: 5, daysCounted: 7, muted: true }),
 ];
 
 /** Puts the caller into a guild. `role` is the caller's; `members` replaces the four of the frame (the caller must be among them). */
@@ -50,19 +51,19 @@ export function seedGuild(more: Partial<Omit<Team, 'members'>> & { role?: 'LEADE
 export function seedOtherGuild(more: Partial<Team> = {}): Team {
   const team: Team = {
     id: '00000000-0000-4000-9000-900000000002',
-    name: 'Tổ khác',
+    name: words.otherGuildName,
     motto: '',
     inviteCode: 'ABCD2345',
     weekCompletion: 0.5,
     inactiveDays: 0,
-    members: [mateOf(21, 'Bình', { role: 'LEADER' })],
+    members: [mateOf(21, words.binh, { role: 'LEADER' })],
     ...more,
   };
   world.guild.teams.push(team);
   return team;
 }
 /** `count` members besides the leader: a guild that is full at 8. */
-export const fullTeam = (): Mate[] => Array.from({ length: GUILD_MAX_MEMBERS }, (_, n) => mateOf(30 + n, `Bạn ${n + 1}`, n === 0 ? { role: 'LEADER' } : {}));
+export const fullTeam = (): Mate[] => Array.from({ length: GUILD_MAX_MEMBERS }, (_, n) => mateOf(30 + n, `${words.friend} ${n + 1}`, n === 0 ? { role: 'LEADER' } : {}));
 
 export const guildTab = () => screen.getByRole('tab', { name: tabLabel.Guild });
 const header = (name: string) => screen.findByRole('header', { name });
