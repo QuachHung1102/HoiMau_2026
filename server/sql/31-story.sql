@@ -73,6 +73,9 @@ CREATE TABLE IF NOT EXISTS nutrition_logs (
     REFERENCES daily_logs (id, user_id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS nutrition_logs_log_idx ON nutrition_logs (daily_log_id);
+-- the purge's cascade (61-privacy.sql) finds the rows of a user, and of a (log, user) pair, by
+-- these; a test asserts every key of the cascade has an index that leads with its columns
+CREATE INDEX IF NOT EXISTS nutrition_logs_user_log_idx ON nutrition_logs (user_id, daily_log_id);
 
 -- id = the action id. modality and duration_sec are those of the workout when it was done.
 -- completed: the session reached half of the duration, whatever it earned. xp_awarded and
@@ -96,6 +99,7 @@ CREATE TABLE IF NOT EXISTS workout_sessions (
     REFERENCES daily_logs (id, user_id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS workout_sessions_log_idx ON workout_sessions (daily_log_id);
+CREATE INDEX IF NOT EXISTS workout_sessions_user_log_idx ON workout_sessions (user_id, daily_log_id);
 
 ALTER TABLE nutrition_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workout_sessions ENABLE ROW LEVEL SECURITY;

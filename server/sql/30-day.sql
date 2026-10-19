@@ -89,6 +89,10 @@ CREATE TABLE IF NOT EXISTS quest_ticks (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS quest_ticks_log_quest_created_idx
   ON quest_ticks (daily_log_id, quest_id, created_at);
+-- the purge's cascade (61-privacy.sql) finds the rows of a user, and of a (log, user) pair, by
+-- these; a test asserts every key of the cascade has an index that leads with its columns
+CREATE INDEX IF NOT EXISTS quest_completions_user_log_idx ON quest_completions (user_id, daily_log_id);
+CREATE INDEX IF NOT EXISTS quest_ticks_user_log_idx ON quest_ticks (user_id, daily_log_id);
 
 ALTER TABLE daily_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE quest_completions ENABLE ROW LEVEL SECURITY;

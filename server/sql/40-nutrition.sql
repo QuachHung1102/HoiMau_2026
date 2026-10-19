@@ -47,6 +47,9 @@ CREATE TABLE IF NOT EXISTS daily_meal_plans (
   created_at timestamptz NOT NULL DEFAULT app.now(),
   PRIMARY KEY (user_id, logical_date, meal_slot)
 );
+-- each nutrition log the purge's cascade deletes checks this key: without the index, a scan of
+-- every user's plans per log
+CREATE INDEX IF NOT EXISTS daily_meal_plans_logged_action_idx ON daily_meal_plans (logged_action_id);
 
 -- The meal of a planned-meal log (31-story.sql left this key to the task that made the table),
 -- added once; and the kcal range on a table made before it was 1 to 5000.
