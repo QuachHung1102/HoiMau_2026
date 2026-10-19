@@ -184,13 +184,27 @@ describe('choosing and sending', () => {
 
 describe('S74: the server says not now', () => {
   const REFUSALS: [string, () => void, string][] = [
-    ['NUDGE_RECEIVER_MUTED', () => void (minh().muted = true), 'Thành viên này đã tắt nhắc nhở'],
-    ['NUDGE_RECEIVER_LIMIT', () => void (minh().nudgedToday = true), 'Minh đã nhận một lời nhắc hôm nay'],
-    ['NUDGE_SENDER_LIMIT', () => void (world.guild.nudgesSent = 3), 'Bạn đã gửi đủ 3 lời nhắc hôm nay'],
-    ['NUDGE_OUTSIDE_WINDOW', () => void (world.hour = 21), 'Chỉ gửi được từ 12:00 đến 20:00 theo giờ của Minh'],
-    ['NUDGE_NOT_NEEDED', () => void (minh().storyDone = true), 'Minh đã xong việc chính hôm nay'],
-    ['NUDGE_NOT_SAME_GUILD', () => void (world.guild.teams[0].members = world.guild.teams[0].members.filter(member => member !== minh())), 'Chưa nhắc được lúc này'],
-    ['NOT_IN_GUILD', () => void (world.guild.teams = []), 'Chưa nhắc được lúc này'],
+    ['NUDGE_RECEIVER_MUTED', () => {
+      minh().muted = true;
+    }, 'Thành viên này đã tắt nhắc nhở'],
+    ['NUDGE_RECEIVER_LIMIT', () => {
+      minh().nudgedToday = true;
+    }, 'Minh đã nhận một lời nhắc hôm nay'],
+    ['NUDGE_SENDER_LIMIT', () => {
+      world.guild.nudgesSent = 3;
+    }, 'Bạn đã gửi đủ 3 lời nhắc hôm nay'],
+    ['NUDGE_OUTSIDE_WINDOW', () => {
+      world.hour = 21;
+    }, 'Chỉ gửi được từ 12:00 đến 20:00 theo giờ của Minh'],
+    ['NUDGE_NOT_NEEDED', () => {
+      minh().storyDone = true;
+    }, 'Minh đã xong việc chính hôm nay'],
+    ['NUDGE_NOT_SAME_GUILD', () => {
+      world.guild.teams[0].members = world.guild.teams[0].members.filter(member => member !== minh());
+    }, 'Chưa nhắc được lúc này'],
+    ['NOT_IN_GUILD', () => {
+      world.guild.teams = [];
+    }, 'Chưa nhắc được lúc này'],
   ];
   test.each(REFUSALS)('%s after the send: its words, one way out, and the guild is read again', async (_code, arrange, words) => {
     seedGuild();
@@ -228,10 +242,18 @@ describe('S74: the server says not now', () => {
 describe('S74: the reason is already known', () => {
   const KNOWN: [string, () => void, string][] = [
     ['NUDGE_RECEIVER_MUTED', () => undefined, 'Thành viên này đã tắt nhắc nhở'],
-    ['NUDGE_RECEIVER_LIMIT', () => void (minh().nudgedToday = true), 'Minh đã nhận một lời nhắc hôm nay'],
-    ['NUDGE_SENDER_LIMIT', () => void (world.guild.nudgesSent = 3), 'Bạn đã gửi đủ 3 lời nhắc hôm nay'],
-    ['NUDGE_OUTSIDE_WINDOW', () => void (world.hour = 21), 'Chỉ gửi được từ 12:00 đến 20:00 theo giờ của Minh'],
-    ['NUDGE_NOT_NEEDED', () => void (minh().storyDone = true), 'Minh đã xong việc chính hôm nay'],
+    ['NUDGE_RECEIVER_LIMIT', () => {
+      minh().nudgedToday = true;
+    }, 'Minh đã nhận một lời nhắc hôm nay'],
+    ['NUDGE_SENDER_LIMIT', () => {
+      world.guild.nudgesSent = 3;
+    }, 'Bạn đã gửi đủ 3 lời nhắc hôm nay'],
+    ['NUDGE_OUTSIDE_WINDOW', () => {
+      world.hour = 21;
+    }, 'Chỉ gửi được từ 12:00 đến 20:00 theo giờ của Minh'],
+    ['NUDGE_NOT_NEEDED', () => {
+      minh().storyDone = true;
+    }, 'Minh đã xong việc chính hôm nay'],
   ];
   test.each(KNOWN)('%s in the guild read: the screen opens as S74 and asks for nothing about a nudge (the guild is only read again to confirm)', async (_code, arrange, words) => {
     seedGuild();
