@@ -1,6 +1,6 @@
 import { useIsFocused } from '@react-navigation/native';
-import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Animated, Easing, StyleSheet, View } from 'react-native';
 import type { ShopItem } from '../../../domain/contract/content.ts';
 import type { PetStage } from '../../../domain/types.ts';
 import type { ScreenProps } from '../../app/routes';
@@ -8,6 +8,8 @@ import { ApiError } from '../../shared/api/client';
 import { retry } from '../../shared/i18n/vi/common';
 import * as vi from '../../shared/i18n/vi/shop';
 import { failureText } from '../../shared/i18n/vi/sync';
+import { motion } from '../../shared/motion/motion';
+import { useReducedMotion } from '../../shared/motion/useReducedMotion';
 import { radius } from '../../shared/theme/tokens';
 import { AppText } from '../../shared/ui/AppText';
 import { OwnedChip } from '../../shared/ui/Badges';
@@ -63,6 +65,24 @@ function Preview({ item, stage }: { item: ShopItem; stage: PetStage }) {
       {item.kind === 'PET_SKIN' ? <Mam stage={stage} mood="NEUTRAL" skin={mamSkinOf(item.assetKey)} size={160} decorative /> : <Icon name="Award" size={72} />}
     </Card>
   );
+}
+
+/**
+ * The item pops when the server has confirmed the purchase; under reduced motion it is simply there.
+ * ponytail: the sheen and the turning stamp of the catalog entry are left out (the chip below appears at once).
+ */
+function UnlockPop({ children }: { children: ReactNode }) {
+  const reduced = useReducedMotion();
+  const [pop] = useState(() => new Animated.Value(reduced ? 1 : 0));
+  useEffect(() => {
+    if (reduced) return;
+    // motion: purchase-unlock
+    const run = Animated.timing(pop, { toValue: 1, duration: motion.durationsMs.celebration, easing: Easing.bezier(...motion.springs.pop.webApprox), useNativeDriver: true });
+    run.start();
+    return () => run.stop();
+  }, [reduced, pop]);
+  const scale = pop.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.96, 1.03, 1] });
+  return <Animated.View style={{ transform: [{ scale }] }}>{children}</Animated.View>;
 }
 
 /**
@@ -125,7 +145,13 @@ export function ShopItemScreen({ navigation, route }: ScreenProps<'ShopItem'>) {
   if (bought || item.owned) {
     return (
       <Screen {...header} title={vi.unlocked} subtitle={bought ? vi.coinLeft(bought.coin) : undefined}>
-        <Preview item={item} stage={stage} />
+        {bought ? (
+          <UnlockPop>
+            <Preview item={item} stage={stage} />
+          </UnlockPop>
+        ) : (
+          <Preview item={item} stage={stage} />
+        )}
         <AppText variant="title" accessibilityRole="header">
           {vi.isYours(item.name)}
         </AppText>
