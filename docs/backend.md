@@ -1846,3 +1846,48 @@ Nhật ký riêng tư, mã hóa ở tầng ứng dụng, đáp lại bằng mộ
 - Thứ tự khóa và việc lý do từ chối được tính sau khóa do các test cuộc đua giữ; cổng 1 và 3 không đọc thân hàm. Khóa chính của `ticket_grant_weeks` (cùng `ON CONFLICT`) là hàng rào thứ hai sau khóa dòng `users`.
 
 Sửa `60-journal.sql` thì chạy `npm run server:test` và `npm run db:api-check`.
+
+## Quyền riêng tư: xuất dữ liệu, xóa tài khoản, dọn dẹp (`61-privacy.sql`, `routes/privacy.ts`, `readModels/export.ts`, `jobs/housekeeping.ts`)
+
+Spec §10 (R-P.2, R-P.3), AR-08, AR-30. Không có bảng mới.
+
+### Hàm
+
+| Hàm | EXECUTE | Bảo đảm |
+|---|---|---|
+| `account_salt()` → bytea | `app_auth` | Salt của chính người gọi (route `/me/delete` chạy bằng `app_auth`, không gọi được `auth_salt`). |
+| `account_delete(p_key)` → boolean | `app_auth` | Không có tham số người dùng: luôn là người gọi. Thứ tự: khóa advisory `auth:<email>` (như `auth_login`, `auth_reset_*`) → đếm một lần vào `login:<email>` (cùng bộ đếm của đăng nhập: từ lần thứ sáu trong 15 phút luôn `false`, kể cả mật khẩu đúng) → khóa dòng `users` (`FOR NO KEY UPDATE`) → so khóa trong DB. Sai → `false`, không đổi gì ngoài lần đếm. Đúng → `deleted_at = app.now()`, `purge_after` = 30 ngày sau, thu hồi mọi phiên, dùng hết mã đặt lại, rời tổ đội (`app._guild_depart`). Email vẫn bị giữ tới khi xóa cứng. |
+| `export_nudges()` → jsonb | `app_auth` | `[{direction: SENT\|RECEIVED, templateCode, sentAt}]` của người gọi, không có danh tính người kia (`nudge_events` là `internal`). |
+| `job_account_purge(p_now)` → int | `app_job` | Xóa cứng người có `purge_after ≤ p_now`, không bao giờ là mồi nhử (`@decoy.invalid`); mọi bảng dữ liệu người dùng xóa lan từ `users`. Khóa dòng `users` `FOR UPDATE SKIP LOCKED` (người đang bận được xóa ở lần chạy sau), rời tổ đội trước. Sau đó sửa tổ đội bị bỏ lại bằng đường khác (xóa tay): không có trưởng nhóm → thành viên còn sống vào sớm nhất làm `LEADER`; không còn ai → xóa tổ đội. |
+| `job_purge_idempotency(p_now)` → int | `app_job` | Xóa khóa idempotency tạo từ 7 ngày trước trở lên (kể cả câu trả lời đã lưu, ví dụ của `POST /me/biometrics`), trừ của mồi nhử. |
+| `job_purge_auth(p_now)` → int | `app_job` | Xóa phiên hết hạn hoặc đã thu hồi, mã đặt lại hết hạn, dòng `auth_throttle` có cửa sổ bắt đầu từ 1 giờ trước trở lên; trừ của mồi nhử. (Không có trong kế hoạch; xem báo cáo Task 46.) |
+
+Nội bộ (không role nào EXECUTE): `app._is_decoy(user)`, `app._guild_depart(user)` (AR-30: thành viên → xóa dòng; trưởng nhóm → giao cho thành viên còn sống có `joined_at` sớm nhất rồi xóa dòng của mình; trưởng nhóm một mình → xóa tổ đội).
+
+**Thứ tự khóa.** `account_delete`: advisory của email → dòng `users` của người gọi → `guilds` (`FOR UPDATE`) → `guild_memberships`, tức thứ tự của `50-guild.sql` sau khóa advisory. Purge: dòng `users` → tổ đội → thành viên.
+
+**Người đã xóa mềm** không còn là ai với mọi hàm: đăng nhập, phiên, khóa của mọi lệnh ghi, mọi job (`day-close`, `reminder-dispatch`, `ticket-grant`, đầu vào bảng xếp hạng) đều lọc `deleted_at IS NULL`. `app._nudge_block_reason` (`52-nudge.sql`) coi người đã xóa (gửi hoặc nhận) là không ở tổ đội nào: `NOT_IN_GUILD` / `NUDGE_NOT_SAME_GUILD`.
+
+### Route và job
+
+| Route | Auth | Thành công | Lỗi riêng |
+|---|---|---|---|
+| `GET /me/export` | `user`, **5 lần/giờ mỗi tài khoản** | `200 ExportDocument`: `data` theo tên bảng cho mọi bảng `own_read`/`own_rw` (trừ `idempotency_keys`, vốn là `internal`), `inventory`/`perk_unlocks` kèm `itemCode`, `itemName`; `guild_memberships` kèm `guildName`; `journal_entries` kèm `text` đã giải mã (không có `body_encrypted`); thông báo `NUDGE` bỏ `senderName`; `nudge_events` = `export_nudges()` | – |
+| `POST /me/delete` | `session`, idempotent, 10 lần/phút | `204` | `422 VALIDATION_FAILED` (`password` / `required`, `format`, `max`), `401 INVALID_CREDENTIALS` (trả về chứ không ném: lần đếm được commit) |
+
+- Mật khẩu qua `normalizePassword` (NFC) như lúc đăng ký và đăng nhập.
+- `prepare` giờ dùng được trên route có phiên (`app.ts`): phiên được tra trong một giao dịch riêng **trước** `prepare`, giới hạn theo tài khoản được tính ở đó (một lần), token lạ hoặc phiên đã thu hồi → `401` mà không tốn lần scrypt nào; giao dịch của request tra phiên lại.
+- Job `housekeeping`: đến hạn mỗi ngày từ 04:00 `Asia/Ho_Chi_Minh`, gọi ba hàm dọn dẹp, mỗi hàm một giao dịch; `{accounts, idempotencyKeys, authRows}` ghi vào `job_runs`.
+
+### Ca tấn công, test
+
+- `server/checks/attacks/privacy.ts`: `account_delete` của A với khóa sai và với chính khóa của mồi nhử → `false`, không ai bị xóa; ba hàm của `app_auth` không có tham số người dùng (đọc từ catalog); `app_auth` gọi ba job và hai hàm nội bộ → `permission denied for function`, `DELETE FROM users` → `permission denied for table users`; `app_anon` gọi `account_delete` → bị từ chối; chạy cả ba job với `p_now` năm 2999 (mồi nhử còn được gắn `purge_after` đã qua) → mọi dòng mồi nhử y nguyên, một người thật tới hạn thì bị xóa.
+- `server/src/routes/privacy.test.ts`: xuất dữ liệu có khóa và dòng cho mọi bảng `own_*` của registry, chữ nhật ký, không tên/không id của đồng đội, không trường bí mật; lần xuất thứ sáu trong giờ → `429`; xóa với mật khẩu sai → `401`, không đổi gì; lần thứ sáu bị khóa như đăng nhập; NFC; xóa đúng → `204`, đăng nhập thất bại giống hệt email lạ, token cũ `401`, đăng ký lại → `REGISTRATION_UNAVAILABLE`, đồng đội không còn thấy; trưởng nhóm bị xóa → người vào sớm nhất làm trưởng nhóm, một mình → tổ đội biến mất; nudge tới/từ người đã xóa; chạy mọi job sau khi xóa → mọi dòng của người đã xóa không đổi, còn người "sinh đôi" được xử lý.
+- `server/src/jobs/housekeeping.test.ts`: kiểm tra xóa lan **suy ra từ catalog** (mọi cột `user_id`/`sender_id`/`receiver_id` là khóa ngoại tới `users` `ON DELETE CASCADE`; mọi bảng của chuỗi khóa có một đường xóa lan); +29 ngày → 0, +30 ngày → xóa, không còn dòng nào trỏ tới người đó (kể cả bữa ăn kế hoạch đã ghi, mà `logged_action_id` là `NO ACTION`), lần sau → 0, mồi nhử còn, email đăng ký lại được, tổ đội bị bỏ lại được sửa; khóa 8 ngày bị xóa, 6 ngày còn; dọn phiên, mã, throttle; lịch 04:00.
+- `server/src/routes/privacy.race.test.ts`: xóa và một lần tick của cùng người theo hai thứ tự ép bằng khóa và vòng tự do; xóa trưởng nhóm và một thành viên rời / người mới vào, hai thứ tự; purge và một lần đăng nhập, purge bỏ qua người đang bị khóa.
+
+### Phần ba cổng không nhìn thấy
+
+- Việc mọi bảng xóa lan, việc dữ liệu xuất không chứa người khác, và thứ tự khóa do test giữ, không do cổng 1 hay 3.
+
+Sửa `61-privacy.sql` thì chạy `npm run server:test` và `npm run db:api-check`.
