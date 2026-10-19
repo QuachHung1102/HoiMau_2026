@@ -14,6 +14,7 @@ import { GuildJoinScreen } from '../features/guild/GuildJoinScreen';
 import { GuildManageScreen } from '../features/guild/GuildManageScreen';
 import { GuildScreen } from '../features/guild/GuildScreen';
 import { LeaderboardScreen } from '../features/guild/LeaderboardScreen';
+import { NudgeScreen } from '../features/guild/NudgeScreen';
 import { ActivityStepScreen } from '../features/onboarding/ActivityStepScreen';
 import { ArchetypeStepScreen } from '../features/onboarding/ArchetypeStepScreen';
 import { ProfileStepScreen } from '../features/onboarding/ProfileStepScreen';
@@ -92,6 +93,8 @@ export const detailScreens: ScreenEntry[] = [
   { name: 'GuildCreate', component: GuildCreateScreen },
   { name: 'GuildManage', component: GuildManageScreen },
   { name: 'Leaderboard', component: LeaderboardScreen },
+  // S29 is a sheet over the guild tab: it closes with "Để lúc khác" or Back.
+  { name: 'Nudge', component: NudgeScreen, options: { presentation: 'modal' } },
 ];
 
 /** Full-screen modal flow above the tabs; the tab bar cannot interrupt it. */
