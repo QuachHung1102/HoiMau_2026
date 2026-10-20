@@ -150,3 +150,18 @@ test('helper text becomes the accessibility hint when there is no error', () => 
   expect(view.getByRole('combobox').props.accessibilityHint).toBe('Dùng để tính giờ nhắc');
   view.unmount();
 });
+
+test('a disabled field cannot be opened, says so to screen readers, and its helper stays as the reason', () => {
+  const view = render(
+    <MotionPreferenceProvider value="REDUCED">
+      <SelectField label="Địa điểm" value="HN" options={options} onChange={() => undefined} disabled helper="Bật lựa chọn trước." />
+    </MotionPreferenceProvider>,
+  );
+  const field = view.getByRole('combobox', { name: 'Địa điểm, Hà Nội' });
+  expect(field).toBeDisabled();
+  expect(field.props.accessibilityState).toMatchObject({ expanded: false, disabled: true });
+  fireEvent.press(field);
+  expect(view.queryByRole('radio')).toBeNull();
+  expect(view.getByText('Bật lựa chọn trước.')).toBeTruthy();
+  view.unmount();
+});

@@ -21,12 +21,14 @@ type Props = {
   helper?: string;
   /** Adds a search box that ignores case, diacritics and the separators _ / - ("ho chi minh" finds "Asia/Ho_Chi_Minh"). */
   searchable?: boolean;
+  /** Cannot be opened; say why in `helper` (a disabled control that does not explain itself is a dead end). */
+  disabled?: boolean;
 };
 
 // Separators become spaces before the diacritics are folded, on the option and on the query alike.
 const fold = (text: string) => normalizeVi(text.replace(/[_/-]/g, ' '));
 
-export function SelectField({ label, value, options, onChange, placeholder = vi.select, error, helper, searchable = false }: Props) {
+export function SelectField({ label, value, options, onChange, placeholder = vi.select, error, helper, searchable = false, disabled = false }: Props) {
   const palette = useTheme();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -41,13 +43,14 @@ export function SelectField({ label, value, options, onChange, placeholder = vi.
           accessibilityRole="combobox"
           accessibilityLabel={`${error ? vi.fieldInvalid(label, error) : label}, ${selected?.label ?? placeholder}`}
           accessibilityHint={hint}
-          accessibilityState={{ expanded: open }}
+          accessibilityState={{ expanded: open, disabled }}
+          disabled={disabled}
           onPress={() => {
             // reset on open, not on close: the list must not un-filter while the sheet slides out
             setQuery('');
             setOpen(true);
           }}
-          style={styles.field}
+          style={[styles.field, disabled && styles.disabled]}
         >
           <AppText color={selected ? 'ink' : 'muted'} style={styles.value}>
             {selected?.label ?? placeholder}
@@ -95,5 +98,6 @@ export function SelectField({ label, value, options, onChange, placeholder = vi.
 const styles = StyleSheet.create({
   field: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: sizes.buttonHeight - 2 },
   value: { flex: 1 },
+  disabled: { opacity: 0.5 },
   option: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: sizes.minTouch, paddingHorizontal: 12, borderRadius: radius.button },
 });
