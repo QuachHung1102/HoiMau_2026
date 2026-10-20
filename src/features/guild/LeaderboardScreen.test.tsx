@@ -180,12 +180,29 @@ describe('S28: the week before', () => {
     const view = await openLeaderboard();
     fireEvent.press(screen.getByRole('radio', { name: 'Tuần trước' }));
     expect(await screen.findByRole('header', { name: 'Chưa có kết quả tuần trước' })).toBeTruthy();
-    expect(screen.getByText('Kết quả được chốt vào sáng thứ Hai. Bạn quay lại sau một chút nhé.')).toBeTruthy();
+    // true before the week settles and after it (a guild may simply have had no ranked rival), so no "come back later"
+    expect(screen.getByText('Tuần trước chưa có tổ đội nào lên bảng. Kết quả mỗi tuần được chốt vào sáng thứ Hai.')).toBeTruthy();
+    expect(screen.queryByText(/quay lại sau/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Thử lại' })).toBeNull();
     expect(screen.queryByText('Chưa tải được dữ liệu')).toBeNull();
     // the server says mine is null for this board, and the person is in a guild: no hint to join one
     expect(screen.queryByRole('header', { name: 'Bạn chưa có tổ đội' })).toBeNull();
     expect(screen.queryByText('Kết quả đã chốt')).toBeNull();
+    view.unmount();
+  });
+
+  test('a guild with no score row last week (mine null) among ranked ones: their board, nothing about the own guild, no "no guild" hint, no unranked row', async () => {
+    seedGuild();
+    world.guild.boards.current = board();
+    world.guild.boards.previous = { standings: [{ guildName: 'Tổ cũ', avgCompletion: 0.5, activeMembers: 3 }] };
+    const view = await openLeaderboard();
+    fireEvent.press(screen.getByRole('radio', { name: 'Tuần trước' }));
+    expect(await screen.findByText('Tổ cũ')).toBeTruthy();
+    expect(screen.getByText('Kết quả đã chốt')).toBeTruthy();
+    expect(screen.queryByText(/Chưa xếp hạng/)).toBeNull();
+    expect(screen.queryAllByText(/Tổ đội của bạn/)).toEqual([]);
+    expect(screen.queryByRole('header', { name: 'Bạn chưa có tổ đội' })).toBeNull();
+    expect(screen.queryByRole('header', { name: /Chưa có kết quả tuần trước/ })).toBeNull();
     view.unmount();
   });
 
