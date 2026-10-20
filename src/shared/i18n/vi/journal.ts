@@ -93,6 +93,9 @@ export const reason: Record<string, string> = {
 
 // S78
 export const previewTitle = (target: 'TODAY' | 'YESTERDAY') => (target === 'TODAY' ? 'Dùng vé cho hôm nay?' : 'Dùng vé cho hôm qua?');
+/** The date left the list (its time to use a ticket passed): the title no longer says which day it is. */
+export const previewTitleGone = 'Dùng vé cho ngày này?';
+/** The hours left are told for yesterday only: today's ticket is good until 15:00 the next day, which is not "today closes in H hours". */
 export const previewDate = (date: string, hours: number | null) => (hours === null ? date : `${date} · ${leftToUse(hours)}`);
 export const without = (streak: number) => `Nếu không dùng: chuỗi về ${streak}`;
 export const withTicket = (streak: number) => `Nếu dùng: giữ chuỗi ${streak} ngày`;
