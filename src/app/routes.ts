@@ -52,11 +52,13 @@ export type RootParamList = {
   Nudge: { receiverId: string; receiverName: string };
   Inbox: undefined;
   JournalWrite: undefined;
-  JournalFeedback: { result: JournalCreateResult };
+  /** `crisis`: the device's own check of the text that was saved (AR-20); it lives in memory, in this param, and nowhere else. */
+  JournalFeedback: { result: JournalCreateResult; crisis: boolean };
   Support: undefined;
   JournalList: undefined;
   JournalEntry: { id: string };
-  Tickets: undefined;
+  /** `usedDate`: S78 has just used a ticket for that day; S34 says so. */
+  Tickets: { usedDate?: DateLabel } | undefined;
   TicketPreview: { date: DateLabel };
   Settings: undefined;
   NotificationSettings: undefined;
