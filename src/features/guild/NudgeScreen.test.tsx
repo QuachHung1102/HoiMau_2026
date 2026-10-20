@@ -1,3 +1,5 @@
+import * as lucide from 'lucide-react-native';
+import { AccessibilityInfo, Platform } from 'react-native';
 import { NUDGE_TEMPLATES } from '../../../server/content/nudgeTemplates.ts';
 import { act, fetchMock, fireEvent, hold, installTodayTestEnv, landed, openGuild, openNudge, refuse, requested, screen, seedGuild, world, writesOf } from './guildTestKit';
 import { forget, navigations } from './navigationSpy';
@@ -16,6 +18,16 @@ const MOVE = /^Mình cùng vận động nhé\?/;
 const sendButton = () => screen.getByRole('button', { name: 'Gửi cho Minh' });
 const choose = (template: RegExp = MOVE) => fireEvent.press(screen.getByRole('radio', { name: template }));
 const sentWords = 'Đã gửi lời nhắc';
+type Glyph = 'Clock' | 'BellOff' | 'CircleCheck' | 'Info';
+type Node = { parent: Node | null; props: Record<string, unknown>; findAllByType: (type: unknown) => unknown[] };
+/** The nearest ancestor that is a polite live region: S74's card. */
+const liveRegionOf = (text: string) => {
+  let node = screen.getByText(text) as unknown as Node | null;
+  while (node && node.props.accessibilityLiveRegion !== 'polite') node = node.parent;
+  return node;
+};
+/** Which of the four reason glyphs the card of this reason holds: exactly the expected one, never a clock for a reason that does not clear with time. (The guild screen under the modal has its own.) */
+const glyphsOf = (text: string) => (['Clock', 'BellOff', 'CircleCheck', 'Info'] as Glyph[]).filter(name => (liveRegionOf(text) as Node).findAllByType(lucide[name]).length > 0);
 
 describe('from the guild screen', () => {
   test('a member who can be nudged opens S29: the name, the fixed lines from the server in its order, the rule, the two actions', async () => {
@@ -31,7 +43,8 @@ describe('from the guild screen', () => {
       expect(rows[n]).toHaveTextContent(text, { exact: false });
       expect(rows[n]).toHaveProp('accessibilityState', expect.objectContaining({ checked: false }));
     });
-    expect(screen.getAllByText('Mẫu lời nhắc')).toHaveLength(texts.length);
+    // the same words under every line would tell nothing: the line itself is the whole row
+    expect(screen.queryByText('Mẫu lời nhắc')).toBeNull();
     expect(screen.getByLabelText('Lời nhắc có sẵn')).toBeTruthy();
     expect(screen.getByText('Chỉ gửi khi Minh cho phép, trong giờ nhận nhắc và còn lượt gửi.')).toBeTruthy();
     expect(sendButton()).toBeTruthy();
@@ -183,30 +196,30 @@ describe('choosing and sending', () => {
 });
 
 describe('S74: the server says not now', () => {
-  const REFUSALS: [string, () => void, string][] = [
+  const REFUSALS: [string, () => void, string, Glyph][] = [
     ['NUDGE_RECEIVER_MUTED', () => {
       minh().muted = true;
-    }, 'Thành viên này đã tắt nhắc nhở'],
+    }, 'Thành viên này đã tắt nhắc nhở', 'BellOff'],
     ['NUDGE_RECEIVER_LIMIT', () => {
       minh().nudgedToday = true;
-    }, 'Minh đã nhận một lời nhắc hôm nay'],
+    }, 'Minh đã nhận một lời nhắc hôm nay', 'Clock'],
     ['NUDGE_SENDER_LIMIT', () => {
       world.guild.nudgesSent = 3;
-    }, 'Bạn đã gửi đủ 3 lời nhắc hôm nay'],
+    }, 'Bạn đã gửi đủ 3 lời nhắc hôm nay', 'Clock'],
     ['NUDGE_OUTSIDE_WINDOW', () => {
       world.hour = 21;
-    }, 'Chỉ gửi được từ 12:00 đến 20:00 theo giờ của Minh'],
+    }, 'Chỉ gửi được từ 12:00 đến 20:00 theo giờ của Minh', 'Clock'],
     ['NUDGE_NOT_NEEDED', () => {
       minh().storyDone = true;
-    }, 'Minh đã xong việc chính hôm nay'],
+    }, 'Minh đã xong việc chính hôm nay', 'CircleCheck'],
     ['NUDGE_NOT_SAME_GUILD', () => {
       world.guild.teams[0].members = world.guild.teams[0].members.filter(member => member !== minh());
-    }, 'Chưa nhắc được lúc này'],
+    }, 'Chưa nhắc được lúc này', 'Info'],
     ['NOT_IN_GUILD', () => {
       world.guild.teams = [];
-    }, 'Chưa nhắc được lúc này'],
+    }, 'Chưa nhắc được lúc này', 'Info'],
   ];
-  test.each(REFUSALS)('%s after the send: its words, one way out, and the guild is read again', async (_code, arrange, words) => {
+  test.each(REFUSALS)('%s after the send: its words and its own icon, one way out, and the guild is read again', async (_code, arrange, words, glyph) => {
     seedGuild();
     const view = await openNudge('Minh');
     choose();
@@ -215,7 +228,8 @@ describe('S74: the server says not now', () => {
     fireEvent.press(sendButton());
     expect(await screen.findByRole('header', { name: 'Chưa gửi được lúc này' })).toBeTruthy();
     expect(screen.getByText(words)).toBeTruthy();
-    expect(screen.getAllByRole('button').map(button => button.props.accessibilityLabel ?? '')).not.toContain('Gửi cho Minh');
+    expect(glyphsOf(words)).toEqual([glyph]);
+    expect(screen.queryByRole('button', { name: 'Gửi cho Minh' })).toBeNull();
     expect(screen.queryAllByRole('radio')).toEqual([]);
     expect(screen.getByRole('button', { name: 'Để lúc khác' })).toBeTruthy();
     expect(world.guild.sent).toEqual([]);
@@ -223,6 +237,22 @@ describe('S74: the server says not now', () => {
     expect(requested('/guilds/me')).toBeGreaterThan(before);
     // still S74 after the read: the reason does not depend on what the guild now says
     expect(screen.getByText(words)).toBeTruthy();
+    view.unmount();
+  });
+
+  test('a refused send is announced: the reason sits in a polite live region, and iOS (which has none) is told in words', async () => {
+    seedGuild();
+    const view = await openNudge('Minh');
+    choose();
+    minh().muted = true;
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => undefined);
+    const platform = jest.replaceProperty(Platform, 'OS', 'ios');
+    fireEvent.press(sendButton());
+    expect(await screen.findByRole('header', { name: 'Chưa gửi được lúc này' })).toBeTruthy();
+    expect(liveRegionOf('Thành viên này đã tắt nhắc nhở')).not.toBeNull();
+    expect(announce).toHaveBeenCalledWith('Thành viên này đã tắt nhắc nhở');
+    platform.restore();
+    announce.mockRestore();
     view.unmount();
   });
 
@@ -240,22 +270,22 @@ describe('S74: the server says not now', () => {
 });
 
 describe('S74: the reason is already known', () => {
-  const KNOWN: [string, () => void, string][] = [
-    ['NUDGE_RECEIVER_MUTED', () => undefined, 'Thành viên này đã tắt nhắc nhở'],
+  const KNOWN: [string, () => void, string, Glyph][] = [
+    ['NUDGE_RECEIVER_MUTED', () => undefined, 'Thành viên này đã tắt nhắc nhở', 'BellOff'],
     ['NUDGE_RECEIVER_LIMIT', () => {
       minh().nudgedToday = true;
-    }, 'Minh đã nhận một lời nhắc hôm nay'],
+    }, 'Minh đã nhận một lời nhắc hôm nay', 'Clock'],
     ['NUDGE_SENDER_LIMIT', () => {
       world.guild.nudgesSent = 3;
-    }, 'Bạn đã gửi đủ 3 lời nhắc hôm nay'],
+    }, 'Bạn đã gửi đủ 3 lời nhắc hôm nay', 'Clock'],
     ['NUDGE_OUTSIDE_WINDOW', () => {
       world.hour = 21;
-    }, 'Chỉ gửi được từ 12:00 đến 20:00 theo giờ của Minh'],
+    }, 'Chỉ gửi được từ 12:00 đến 20:00 theo giờ của Minh', 'Clock'],
     ['NUDGE_NOT_NEEDED', () => {
       minh().storyDone = true;
-    }, 'Minh đã xong việc chính hôm nay'],
+    }, 'Minh đã xong việc chính hôm nay', 'CircleCheck'],
   ];
-  test.each(KNOWN)('%s in the guild read: the screen opens as S74 and asks for nothing about a nudge (the guild is only read again to confirm)', async (_code, arrange, words) => {
+  test.each(KNOWN)('%s in the guild read: the screen opens as S74 and asks for nothing about a nudge (the guild is only read again to confirm)', async (_code, arrange, words, glyph) => {
     seedGuild();
     arrange();
     const view = await openGuild();
@@ -265,6 +295,7 @@ describe('S74: the reason is already known', () => {
     expect(await screen.findByRole('header', { name: 'Chưa gửi được lúc này' })).toBeTruthy();
     expect(screen.getByText(words.replace('Minh', name))).toBeTruthy();
     expect(screen.getByText(`Một lời mời nhẹ nhàng cho ${name}.`)).toBeTruthy();
+    expect(glyphsOf(words.replace('Minh', name))).toEqual([glyph]);
     await landed();
     // the only request is the confirming read of the guild: no templates, no send
     expect(fetchMock.mock.calls.slice(before).map(([url, init]) => `${init.method} ${url.replace('http://localhost:8787/api/v1', '')}`).filter(request => request !== 'GET /guilds/me')).toEqual([]);

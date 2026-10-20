@@ -12,8 +12,8 @@ import { useReducedMotion } from '../../shared/motion/useReducedMotion';
 import { AppText } from '../../shared/ui/AppText';
 import { Button } from '../../shared/ui/Button';
 import { Card } from '../../shared/ui/Card';
-import { Icon } from '../../shared/ui/Icon';
-import { DisabledReason, InlineError } from '../../shared/ui/Notices';
+import { Icon, type IconName } from '../../shared/ui/Icon';
+import { DisabledReason, InlineError, useAnnounceOnIos } from '../../shared/ui/Notices';
 import { Screen } from '../../shared/ui/Screen';
 import { ErrorState, LoadingState } from '../../shared/ui/States';
 import { RadioRow } from '../../shared/ui/Toggles';
@@ -70,6 +70,29 @@ function SentLine({ text, reduced }: { text: string; reduced: boolean }) {
   );
 }
 
+/** What kind of "not now" it is: a clock for what clears with time, a muted bell, a tick for done already; anything else is the plain info mark. */
+const REASON_ICON: Record<string, IconName> = {
+  NUDGE_OUTSIDE_WINDOW: 'Clock',
+  NUDGE_RECEIVER_LIMIT: 'Clock',
+  NUDGE_SENDER_LIMIT: 'Clock',
+  NUDGE_RECEIVER_MUTED: 'BellOff',
+  NUDGE_NOT_NEEDED: 'CircleCheck',
+};
+
+/** S74: the calm reason. A live region (and an announcement on iOS, which has none), because the form the person pressed is replaced by it. */
+function Blocked({ code, name }: { code: string; name: string }) {
+  const reason = vi.nudgeBlocked(code, name);
+  useAnnounceOnIos(reason);
+  return (
+    <Card tone="soft" accessibilityLiveRegion="polite">
+      <AppText variant="title" accessibilityRole="header">
+        {vi.nudgeBlockedTitle}
+      </AppText>
+      <DisabledReason reason={reason} icon={REASON_ICON[code]} />
+    </Card>
+  );
+}
+
 type Problem = { text: string; again?: () => void };
 
 /**
@@ -98,12 +121,7 @@ export function NudgeScreen({ route, navigation }: ScreenProps<'Nudge'>) {
   if (blocked) {
     return (
       <Screen {...header}>
-        <Card tone="soft">
-          <AppText variant="title" accessibilityRole="header">
-            {vi.nudgeBlockedTitle}
-          </AppText>
-          <DisabledReason reason={vi.nudgeBlocked(blocked, name)} icon="Clock" />
-        </Card>
+        <Blocked code={blocked} name={name} />
         <Button variant="secondary" label={vi.nudgeLater} onPress={navigation.goBack} />
       </Screen>
     );
@@ -136,7 +154,7 @@ export function NudgeScreen({ route, navigation }: ScreenProps<'Nudge'>) {
       {list ? (
         <View accessibilityRole="radiogroup" accessibilityLabel={vi.templatesLabel}>
           {list.map(template => (
-            <RadioRow key={template.code} label={template.text} description={vi.templateKind} selected={picked === template.code} disabled={sending || sent} onPress={() => setPicked(template.code)} />
+            <RadioRow key={template.code} label={template.text} selected={picked === template.code} disabled={sending || sent} onPress={() => setPicked(template.code)} />
           ))}
         </View>
       ) : templates.isError && !templates.isFetching ? (
