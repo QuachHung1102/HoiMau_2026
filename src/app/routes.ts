@@ -47,7 +47,8 @@ export type RootParamList = {
   GuildCreate: undefined;
   /** `focus: 'leave'` opens the screen scrolled to the leave card ("Tìm nhóm khác"). */
   GuildManage: { focus?: 'leave' } | undefined;
-  Leaderboard: undefined;
+  /** `week: 'previous'` opens the closed week (the weekly-result notification is about it). */
+  Leaderboard: { week?: 'previous' } | undefined;
   Nudge: { receiverId: string; receiverName: string };
   Inbox: undefined;
   JournalWrite: undefined;

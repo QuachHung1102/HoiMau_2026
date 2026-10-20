@@ -61,11 +61,13 @@ describe('each kind says what it is and leads on', () => {
     expect(screen.queryAllByTestId('chevron-spacer')).toHaveLength(target ? 0 : 1);
     fireEvent.press(rowOf(new RegExp(`^${title}`)));
     await landed();
-    expect(linked()).toEqual(target ? [[target]] : []);
+    // the weekly result opens the board of the week it is about: last week's
+    expect(linked()).toEqual(target ? [target === 'Leaderboard' ? [target, { week: 'previous' }] : [target]] : []);
     expect(writesOf(READ).map(request => request.body)).toEqual([{ ids: [item.id] }]);
     if (arrives) {
       expect(await screen.findByRole('header', { name: arrives })).toBeTruthy();
       expect(screen.queryByRole('header', { name: 'Hộp thư' })).toBeNull();
+      if (target === 'Leaderboard') expect(await screen.findByRole('radio', { name: 'Tuần trước', checked: true })).toBeTruthy();
     } else {
       // the nudge has nowhere to lead: it stays, and now it is read
       expect(screen.getByRole('header', { name: 'Hộp thư' })).toBeTruthy();

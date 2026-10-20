@@ -65,7 +65,8 @@ function Row({ item, navigation }: { item: InboxItem; navigation: ScreenProps<'I
         if (outcome?.state === 'failed') snackbar.show({ message: vi.markFailed });
       });
     }
-    if (target) navigation.navigate(target);
+    if (target === 'Leaderboard') navigation.navigate(target, { week: 'previous' });
+    else if (target) navigation.navigate(target);
   };
   const body = (
     <View style={styles.row}>
