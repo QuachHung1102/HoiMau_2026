@@ -40,6 +40,7 @@ const tickets = (more: Partial<Tickets> = {}): Tickets => ({
 const seenTickets = (data: Tickets): [readonly unknown[], unknown] => [ticketsKey, data];
 
 const WORDS = 'Hôm nay mình đã chậm lại một chút.\nKhông làm được hết mọi thứ, nhưng mình thấy dễ chịu hơn.';
+const HEAVY_WORDS = 'Mình mệt lắm rồi.\nMình không thiết sống nữa, mọi thứ nặng nề quá.';
 /** shot.mjs cannot type or press: this writes into the field, then presses save once the button is enabled. */
 function TypeAndSave({ text }: { text: string }) {
   useEffect(() => {
@@ -66,6 +67,15 @@ export const entries: Entries = {
         throw new TypeError('Network request failed');
       },
       extra: <TypeAndSave text={WORDS} />,
+    }),
+  // The same, with words the device's check takes as a call for support: the block stands under the error, never instead of it.
+  's32-journal-write-error-support': () =>
+    app({
+      route: 'JournalWrite',
+      fetchStub: () => {
+        throw new TypeError('Network request failed');
+      },
+      extra: <TypeAndSave text={HEAVY_WORDS} />,
     }),
 
   's33-journal-feedback': () => feedback('ALREADY_DECIDED'),

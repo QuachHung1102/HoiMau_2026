@@ -189,3 +189,97 @@ describe('the draft is memory only', () => {
     view.unmount();
   });
 });
+
+describe('a save that does not go through, with words that call for support', () => {
+  const CRISIS = 'Mình không thiết sống nữa, mọi thứ nặng nề quá.';
+  const SAD = 'Hôm nay mình buồn và mệt, chẳng muốn làm gì cả.';
+  const supportTitle = () => screen.queryByRole('header', { name: 'Bạn không cần ở một mình' });
+  const seeSources = () => screen.queryByRole('button', { name: 'Xem nguồn hỗ trợ' });
+
+  test.each([
+    ['no connection', /Không kết nối được mạng\./, () => {
+      world.down = true;
+    }],
+    ['a 500', /Hệ thống đang gặp sự cố\./, () => refusePosts(500, 'INTERNAL')],
+  ])('%s: the error, the text in the field and the support block are all there; the sources open and "Trở lại trang của tôi" returns to the same text', async (_name, reason, fail) => {
+    const view = await openWrite();
+    type(CRISIS);
+    fail();
+    fireEvent.press(saveButton());
+    expect(await screen.findByText(reason)).toBeTruthy();
+    expect(field()).toHaveDisplayValue(CRISIS);
+    expect(supportTitle()).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Thử lại' })).toBeTruthy();
+    fireEvent.press(seeSources()!);
+    expect(await screen.findByRole('header', { name: 'Nguồn hỗ trợ' })).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Trở lại trang của tôi' }));
+    expect(await screen.findByRole('header', { name: 'Góc giải tỏa' })).toBeTruthy();
+    expect(field()).toHaveDisplayValue(CRISIS);
+    expect(supportTitle()).toBeTruthy();
+    // nothing was saved and nothing but the one failed save went out
+    expect(world.journal.rows).toEqual([]);
+    view.unmount();
+  });
+
+  test('ordinary sad words that fail to save show the error and no support block', async () => {
+    const view = await openWrite();
+    type(SAD);
+    world.down = true;
+    fireEvent.press(saveButton());
+    expect(await screen.findByText(/Điều bạn viết vẫn còn ở đây\./)).toBeTruthy();
+    expect(field()).toHaveDisplayValue(SAD);
+    expect(supportTitle()).toBeNull();
+    expect(seeSources()).toBeNull();
+    view.unmount();
+  });
+
+  test('no block before any save, and none while the save is out', async () => {
+    const view = await openWrite();
+    type(CRISIS);
+    expect(supportTitle()).toBeNull();
+    const gate = hold('POST /journal');
+    fireEvent.press(saveButton());
+    await landed();
+    expect(supportTitle()).toBeNull();
+    await act(async () => gate.release());
+    expect(await screen.findByRole('header', { name: 'Một khoảng nghỉ' })).toBeTruthy();
+    await landed();
+    view.unmount();
+  });
+
+  test('editing after the failure takes the error away but not the way to help; the next save decides again (the retry is judged on the text it sends)', async () => {
+    const view = await openWrite();
+    type(CRISIS);
+    world.down = true;
+    fireEvent.press(saveButton());
+    await screen.findByText(/Điều bạn viết vẫn còn ở đây\./);
+    type(`${CRISIS} Thêm một dòng.`);
+    expect(screen.queryByText(/Điều bạn viết vẫn còn ở đây\./)).toBeNull();
+    expect(supportTitle()).toBeTruthy();
+    // the person rewrites it into ordinary words and the save fails again: the block goes, the error stays
+    type(SAD);
+    fireEvent.press(saveButton());
+    expect(await screen.findByText(/Điều bạn viết vẫn còn ở đây\./)).toBeTruthy();
+    expect(supportTitle()).toBeNull();
+    // and the other way round
+    type(CRISIS);
+    fireEvent.press(saveButton());
+    await screen.findByText(/Điều bạn viết vẫn còn ở đây\./);
+    expect(supportTitle()).toBeTruthy();
+    view.unmount();
+  });
+
+  test('the retry that goes through opens the feedback with the block (the same words, judged once per save)', async () => {
+    const view = await openWrite();
+    type(CRISIS);
+    world.down = true;
+    fireEvent.press(saveButton());
+    await screen.findByText(/Điều bạn viết vẫn còn ở đây\./);
+    world.down = false;
+    fireEvent.press(retryButton());
+    expect(await screen.findByRole('header', { name: 'Một khoảng nghỉ' })).toBeTruthy();
+    expect(supportTitle()).toBeTruthy();
+    expect(screen.getByText(/Bước nhỏ|“/)).toBeTruthy();
+    view.unmount();
+  });
+});

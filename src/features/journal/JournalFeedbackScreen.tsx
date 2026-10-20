@@ -1,6 +1,5 @@
 import { StyleSheet, View } from 'react-native';
 import type { ScreenProps } from '../../app/routes';
-import { healthVi } from '../../shared/i18n/vi/health';
 import * as vi from '../../shared/i18n/vi/journal';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { AppText } from '../../shared/ui/AppText';
@@ -9,6 +8,7 @@ import { Card, ListRow } from '../../shared/ui/Card';
 import { Icon } from '../../shared/ui/Icon';
 import { Screen } from '../../shared/ui/Screen';
 import { Reveal } from './Reveal';
+import { SupportBlock } from './SupportBlock';
 
 /**
  * S33 and its variants. Always: "Đã lưu", the quote, "+N XP" only when XP was paid. By `ticket.outcome` (S77): GRANTED shows the
@@ -68,16 +68,7 @@ export function JournalFeedbackScreen({ route, navigation }: ScreenProps<'Journa
       ) : ticket.outcome === 'AT_CAP' ? (
         <AppText style={styles.section}>{vi.ticketAtCap(ticket.cap)}</AppText>
       ) : null}
-      {crisis ? (
-        <Card tone="soft" style={styles.section}>
-          <Icon name="HeartHandshake" size={32} />
-          <AppText variant="title" accessibilityRole="header">
-            {healthVi.support.title}
-          </AppText>
-          <AppText variant="secondary">{healthVi.support.body}</AppText>
-          <Button label={healthVi.support.seeSources} onPress={() => navigation.navigate('Support')} />
-        </Card>
-      ) : null}
+      {crisis ? <SupportBlock style={styles.section} onSeeSources={() => navigation.navigate('Support')} /> : null}
       <Button label={vi.toToday} onPress={toToday} style={styles.section} />
     </Screen>
   );
