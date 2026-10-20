@@ -35,7 +35,7 @@ export function JournalFeedbackScreen({ route, navigation }: ScreenProps<'Journa
       </Card>
       {/* motion: journal-saved (tier 1: "Đã lưu" appears at once, the page stays as it was) */}
       <Reveal>
-        <View style={styles.chips}>
+        <View style={[styles.chips, styles.section]}>
           <View style={[styles.chip, { backgroundColor: palette.soft }]}>
             <Icon name="Check" size={16} />
             <AppText variant="caption" weight="semibold" color="primary">
@@ -54,7 +54,7 @@ export function JournalFeedbackScreen({ route, navigation }: ScreenProps<'Journa
       {ticket.outcome === 'GRANTED' ? (
         // motion: ticket-granted (tier 1: the card and its "+1 vé" label appear and stay)
         <Reveal delayMs={120}>
-          <Card testID="ticket-card" style={[styles.ticket, { borderColor: palette.primary }]}>
+          <Card testID="ticket-card" style={[styles.ticket, styles.section, { borderColor: palette.primary }]}>
             <View style={styles.ticketHead}>
               <Icon name="Ticket" size={28} />
               <View style={styles.ticketText}>
@@ -66,10 +66,10 @@ export function JournalFeedbackScreen({ route, navigation }: ScreenProps<'Journa
           </Card>
         </Reveal>
       ) : ticket.outcome === 'AT_CAP' ? (
-        <AppText>{vi.ticketAtCap(ticket.cap)}</AppText>
+        <AppText style={styles.section}>{vi.ticketAtCap(ticket.cap)}</AppText>
       ) : null}
       {crisis ? (
-        <Card tone="soft">
+        <Card tone="soft" style={styles.section}>
           <Icon name="HeartHandshake" size={32} />
           <AppText variant="title" accessibilityRole="header">
             {healthVi.support.title}
@@ -78,12 +78,13 @@ export function JournalFeedbackScreen({ route, navigation }: ScreenProps<'Journa
           <Button label={healthVi.support.seeSources} onPress={() => navigation.navigate('Support')} />
         </Card>
       ) : null}
-      <Button label={vi.toToday} onPress={toToday} />
+      <Button label={vi.toToday} onPress={toToday} style={styles.section} />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  section: { marginTop: 8 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
   ticket: { borderWidth: 2, borderStyle: 'dashed' },
