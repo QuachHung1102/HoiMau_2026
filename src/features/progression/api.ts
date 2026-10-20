@@ -8,7 +8,7 @@ import { dayKey } from '../quests/api';
 
 /** The queue and an undo refresh this key (Task 25); the perk unlock of Task 38 sets or invalidates it too. */
 export const progressionKey = ['progression'] as const;
-const historyKey = ['history'] as const;
+export const historyKey = ['history'] as const;
 /** The query keys of the two history reads (a preview entry seeds them). */
 export const historyRangeKey = (from: DateLabel | undefined, to: DateLabel | undefined) => [...historyKey, 'range', from, to] as const;
 export const dayDetailKey = (date: DateLabel | undefined) => [...historyKey, 'day', date] as const;
