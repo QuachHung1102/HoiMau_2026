@@ -1,4 +1,5 @@
 import { QUOTES } from '../../../server/content/quotes.ts';
+import { progressionKey } from '../progression/api';
 import { journalKey, ticketsKey } from './api';
 import * as celebrations from '../progression/celebrations';
 import { draws, fireEvent, giveTickets, installTodayTestEnv, landed, nearLevelUp, openWrite, profileTab, queryClient, requested, saves, saveText, screen, seedJournal, world } from './journalTestKit';
@@ -134,11 +135,13 @@ describe('after the server confirms', () => {
     const client = queryClient();
     client.setQueryData(ticketsKey, { stale: true });
     client.setQueryData(LIST, { pages: [], pageParams: [] });
+    client.setQueryData(progressionKey, { stale: true });
     const days = requested('/day');
     const mes = requested('/me');
     await saveText(TEXT);
     expect(client.getQueryState(LIST)?.isInvalidated).toBe(true);
     expect(client.getQueryState(ticketsKey)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(progressionKey)?.isInvalidated).toBe(true);
     expect(requested('/day')).toBeGreaterThan(days);
     expect(requested('/me')).toBeGreaterThan(mes);
     view.unmount();
@@ -151,11 +154,13 @@ describe('after the server confirms', () => {
     const client = queryClient();
     client.setQueryData(ticketsKey, { stale: true });
     client.setQueryData(LIST, { pages: [], pageParams: [] });
+    client.setQueryData(progressionKey, { stale: true });
     const days = requested('/day');
     const mes = requested('/me');
     await saveText(TEXT);
     expect(client.getQueryState(LIST)?.isInvalidated).toBe(true); // the list is stale after every save
     expect(client.getQueryState(ticketsKey)?.isInvalidated).toBe(false);
+    expect(client.getQueryState(progressionKey)?.isInvalidated).toBe(false);
     expect(requested('/day')).toBe(days);
     expect(requested('/me')).toBe(mes);
     view.unmount();
