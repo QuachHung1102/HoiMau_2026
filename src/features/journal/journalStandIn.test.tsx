@@ -304,6 +304,9 @@ describe('POST /freeze-tickets/use', () => {
     expect(fields(await use(null))).toEqual([{ field: 'date', rule: 'required' }]);
     expect(fields(await use(''))).toEqual([{ field: 'date', rule: 'required' }]);
     expect(fields(await use(20261014))).toEqual([{ field: 'date', rule: 'format' }]);
+    // not a string is a bad format even when it is falsy (routes/tickets.ts checks the type before it asks for the date)
+    for (const falsy of [0, false]) expect(fields(await use(falsy))).toEqual([{ field: 'date', rule: 'format' }]);
+    expect(fields(await use([]))).toEqual([{ field: 'date', rule: 'format' }]);
     expect(fields(await use('2026-02-30'))).toEqual([{ field: 'date', rule: 'format' }]);
     expect(fields(await use('0000-01-01'))).toEqual([{ field: 'date', rule: 'format' }]);
   });
