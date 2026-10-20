@@ -1244,6 +1244,8 @@ function ticketsState(): Tickets {
  */
 function useTicket(body: Record<string, unknown>) {
   const { date } = body;
+  // as routes/tickets.ts: anything but a string (or nothing) is a bad format, even a falsy 0 or false, before dateOf asks for the date
+  if (date !== undefined && date !== null && typeof date !== 'string') stop(422, 'VALIDATION_FAILED', [{ field: 'date', rule: 'format' }]);
   const day = dateOf(date as string | null | undefined, 'date');
   const refused = ticketBlock(day);
   if (refused) stop(409, refused);
