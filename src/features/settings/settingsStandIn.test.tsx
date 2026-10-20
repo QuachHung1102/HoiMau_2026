@@ -171,7 +171,7 @@ describe('GET /me/prescription and POST /me/biometrics', () => {
   });
 
   test('new numbers replace the measurements and the targets; the answer is what GET reads afterwards; the direction in effect stays and no cooldown starts', async () => {
-    const heavier = { ...bio, weightKg: 70.5, activityLevel: 'MODERATE' };
+    const heavier = { ...bio, weightKg: 70.5, activityLevel: 'MODERATE' } as const;
     const before = world.me.user.archetypeChangeAvailableAt;
     const answer = await post('/me/biometrics', heavier);
     expect(answer.status).toBe(200);

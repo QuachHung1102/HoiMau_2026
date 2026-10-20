@@ -21,6 +21,7 @@ import { resetPendingForTests, type PendingAction } from '../../shared/storage/p
 import { ThemeProvider } from '../../shared/theme/ThemeProvider';
 import { fetchMock, installAuthTestEnv, me, respond, TOKEN, USER } from '../auth/authTestKit';
 import { OnboardingProvider } from '../onboarding/OnboardingProvider';
+import { MotionFromSettings } from '../settings/MotionFromSettings';
 import { PendingBanner } from './PendingBanner';
 import { RejectedNotice } from './RejectedNotice';
 import { useQueuedWrite, type QueuedWriteInput, type QueuedWriteResult } from './useQueuedWrite';
@@ -68,10 +69,13 @@ function Recorder() {
   return null;
 }
 
+/** The provider App.tsx has there, or (a fixed preference) none. */
+const Motion = ({ fromSettings, children }: { fromSettings: boolean; children: ReactNode }) => (fromSettings ? <MotionFromSettings>{children}</MotionFromSettings> : <>{children}</>);
+
 let client: QueryClient | undefined;
 export const queryClient = () => client as QueryClient;
 
-type Options = { signedIn?: boolean; motion?: 'REDUCED' | 'FULL'; extra?: ReactNode; /** Mounted inside the navigation container, as the celebration host is in App.tsx. */ inside?: ReactNode; landed?: boolean };
+type Options = { signedIn?: boolean; /** 'settings': the motion comes from the user's settings, as App.tsx feeds it. */ motion?: 'REDUCED' | 'FULL' | 'settings'; extra?: ReactNode; /** Mounted inside the navigation container, as the celebration host is in App.tsx. */ inside?: ReactNode; landed?: boolean };
 
 /** The app as App.tsx mounts it. `signedIn: false` starts on Welcome; `landed: false` does not wait for the main group. */
 export async function mountApp({ signedIn = true, motion = 'REDUCED', extra, inside, landed = signedIn }: Options = {}) {
@@ -81,20 +85,22 @@ export async function mountApp({ signedIn = true, motion = 'REDUCED', extra, ins
   const view = render(
     <SafeAreaProvider>
       <ThemeProvider>
-        <MotionPreferenceProvider value={motion}>
+        <MotionPreferenceProvider value={motion === 'settings' ? 'SYSTEM' : motion}>
           <QueryClientProvider client={client}>
             <SessionProvider>
-              <MeTheme>
-                <OnboardingProvider>
-                  <View style={styles.fill}>
-                    <PendingBanner />
-                    <AppNavigation>{inside}</AppNavigation>
-                  </View>
-                  <RejectedNotice />
-                  <Recorder />
-                  {extra}
-                </OnboardingProvider>
-              </MeTheme>
+              <Motion fromSettings={motion === 'settings'}>
+                <MeTheme>
+                  <OnboardingProvider>
+                    <View style={styles.fill}>
+                      <PendingBanner />
+                      <AppNavigation>{inside}</AppNavigation>
+                    </View>
+                    <RejectedNotice />
+                    <Recorder />
+                    {extra}
+                  </OnboardingProvider>
+                </MeTheme>
+              </Motion>
             </SessionProvider>
           </QueryClientProvider>
         </MotionPreferenceProvider>

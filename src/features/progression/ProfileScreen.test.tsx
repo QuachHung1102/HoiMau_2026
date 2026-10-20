@@ -1,6 +1,5 @@
-import { fireEvent, screen, within } from '@testing-library/react-native';
-import * as Keychain from 'react-native-keychain';
-import { installTodayTestEnv, openProfile, requested, settle } from './progressionTestKit';
+import { fireEvent, screen } from '@testing-library/react-native';
+import { installTodayTestEnv, openProfile } from './progressionTestKit';
 
 // The real registry; `navigate` of the tab roots and detail screens is recorded on its way to the navigator, so a link
 // to a route that no task has registered yet (inert, AR-25) can still be asserted by name.
@@ -64,25 +63,22 @@ describe('S31: the profile tab', () => {
     view.unmount();
   });
 
-  test('the registered ones open (a link to a route nobody has registered yet is inert and silent)', async () => {
+  test('the registered ones open', async () => {
     const view = await openProfile();
     fireEvent.press(row(/^Cấp độ & tiện ích\./));
     expect(await screen.findByRole('header', { name: 'Cấp độ & tiện ích' })).toBeTruthy();
     view.unmount();
     const again = await openProfile();
     fireEvent.press(row(/^Cài đặt\./));
-    expect(screen.getByRole('header', { name: 'Cá nhân' })).toBeTruthy();
+    expect(await screen.findByRole('header', { name: 'Cài đặt' })).toBeTruthy();
     again.unmount();
   });
 
-  test('"Đăng xuất" is the quiet last row, and it signs out through the session (the keychain is emptied)', async () => {
+  test('"Đăng xuất" is no longer here: the way out is on the Settings screen, which this tab opens', async () => {
     const view = await openProfile();
-    expect(within(screen.getAllByRole('button').at(-1)!).getByText('Đăng xuất')).toBeTruthy();
-    fireEvent.press(screen.getByRole('button', { name: 'Đăng xuất' }));
-    expect(await screen.findByText('Hồi Máu')).toBeTruthy();
-    expect(requested('/auth/logout')).toBe(1);
-    expect(await Keychain.getGenericPassword()).toBe(false);
-    await settle();
+    expect(screen.queryByRole('button', { name: 'Đăng xuất' })).toBeNull();
+    fireEvent.press(row(/^Cài đặt\./));
+    expect(await screen.findByRole('button', { name: 'Đăng xuất' })).toBeTruthy();
     view.unmount();
   });
 });

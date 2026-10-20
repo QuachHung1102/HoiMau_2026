@@ -152,7 +152,8 @@ export function useDay() {
 export const undoTick = (questCode: string, tickId: string, idempotencyKey: string) =>
   api.write<ActionResult>('POST', `/day/quests/${questCode}/undo`, { tickId } satisfies UndoRequest, { idempotencyKey });
 
-/** `GET /settings`, query key `['settings']`. */
-export function useSettings() {
-  return useQuery({ queryKey: settingsKey, queryFn: ({ signal }) => api.get<Settings>('/settings', undefined, { signal }) });
+/** `GET /settings`, query key `['settings']`. Idle while signed out, and while `enabled` is false (the route is for an onboarded user). */
+export function useSettings(enabled = true) {
+  const { status } = useSession();
+  return useQuery({ queryKey: settingsKey, queryFn: status === 'signedIn' && enabled ? ({ signal }) => api.get<Settings>('/settings', undefined, { signal }) : skipToken });
 }
