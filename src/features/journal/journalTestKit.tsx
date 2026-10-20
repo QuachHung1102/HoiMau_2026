@@ -5,7 +5,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fireEvent, screen } from '@testing-library/react-native';
 import * as vi from '../../shared/i18n/vi/journal';
-import { journeyRows } from '../../shared/i18n/vi/progression';
+import { journeyRows, seeTickets } from '../../shared/i18n/vi/progression';
 import { tabLabel } from '../../shared/i18n/vi/nav';
 import { openToday, settle, writes } from '../dashboard/todayTestKit';
 import { openJourney, openProfile } from '../progression/progressionTestKit';
@@ -42,7 +42,7 @@ export async function openList(options: Parameters<typeof openToday>[0] = {}) {
 /** The journey, then its "Vé giữ nhịp" row: S34. */
 export async function openTickets(options: Parameters<typeof openToday>[0] = {}) {
   const view = await openJourney(options);
-  fireEvent.press(screen.getByRole('button', { name: new RegExp(`^${journeyRows.tickets.title}`) }));
+  fireEvent.press(screen.getByRole('button', { name: new RegExp(`^(${journeyRows.tickets.title}|${seeTickets})`) }));
   await header(vi.ticketsTitle);
   await landed();
   return view;
