@@ -57,6 +57,8 @@ describe('each kind says what it is and leads on', () => {
     const view = await opened();
     expect(screen.getByText(title)).toBeTruthy();
     if (line) expect(screen.getByText(line)).toBeTruthy();
+    // a row that leads nowhere holds the chevron's place, so the unread dots of all rows share one column
+    expect(screen.queryAllByTestId('chevron-spacer')).toHaveLength(target ? 0 : 1);
     fireEvent.press(rowOf(new RegExp(`^${title}`)));
     await landed();
     expect(linked()).toEqual(target ? [[target]] : []);

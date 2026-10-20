@@ -76,7 +76,8 @@ function Row({ item, navigation }: { item: InboxItem; navigation: ScreenProps<'I
       </View>
       {/* motion: unread-dot (tier 2, static: the dot is simply there; the row's label says it is unread) */}
       {unread ? <View testID="unread-dot" style={[styles.dot, { backgroundColor: palette.primary }]} /> : null}
-      {target ? <Icon name="ChevronRight" color={palette.muted} /> : null}
+      {/* A row that leads nowhere keeps the chevron's width, so every unread dot sits in one column. */}
+      {target ? <Icon name="ChevronRight" color={palette.muted} /> : <View testID="chevron-spacer" style={styles.spacer} />}
     </View>
   );
   if (!unread && !target) return <View accessible accessibilityLabel={[title, description].filter(Boolean).join('. ')}>{body}</View>;
@@ -169,6 +170,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 12 },
   text: { flex: 1, gap: 2 },
   dot: { width: 12, height: 12, borderRadius: 6 },
+  spacer: { width: 24, height: 24 },
   markAll: { alignSelf: 'flex-end' },
   footer: { gap: 12, paddingVertical: 12 },
 });
