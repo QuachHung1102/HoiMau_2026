@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { prefsKey } from './prefs';
 
 /**
  * The only things kept on disk: the last `Me` and the last `DayState` of a user (AR-26). Neither contains
@@ -29,6 +30,7 @@ export async function writeCache(userId: string, key: CacheKey, value: unknown):
   }
 }
 
+/** The user's cache and their motion preference (`prefs:v1:<userId>`): sign-out and account deletion leave neither behind. */
 export async function clearUserCache(userId: string): Promise<void> {
-  await AsyncStorage.removeMany(KEYS.map(key => storageKey(userId, key)));
+  await AsyncStorage.removeMany([...KEYS.map(key => storageKey(userId, key)), prefsKey(userId)]);
 }
