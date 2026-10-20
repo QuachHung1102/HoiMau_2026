@@ -64,10 +64,14 @@ export function JournalWriteScreen({ navigation }: ScreenProps<'JournalWrite'>) 
         numberOfLines={6}
         textAlignVertical="top"
         error={over ? vi.tooLong : undefined}
+        helper={vi.counter(count)}
       />
-      <AppText variant="caption" style={styles.counter}>
-        {vi.counter(count)}
-      </AppText>
+      {/* the field shows its error instead of its helper, so over the limit the count stands here */}
+      {over ? (
+        <AppText variant="caption" style={styles.counter}>
+          {vi.counter(count)}
+        </AppText>
+      ) : null}
       <View style={styles.private}>
         <Icon name="Lock" />
         <View style={styles.privateText}>
