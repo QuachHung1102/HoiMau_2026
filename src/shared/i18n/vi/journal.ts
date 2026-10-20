@@ -76,7 +76,7 @@ export const datePlaceholder = 'Chọn ngày đủ điều kiện';
 export const leftToUse = (hours: number) => (hours < 1 ? 'còn dưới 1 giờ để dùng' : `còn ${hours} giờ để dùng`);
 export const yesterdayOption = (hours: number) => `${yesterdayWord} · ${leftToUse(hours)}`;
 export const usedOption = (label: string) => `${label} · Đã dùng vé`;
-export const yesterdayFirst = 'Hôm qua sắp khép lại nên mình chọn sẵn ngày này.';
+export const yesterdayFirst = 'Hôm qua sắp khép lại nên mình chọn sẵn.';
 export const previewAction = 'Xem trước việc dùng vé';
 export const ticketsFooter = 'Trước khi dùng, bạn sẽ được xem ngày áp dụng và ảnh hưởng đến chuỗi.';
 export const loadFailed = 'Chưa tải được vé của bạn. Bạn thử lại nhé.';

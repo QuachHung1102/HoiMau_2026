@@ -286,7 +286,7 @@ describe('a save that does not go through, with words that call for support', ()
     fireEvent.press(retryButton());
     await landed();
     expect(supportTitle()).toBeNull();
-    expect(screen.queryByText(/Điều bạn viết vẫn còn ở đây./)).toBeNull();
+    expect(screen.queryByText(/Điều bạn viết vẫn còn ở đây\./)).toBeNull();
     await act(async () => gate.release());
     expect(await screen.findByRole('header', { name: 'Một khoảng nghỉ' })).toBeTruthy();
     expect(supportTitle()).toBeTruthy();

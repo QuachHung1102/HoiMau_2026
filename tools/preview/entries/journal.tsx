@@ -42,7 +42,7 @@ const seenTickets = (data: Tickets): [readonly unknown[], unknown] => [ticketsKe
 const WORDS = 'Hôm nay mình đã chậm lại một chút.\nKhông làm được hết mọi thứ, nhưng mình thấy dễ chịu hơn.';
 const HEAVY_WORDS = 'Mình mệt lắm rồi.\nMình không thiết sống nữa, mọi thứ nặng nề quá.';
 /** shot.mjs cannot type or press: this writes into the field, then presses save once the button is enabled. */
-function TypeAndSave({ text }: { text: string }) {
+function TypeAndSave({ text, scrollDown = false }: { text: string; scrollDown?: boolean }) {
   useEffect(() => {
     const timer = setInterval(() => {
       const area = document.querySelector<HTMLTextAreaElement>('textarea');
@@ -54,6 +54,12 @@ function TypeAndSave({ text }: { text: string }) {
     }, 50);
     return () => clearInterval(timer);
   }, [text]);
+  // the support block stands below the fold of a 844 px screen: keep every scroller at its end so the shot shows it whole
+  useEffect(() => {
+    if (!scrollDown) return undefined;
+    const timer = setInterval(() => document.querySelectorAll<HTMLElement>('*').forEach(node => node.scrollHeight > node.clientHeight + 40 && getComputedStyle(node).overflowY !== 'visible' && (node.scrollTop = node.scrollHeight)), 100);
+    return () => clearInterval(timer);
+  }, [scrollDown]);
   return null;
 }
 
@@ -75,7 +81,7 @@ export const entries: Entries = {
       fetchStub: () => {
         throw new TypeError('Network request failed');
       },
-      extra: <TypeAndSave text={HEAVY_WORDS} />,
+      extra: <TypeAndSave text={HEAVY_WORDS} scrollDown />,
     }),
 
   's33-journal-feedback': () => feedback('ALREADY_DECIDED'),
