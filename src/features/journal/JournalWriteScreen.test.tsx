@@ -281,10 +281,16 @@ describe('a save that does not go through, with words that call for support', ()
     fireEvent.press(saveButton());
     await screen.findByText(/Điều bạn viết vẫn còn ở đây\./);
     world.down = false;
+    // a new save starts: the old answer is gone while the new one is awaited
+    const gate = hold('POST /journal');
     fireEvent.press(retryButton());
+    await landed();
+    expect(supportTitle()).toBeNull();
+    expect(screen.queryByText(/Điều bạn viết vẫn còn ở đây./)).toBeNull();
+    await act(async () => gate.release());
     expect(await screen.findByRole('header', { name: 'Một khoảng nghỉ' })).toBeTruthy();
     expect(supportTitle()).toBeTruthy();
-    expect(screen.getByText(/Bước nhỏ|“/)).toBeTruthy();
+    expect(screen.getByText(/^“.+”$/)).toBeTruthy();
     view.unmount();
   });
 });
