@@ -6,24 +6,25 @@
 import { configure, screen } from '@testing-library/react-native';
 import type { ActionResult, GameEvent } from '../../../domain/contract/common.ts';
 import type { Inventory, Meal, MealPlanState, PurchaseResult, Shop, ShopItem, SwapCandidates } from '../../../domain/contract/content.ts';
-import type { DayDetail, DaySummary, DayState, Inbox, InboxItem, InboxReadResult, Me, PerkCode, Perks, QuestState, Settings } from '../../../domain/contract/core.ts';
+import type { Biometrics, DayDetail, DaySummary, DayState, Inbox, InboxItem, InboxReadResult, Me, PerkCode, Perks, PrescriptionResponse, QuestState, Settings } from '../../../domain/contract/core.ts';
 import type { GuildRole, GuildState, JournalCreateResult, JournalEntry, JournalList, Leaderboard, NudgeBlockReason, NudgeResult, NudgeTemplates, Quote, Tickets } from '../../../domain/contract/social.ts';
 import { JOURNAL_XP, PERKS } from '../../../domain/economy.ts';
-import { calorieWindow } from '../../../domain/energy.ts';
+import { ARCHETYPE_FACTOR, calculatePrescription, calorieWindow, type Prescription } from '../../../domain/energy.ts';
 import { GUILD_INACTIVE_DAYS, GUILD_MAX_MEMBERS } from '../../../domain/guild.ts';
 import { findBannedTerms } from '../../../domain/language.ts';
-import { addDays, daysBetween, weekStartOf } from '../../../domain/logicalDate.ts';
+import { addDays, daysBetween, isValidTimeZone, weekStartOf } from '../../../domain/logicalDate.ts';
 import { rankMeals, slotTarget } from '../../../domain/mealPlan.ts';
 import { cumulativeXpForLevel, levelForXp, perkPointsEarned, titleKeyForLevel, xpRequiredForLevel } from '../../../domain/progression.ts';
 import { mapStats } from '../../../domain/stats.ts';
 import { closeDays, ticketPreview, type DayInput, type StreakState } from '../../../domain/streak.ts';
-import { INGREDIENT_TAGS, type IngredientTag, type MealSlot } from '../../../domain/types.ts';
-import { isDisplayName, LIMITS, stripUnseen } from '../../../domain/validation.ts';
+import { INGREDIENT_TAGS, type Archetype, type IngredientTag, type MealSlot } from '../../../domain/types.ts';
+import { ageFrom, allowedArchetypes, isDisplayName, LIMITS, stripUnseen, validateBiometrics, type BiometricsInput } from '../../../domain/validation.ts';
 import { tabLabel } from '../../shared/i18n/vi/nav';
 import { NUDGE_TEMPLATES } from '../../../server/content/nudgeTemplates.ts';
 import { QUOTES } from '../../../server/content/quotes.ts';
 import { SHOP_ITEMS } from '../../../server/content/shopItems.ts';
 import fixture from '../nutrition/mealFixture.json';
+import { ZONES } from '../onboarding/onboardingTestKit';
 import { clearCelebrations } from '../progression/celebrations';
 import { tickPath, WATER } from '../quests/api';
 import { fetchMock, installSyncTestEnv, mountApp, refuse, respond, settle, tabsSettled, USER, writes } from '../sync/syncTestKit';
@@ -161,6 +162,8 @@ export const world = {} as {
   journal: ReturnType<typeof freshJournal>;
   /** The caller's freeze tickets and the streak facts behind what a ticket would protect (GET /freeze-tickets). */
   tickets: ReturnType<typeof freshTickets>;
+  /** The caller's latest measurements and the targets stored with them (GET /me/prescription); the name, the zone and the direction are in `me`. */
+  profile: ReturnType<typeof freshProfile>;
   answer?: (request: string, init: Init) => unknown;
 };
 
@@ -317,7 +320,18 @@ export function serverAnswer(request: string, init: Init): unknown {
   if (world.down) throw new TypeError('Network request failed');
   if (request === 'GET /me') return respond(200, world.me);
   if (request === 'GET /day') return respond(200, world.day);
-  if (request === 'GET /settings') return respond(200, world.settings);
+  if (request === 'GET /settings') return guard(() => {
+    onboarded();
+    return respond(200, world.settings);
+  });
+  if (request === 'GET /meta/timezones') return respond(200, { zones: [...ZONES] });
+  if (request === 'GET /me/prescription') return guard(() => {
+    onboarded();
+    return respond(200, prescriptionResponse());
+  });
+  if (request === 'PATCH /me') return userWrite(request, init, patchMe);
+  if (request === 'POST /me/biometrics') return userWrite(request, init, addBiometrics);
+  if (request === 'PATCH /me/archetype') return userWrite(request, init, changeArchetype);
   if (request === 'GET /nutrition/plan') return guard(readPlan);
   const [, mealQuery] = /^GET \/nutrition\/swap-candidates(?:\?(.*))?$/.exec(request) ?? [];
   if (request.startsWith('GET /nutrition/swap-candidates')) return guard(() => candidates(new URLSearchParams(mealQuery)));
@@ -325,7 +339,7 @@ export function serverAnswer(request: string, init: Init): unknown {
     onboarded();
     return keyed(request, init, swapMeal);
   });
-  if (request === 'PATCH /settings') return keyed(request, init, patchSettings);
+  if (request === 'PATCH /settings') return userWrite(request, init, patchSettings);
   const [, boughtCode] = /^POST \/shop\/([^/]+)\/purchase$/.exec(request) ?? [];
   if (boughtCode) return guard(() => {
     onboarded();
@@ -697,6 +711,149 @@ function patchSettings(_id: string, body: Record<string, unknown>) {
   const given = SETTINGS_CHECKS.filter(([field]) => body[field] !== undefined).map(([field]) => [field, body[field]]);
   world.settings = { ...world.settings, ...Object.fromEntries(given), ...(tags && { excludedMealTags: tags }) };
   return respond(200, world.settings);
+}
+
+
+// ---- the profile and settings writes (server Task 14: routes/me.ts, readModels/me.ts, sql/21-profile.sql; routes/settings.ts) ----
+// Every route here is for an onboarded user and every write is idempotent. The order of the refusals is the server's: the
+// Idempotency-Key header (400 / 422, before anything is read), 409 ONBOARDING_REQUIRED, the replay of a key, then the handler (the
+// members of the body, then the rules). Not modelled: the 120 writes a minute of one account (no screen of these can reach it), and
+// what a new measurement or zone changes elsewhere (the day's calorie window, the stats, the logical date).
+
+/** The header every idempotent route reads first: missing -> 400 IDEMPOTENCY_KEY_REQUIRED, not a UUID -> 422 on 'Idempotency-Key'. */
+function checkKey(init: Init) {
+  const key = init.headers['Idempotency-Key'];
+  if (key === undefined || key === '') stop(400, 'IDEMPOTENCY_KEY_REQUIRED');
+  if (!UUID.test(key)) stop(422, 'VALIDATION_FAILED', [{ field: 'Idempotency-Key', rule: 'format' }]);
+}
+/** The members of a JSON object; anything else (nothing, an array, a scalar) has none, as `members` of routes/auth.ts. */
+function membersOf(init: Init): Record<string, unknown> {
+  const parsed: unknown = init.body === undefined ? undefined : JSON.parse(init.body);
+  return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+}
+/** An idempotent write of an onboarded user. `run` gets the key and the members of the body. */
+function userWrite(request: string, init: Init, run: (key: string, body: Record<string, unknown>) => { ok: boolean }) {
+  return guard(() => {
+    checkKey(init);
+    onboarded();
+    return keyed(request, init, key => run(key, membersOf(init)), true);
+  });
+}
+
+const ARCHETYPES = Object.keys(ARCHETYPE_FACTOR) as Archetype[];
+/** archetype_set_at + 336 hours, whatever the zone (profile_set_archetype). */
+const ARCHETYPE_COOLDOWN_MS = 14 * 24 * HOUR;
+
+const prescribe = (biometrics: Biometrics, archetype: Archetype): Prescription =>
+  calculatePrescription({ ...biometrics, ageYears: ageFrom(biometrics.birthYear, Date.now(), world.me.user.timezone), archetype });
+/** The measurements of the frame of S37 (illustrative) and the targets of a TANKER with them. */
+export function freshProfile() {
+  const biometrics: Biometrics = { heightCm: 170, weightKg: 65, birthYear: 1999, sex: 'MALE', activityLevel: 'LIGHT' };
+  return {
+    biometrics,
+    prescription: calculatePrescription({ ...biometrics, ageYears: ageFrom(biometrics.birthYear, Date.now(), 'Asia/Ho_Chi_Minh'), archetype: 'TANKER' }),
+    computedAt: new Date().toISOString(),
+  };
+}
+/** `GET /me/prescription` and the answer of `POST /me/biometrics`: the targets in effect, the direction they were computed for, the latest measurements. */
+function prescriptionResponse(): PrescriptionResponse {
+  const { prescription, computedAt, biometrics } = world.profile;
+  return { ...prescription, computedAt, archetype: world.me.user.archetype as Archetype, biometrics };
+}
+type Problem = { field: string; rule: string };
+function archetypeOf(value: unknown, problems: Problem[], required: boolean): Archetype | null {
+  if (value === undefined || value === null) {
+    if (required) problems.push({ field: 'archetype', rule: 'required' });
+    return null;
+  }
+  if (!ARCHETYPES.includes(value as Archetype)) {
+    problems.push({ field: 'archetype', rule: 'enum' });
+    return null;
+  }
+  return value as Archetype;
+}
+/** Starts a new 14 days: the direction in effect was just set. */
+const setArchetype = (archetype: Archetype) => {
+  world.me = { ...world.me, user: { ...world.me.user, archetype, archetypeChangeAvailableAt: new Date(Date.now() + ARCHETYPE_COOLDOWN_MS).toISOString() } };
+};
+/** Trimmed; 1 to 40 code points; nothing a reader cannot see (users_display_name_check). */
+function displayNameOf(value: unknown, problems: Problem[]): string | null {
+  const name = typeof value === 'string' ? value.trim() : '';
+  const rule = name === '' ? 'required' : [...name].length > LIMITS.displayName.max ? 'max' : !isDisplayName(name) ? 'format' : null;
+  if (rule) {
+    problems.push({ field: 'displayName', rule });
+    return null;
+  }
+  return name;
+}
+/** A zone `users.timezone` holds: an Area/City name or UTC that is a row of `timezones` (the list the picker is given). */
+function timeZoneOf(value: unknown, problems: Problem[]): string | null {
+  if (typeof value !== 'string' || value === '') {
+    problems.push({ field: 'timezone', rule: 'required' });
+    return null;
+  }
+  if (!(isValidTimeZone(value) && (value.includes('/') || value === 'UTC') && ZONES.includes(value))) {
+    problems.push({ field: 'timezone', rule: 'format' });
+    return null;
+  }
+  return value;
+}
+/**
+ * `PATCH /me`: a member that is absent stays as it is, one that is present must be valid (every wrong one is named, name first); banned
+ * wording is judged last, only for a name that is otherwise fine. The answer is `Me`.
+ */
+function patchMe(_key: string, body: Record<string, unknown>) {
+  const problems: Problem[] = [];
+  const displayName = body.displayName === undefined ? null : displayNameOf(body.displayName, problems);
+  const timezone = body.timezone === undefined ? null : timeZoneOf(body.timezone, problems);
+  if (problems.length > 0) stop(422, 'VALIDATION_FAILED', problems);
+  if (displayName !== null && findBannedTerms(displayName).length > 0) stop(422, 'NAME_NOT_ALLOWED');
+  world.me = { ...world.me, user: { ...world.me.user, displayName: displayName ?? world.me.user.displayName, timezone: timezone ?? world.me.user.timezone } };
+  return respond(200, world.me);
+}
+/**
+ * `POST /me/biometrics`: every wrong member in one 422 (the direction first, then the five numbers), else AGE_NOT_ALLOWED, else
+ * ARCHETYPE_NOT_ALLOWED with `details.allowed` when a direction that was sent is ruled out, or the one in effect is and none was
+ * sent. The direction in effect stays while the new numbers allow it (one that was sent is then not applied: no way around the
+ * cooldown); otherwise the one that was sent replaces it and starts a new cooldown. The answer is the new targets.
+ */
+function addBiometrics(_key: string, body: Record<string, unknown>) {
+  const problems: Problem[] = [];
+  const wanted = archetypeOf(body.archetype, problems, false);
+  const checked = validateBiometrics(body as unknown as BiometricsInput, Date.now(), world.me.user.timezone);
+  if (!checked.ok && checked.code === 'VALIDATION_FAILED') problems.push(...checked.fields);
+  if (problems.length > 0) stop(422, 'VALIDATION_FAILED', problems);
+  if (!checked.ok) stop(422, 'AGE_NOT_ALLOWED');
+  const { heightCm, weightKg, birthYear, sex, activityLevel } = body as unknown as Biometrics;
+  const biometrics: Biometrics = { heightCm, weightKg, birthYear, sex, activityLevel };
+  const allowed = allowedArchetypes(heightCm, weightKg);
+  if (wanted !== null && !allowed.includes(wanted)) stopWith(422, 'ARCHETYPE_NOT_ALLOWED', { allowed });
+  const current = world.me.user.archetype;
+  const archetype = current !== null && allowed.includes(current) ? current : wanted;
+  if (archetype === null) stopWith(422, 'ARCHETYPE_NOT_ALLOWED', { allowed });
+  if (archetype !== current) setArchetype(archetype);
+  world.profile = { biometrics, prescription: prescribe(biometrics, archetype), computedAt: new Date().toISOString() };
+  return respond(200, prescriptionResponse());
+}
+/**
+ * `PATCH /me/archetype`: the member (422), then the BMI rule on the latest numbers ("not allowed" is said before "wait", inside the
+ * cooldown too), then profile_set_archetype: the direction in effect is accepted at any time and starts nothing; another one before
+ * `archetypeChangeAvailableAt` is 409 ARCHETYPE_COOLDOWN with `details.availableAt`. The targets are replaced; the answer is `Me`.
+ */
+function changeArchetype(_key: string, body: Record<string, unknown>) {
+  const problems: Problem[] = [];
+  const archetype = archetypeOf(body.archetype, problems, true);
+  if (problems.length > 0 || archetype === null) stop(422, 'VALIDATION_FAILED', problems);
+  const { biometrics } = world.profile;
+  const allowed = allowedArchetypes(biometrics.heightCm, biometrics.weightKg);
+  if (!allowed.includes(archetype)) stopWith(422, 'ARCHETYPE_NOT_ALLOWED', { allowed });
+  if (archetype !== world.me.user.archetype) {
+    const availableAt = world.me.user.archetypeChangeAvailableAt;
+    if (availableAt !== null && Date.now() < Date.parse(availableAt)) stopWith(409, 'ARCHETYPE_COOLDOWN', { availableAt: new Date(availableAt).toISOString() });
+    setArchetype(archetype);
+  }
+  world.profile = { ...world.profile, prescription: prescribe(biometrics, archetype), computedAt: new Date().toISOString() };
+  return respond(200, world.me);
 }
 
 // ---- the shop, the inventory, the perks (server Task 37: server/src/routes/shop.ts, perks.ts, sql/41-shop.sql) ----
@@ -1294,7 +1451,7 @@ export function installTodayTestEnv() {
   beforeEach(() => {
     replies.clear();
     ledger.clear();
-    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, hour: 19, closedDate: undefined, skew: 0, highWater: undefined, minutes: { resistance: 60, cardio: 45 }, history: {}, plan: freshPlan(), shop: freshShop(), guild: freshGuild(), inbox: [], journal: freshJournal(), tickets: freshTickets(), answer: undefined });
+    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, hour: 19, closedDate: undefined, skew: 0, highWater: undefined, minutes: { resistance: 60, cardio: 45 }, history: {}, plan: freshPlan(), shop: freshShop(), guild: freshGuild(), inbox: [], journal: freshJournal(), tickets: freshTickets(), profile: freshProfile(), answer: undefined });
     fetchMock.mockImplementation(async (url, init) => {
       const request = `${init.method} ${url.replace(BASE, '')}`;
       const taken = await world.answer?.(request, init);
