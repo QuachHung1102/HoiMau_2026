@@ -63,8 +63,12 @@ describe('using the ticket', () => {
   test('one request for one press with a fresh key and the date; the answer takes the person back to S34, which says "Đã dùng vé" and shows the new count', async () => {
     rescue();
     const view = await openPreview();
+    // the tickets are read again after the use; until that read lands, S34 already shows the answer of the server (no stale count)
+    const reread = hold('GET /freeze-tickets');
     fireEvent.press(spendButton());
     expect(await screen.findByRole('header', { name: 'Vé giữ nhịp' })).toBeTruthy();
+    expect(screen.getByText('Bạn đang có 1 vé · tối đa 2')).toBeTruthy();
+    await act(async () => reread.release());
     await landed();
     expect(uses()).toHaveLength(1);
     expect(uses()[0].body).toEqual({ date: YESTERDAY });
@@ -160,8 +164,12 @@ describe('the server refuses (the screen was drawn from an older read): each ref
     const view = await openPreview();
     const before = reads();
     setup();
+    // the explanation is the refusal's own: it is there while the re-read of the tickets is still on its way
+    const reread = hold('GET /freeze-tickets');
     fireEvent.press(spendButton());
     expect(await screen.findByText(words)).toBeTruthy();
+    expect(spendButton()).toBeDisabled();
+    await act(async () => reread.release());
     await landed();
     expect(screen.getByRole('header', { name: /^Dùng vé cho / })).toBeTruthy();
     expect(spendButton()).toBeDisabled();
