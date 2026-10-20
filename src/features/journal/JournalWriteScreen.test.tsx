@@ -19,6 +19,8 @@ describe('S32', () => {
     expect(screen.getByText('Chỉ mình bạn đọc được')).toBeTruthy();
     expect(screen.getByText('Không chia sẻ vào tổ đội')).toBeTruthy();
     expect(screen.getByText('0 / 5000')).toBeTruthy();
+    // the counter is the field's hint, so a screen reader says it with the field
+    expect(field()).toHaveProp('accessibilityHint', '0 / 5000');
     expect(saveButton()).toBeDisabled();
     expect(screen.getByText('Viết vài dòng rồi lưu nhé.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Những trang đã viết' })).toBeTruthy();
@@ -43,6 +45,7 @@ describe('saving', () => {
     const view = await openWrite();
     type(`  ${TEXT}\n  `);
     expect(screen.getByText(`${[...TEXT].length} / 5000`)).toBeTruthy();
+    expect(field()).toHaveProp('accessibilityHint', `${[...TEXT].length} / 5000`);
     fireEvent.press(saveButton());
     expect(await screen.findByRole('header', { name: 'Một khoảng nghỉ' })).toBeTruthy();
     await landed();
@@ -72,6 +75,8 @@ describe('saving', () => {
     const view = await openWrite();
     type('a'.repeat(5001));
     expect(screen.getByText('5001 / 5000')).toBeTruthy();
+    // over the limit the error is the field's name (it replaces the hint), and the count is still on the screen
+    expect(field()).toHaveAccessibleName(/dài hơn 5000 ký tự/);
     expect(screen.getByText(/dài hơn 5000 ký tự/)).toBeTruthy();
     expect(saveButton()).toBeDisabled();
     fireEvent.press(saveButton());
