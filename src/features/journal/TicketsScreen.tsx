@@ -95,7 +95,7 @@ export function TicketsScreen({ route, navigation }: ScreenProps<'Tickets'>) {
           <AppText variant="secondary">{vi.earnBody}</AppText>
         </Card>
       ) : null}
-      {yesterdayFirst && yesterday ? <AppText variant="secondary">{vi.yesterdayFirst(hoursLeft(yesterday.deadline, serverTime))}</AppText> : null}
+      {yesterdayFirst && chosen === null ? <AppText variant="secondary">{vi.yesterdayFirst}</AppText> : null}
       <SelectField
         label={vi.dateField}
         value={selected?.date}

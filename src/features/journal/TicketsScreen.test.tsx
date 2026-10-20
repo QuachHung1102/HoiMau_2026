@@ -95,12 +95,14 @@ describe('the date to use a ticket for', () => {
     second.unmount();
   });
 
-  test('between 03:00 and the day-close, when yesterday needs the ticket: it is chosen already, one calm line says it closes first and for how long, and the preview is for yesterday', async () => {
+  test('between 03:00 and the day-close, when yesterday needs the ticket: it is chosen already, one calm line says so without repeating the hours the select shows, and the preview is for yesterday', async () => {
     giveTickets(1);
     yesterdayOpen();
     const view = await openTickets();
     expect(dateField()).toHaveAccessibleName('Ngày sử dụng, Hôm qua · còn 6 giờ để dùng');
-    expect(screen.getByText('Hôm qua khép lại trước nên được chọn sẵn: còn 6 giờ để dùng.')).toBeTruthy();
+    expect(screen.getByText('Hôm qua sắp khép lại nên mình chọn sẵn ngày này.')).toBeTruthy();
+    // the hours are the select's to tell, not the line's
+    expect(screen.getByText(/chọn sẵn/)).not.toHaveTextContent(/giờ/);
     fireEvent.press(preview());
     expect(await screen.findByRole('header', { name: 'Dùng vé cho hôm qua?' })).toBeTruthy();
     view.unmount();
@@ -111,13 +113,13 @@ describe('the date to use a ticket for', () => {
     world.hour = 9; // yesterday already closed with no break: nothing to rescue
     const closed = await openTickets();
     expect(dateField()).toHaveAccessibleName('Ngày sử dụng, Hôm nay');
-    expect(screen.queryByText(/khép lại trước/)).toBeNull();
+    expect(screen.queryByText(/chọn sẵn/)).toBeNull();
     closed.unmount();
     world.tickets.list = [];
     yesterdayOpen();
     const empty = await openTickets();
     expect(dateField()).toHaveAccessibleName('Ngày sử dụng, Hôm nay');
-    expect(screen.queryByText(/khép lại trước/)).toBeNull();
+    expect(screen.queryByText(/chọn sẵn/)).toBeNull();
     empty.unmount();
   });
 
@@ -125,8 +127,11 @@ describe('the date to use a ticket for', () => {
     giveTickets(1);
     yesterdayOpen();
     const view = await openTickets();
+    expect(screen.getByText('Hôm qua sắp khép lại nên mình chọn sẵn ngày này.')).toBeTruthy();
     await choose('Hôm nay');
     expect(dateField()).toHaveAccessibleName('Ngày sử dụng, Hôm nay');
+    // the line was about the date that was chosen for the person; once they choose, it no longer describes the field
+    expect(screen.queryByText(/chọn sẵn/)).toBeNull();
     expect(screen.getByText(/Ngày này chưa cần vé/)).toBeTruthy();
     expect(preview()).toBeDisabled();
     await choose('Hôm qua · còn 6 giờ để dùng');
@@ -177,7 +182,7 @@ describe('a date that cannot be used says why, and the button is disabled with t
     breakStreak(12);
     const view = await openTickets();
     expect(dateField()).toHaveAccessibleName('Ngày sử dụng, Hôm qua · còn 6 giờ để dùng');
-    expect(screen.getByText('Hôm qua khép lại trước nên được chọn sẵn: còn 6 giờ để dùng.')).toBeTruthy();
+    expect(screen.getByText('Hôm qua sắp khép lại nên mình chọn sẵn ngày này.')).toBeTruthy();
     view.unmount();
   });
 });
