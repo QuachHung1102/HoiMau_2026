@@ -48,12 +48,14 @@ describe('S49', () => {
     const row = (text: string) => screen.getByRole('button', { name: new RegExp(`^${text}`) });
     expect(row('Hôm nay mình đã chậm lại\\.')).toHaveAccessibleName('Hôm nay mình đã chậm lại.. Hôm nay · chạm để đọc');
     // a break in the words is a space in the row
-    expect(row('Một ngày không như dự định')).toHaveAccessibleName('Một ngày không như dự định. Hai đoạn.. Hôm qua · chạm để đọc');
+    expect(row('Một ngày không như dự định').props.accessibilityLabel).toBe('Một ngày không như dự định. Hai đoạn.. Hôm qua · chạm để đọc');
     expect(row('Niềm vui nhỏ cuối tuần')).toHaveAccessibleName(`Niềm vui nhỏ cuối tuần.. ${weekday(old)}, ${old.getDate()}/${old.getMonth() + 1} · chạm để đọc`);
     expect(screen.getByRole('button', { name: 'Viết trang mới' })).toBeTruthy();
     expect(screen.getByText('Nội dung không hiển thị trong thông báo hoặc tổ đội.')).toBeTruthy();
     fireEvent.press(row('Niềm vui nhỏ cuối tuần'));
+    const opened = world.journal.rows.find(entry => entry.body === 'Niềm vui nhỏ cuối tuần.')?.id;
     expect(await screen.findByRole('header', { name: 'Một trang của bạn' })).toBeTruthy();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith(`/journal/${opened}`))).toBe(true);
     view.unmount();
   });
 
@@ -92,9 +94,15 @@ describe('S49', () => {
   });
 
   test('a whole page that could not be opened is not "no pages": the next page is asked for by itself, and the empty state shows only when no cursor is left', async () => {
-    seedJournal(pages(22, at => ({ corrupt: at < 20 })));
+    const rows = pages(22, at => ({ corrupt: at < 20 }));
+    seedJournal(rows);
+    // while the next page is on its way, the list is loading: not "no pages yet"
+    const next = hold(`GET /journal?before=${rows[19].id}`);
     const view = await openList();
-    expect(await screen.findByTestId('journal-list')).toBeTruthy();
+    await landed();
+    expect(screen.queryByText('Chưa có trang nào')).toBeNull();
+    expect(asked()).toHaveLength(2);
+    await act(async () => next.release());
     await landed();
     expect(asked()).toHaveLength(2);
     expect(shown()).toHaveLength(2);

@@ -1244,7 +1244,6 @@ function ticketsState(): Tickets {
  */
 function useTicket(body: Record<string, unknown>) {
   const { date } = body;
-  if (date !== undefined && date !== null && typeof date !== 'string') stop(422, 'VALIDATION_FAILED', [{ field: 'date', rule: 'format' }]);
   const day = dateOf(date as string | null | undefined, 'date');
   const refused = ticketBlock(day);
   if (refused) stop(409, refused);
