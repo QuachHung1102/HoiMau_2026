@@ -65,11 +65,11 @@ export function TicketPreviewScreen({ route, navigation }: ScreenProps<'TicketPr
   };
 
   return (
-    <Screen {...header} title={vi.previewTitle(entry?.target ?? 'TODAY')}>
+    <Screen {...header} title={entry ? vi.previewTitle(entry.target) : vi.previewTitleGone}>
       <View style={[styles.chip, { backgroundColor: palette.soft }]}>
         <Icon name="Calendar" size={16} />
         <AppText variant="caption" weight="semibold" color="primary">
-          {vi.previewDate(dateText(date), entry ? hoursLeft(entry.deadline, tickets.serverTime) : null)}
+          {vi.previewDate(dateText(date), entry?.target === 'YESTERDAY' ? hoursLeft(entry.deadline, tickets.serverTime) : null)}
         </AppText>
       </View>
       {entry ? (

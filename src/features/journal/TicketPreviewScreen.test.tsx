@@ -42,7 +42,9 @@ describe('S78', () => {
     giveTickets(1);
     const view = await openPreview();
     expect(screen.getByRole('header', { name: 'Dùng vé cho hôm nay?' })).toBeTruthy();
-    expect(screen.getByText('Thứ Tư, 14/10 · còn 20 giờ để dùng')).toBeTruthy();
+    // today's ticket is good until 15:00 tomorrow: that is not today closing in 20 hours, so only the date is told
+    expect(screen.getByText('Thứ Tư, 14/10')).toBeTruthy();
+    expect(screen.queryByText(/còn .* giờ/)).toBeNull();
     expect(screen.getByText('Nếu không dùng: chuỗi về 0')).toBeTruthy();
     expect(screen.getByText('Nếu dùng: giữ chuỗi 4 ngày')).toBeTruthy();
     expect(screen.getByText('Vé giữ chuỗi, không tăng chuỗi. Sau khi dùng, bạn còn 0 vé.')).toBeTruthy();
@@ -210,6 +212,9 @@ test('the date is no longer on offer when the list is read again (past 15:00): t
   expect(screen.getByText('Ngày này không còn trong thời gian dùng vé.')).toBeTruthy();
   expect(spendButton()).toBeDisabled();
   expect(screen.getByText('Thứ Ba, 13/10')).toBeTruthy();
+  // the date left the list: the title no longer says which day it is (it was "hôm qua"; it must not turn into "hôm nay")
+  expect(screen.getByRole('header', { name: 'Dùng vé cho ngày này?' })).toBeTruthy();
+  expect(screen.queryByRole('header', { name: /hôm (nay|qua)/ })).toBeNull();
   expect(uses()).toEqual([]);
   view.unmount();
 });
