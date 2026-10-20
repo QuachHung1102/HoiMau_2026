@@ -7,8 +7,8 @@ import { configure, screen } from '@testing-library/react-native';
 import type { ActionResult, GameEvent } from '../../../domain/contract/common.ts';
 import type { Inventory, Meal, MealPlanState, PurchaseResult, Shop, ShopItem, SwapCandidates } from '../../../domain/contract/content.ts';
 import type { DayDetail, DaySummary, DayState, Inbox, InboxItem, InboxReadResult, Me, PerkCode, Perks, QuestState, Settings } from '../../../domain/contract/core.ts';
-import type { GuildRole, GuildState, Leaderboard, NudgeBlockReason, NudgeResult, NudgeTemplates } from '../../../domain/contract/social.ts';
-import { PERKS } from '../../../domain/economy.ts';
+import type { GuildRole, GuildState, JournalCreateResult, JournalEntry, JournalList, Leaderboard, NudgeBlockReason, NudgeResult, NudgeTemplates, Quote, Tickets } from '../../../domain/contract/social.ts';
+import { JOURNAL_XP, PERKS } from '../../../domain/economy.ts';
 import { calorieWindow } from '../../../domain/energy.ts';
 import { GUILD_INACTIVE_DAYS, GUILD_MAX_MEMBERS } from '../../../domain/guild.ts';
 import { findBannedTerms } from '../../../domain/language.ts';
@@ -16,10 +16,12 @@ import { addDays, daysBetween, weekStartOf } from '../../../domain/logicalDate.t
 import { rankMeals, slotTarget } from '../../../domain/mealPlan.ts';
 import { cumulativeXpForLevel, levelForXp, perkPointsEarned, titleKeyForLevel, xpRequiredForLevel } from '../../../domain/progression.ts';
 import { mapStats } from '../../../domain/stats.ts';
+import { closeDays, ticketPreview, type DayInput, type StreakState } from '../../../domain/streak.ts';
 import { INGREDIENT_TAGS, type IngredientTag, type MealSlot } from '../../../domain/types.ts';
 import { isDisplayName, LIMITS, stripUnseen } from '../../../domain/validation.ts';
 import { tabLabel } from '../../shared/i18n/vi/nav';
 import { NUDGE_TEMPLATES } from '../../../server/content/nudgeTemplates.ts';
+import { QUOTES } from '../../../server/content/quotes.ts';
 import { SHOP_ITEMS } from '../../../server/content/shopItems.ts';
 import fixture from '../nutrition/mealFixture.json';
 import { clearCelebrations } from '../progression/celebrations';
@@ -155,6 +157,10 @@ export const world = {} as {
   guild: ReturnType<typeof freshGuild>;
   /** The caller's notifications (`GET /inbox`), in any order; `seedInbox` keeps the day's unread count in step with them. */
   inbox: InboxItem[];
+  /** The caller's journal entries and the POST /journal calls of the last minute (the limiter). */
+  journal: ReturnType<typeof freshJournal>;
+  /** The caller's freeze tickets and the streak facts behind what a ticket would protect (GET /freeze-tickets). */
+  tickets: ReturnType<typeof freshTickets>;
   answer?: (request: string, init: Init) => unknown;
 };
 
@@ -369,6 +375,29 @@ export function serverAnswer(request: string, init: Init): unknown {
     onboarded();
     return inboxPage(new URLSearchParams(inboxQuery));
   });
+  if (request === 'POST /journal') return guard(() => {
+    limitJournal();
+    onboarded();
+    return keyed(request, init, createEntry);
+  });
+  const [, journalQuery] = /^GET \/journal(?:\?(.*))?$/.exec(request) ?? [];
+  if (/^GET \/journal(\?.*)?$/.test(request)) return guard(() => {
+    onboarded();
+    return journalPage(new URLSearchParams(journalQuery));
+  });
+  const [, entryId] = /^GET \/journal\/([^/?]*)$/.exec(request) ?? [];
+  if (entryId !== undefined) return guard(() => {
+    onboarded();
+    return journalEntry(decodeURIComponent(entryId));
+  });
+  if (request === 'GET /freeze-tickets') return guard(() => {
+    onboarded();
+    return respond(200, ticketsState());
+  });
+  if (request === 'POST /freeze-tickets/use') return guard(() => {
+    onboarded();
+    return keyed(request, init, (_key, body) => useTicket(body));
+  });
   if (request === 'POST /perks/unlock') return guard(() => {
     onboarded();
     return keyed(request, init, (_key, body) => unlockPerk(body));
@@ -398,11 +427,14 @@ function dateOf(value: string | null | undefined, field: string) {
   if (!value) stop(422, 'VALIDATION_FAILED', [{ field, rule: 'required' }]);
   const at = Date.parse(`${value}T00:00:00Z`);
   // a date that exists: 30 February is not rolled over into March
-  if (!DATE.test(value) || Number.isNaN(at) || new Date(at).toISOString().slice(0, 10) !== value) stop(422, 'VALIDATION_FAILED', [{ field, rule: 'format' }]);
+  if (!DATE.test(value) || value.startsWith('0000') || Number.isNaN(at) || new Date(at).toISOString().slice(0, 10) !== value) stop(422, 'VALIDATION_FAILED', [{ field, rule: 'format' }]);
   return value;
 }
-const summaryOf = (date: string): DaySummary =>
-  world.history[date]?.summary ?? { logicalDate: date, outcome: date >= world.day.logicalDate ? 'OPEN' : 'NONE', storyDone: 0, storyTotal: 2, waterMl: 0, caloriesIn: 0, workoutMinutes: 0 };
+/** A closed day that was not completed and has a ticket used for it is FROZEN (readModels/day.ts: completed, else frozen, else missed). */
+const summaryOf = (date: string): DaySummary => {
+  const summary = world.history[date]?.summary ?? { logicalDate: date, outcome: date >= world.day.logicalDate ? 'OPEN' : 'NONE', storyDone: 0, storyTotal: 2, waterMl: 0, caloriesIn: 0, workoutMinutes: 0 };
+  return ticketUsedFor(date) && date <= closedOn() && summary.outcome !== 'COMPLETED' ? { ...summary, outcome: 'FROZEN' } : summary;
+};
 /** `GET /day/history?from&to` (at most 92 dates, oldest first) and `GET /day/history/{date}`. */
 function history(route: string, query: URLSearchParams) {
   if (route === '/day/history') {
@@ -974,6 +1006,15 @@ export function seedInbox(items: InboxItem[]) {
 }
 const INBOX_DEFAULT = 20;
 const INBOX_MAX = 50;
+/** `limit` of a list: absent is 20, else a whole number 1..50 (422 format, min, max); the inbox and the journal share it (limitOf of routes/inbox.ts). */
+function pageLimit(asked: string | null) {
+  if (asked === null) return INBOX_DEFAULT;
+  if (!/^[0-9]+$/.test(asked)) stop(422, 'VALIDATION_FAILED', [{ field: 'limit', rule: 'format' }]);
+  const limit = Number(asked);
+  if (limit < 1) stop(422, 'VALIDATION_FAILED', [{ field: 'limit', rule: 'min' }]);
+  if (limit > INBOX_MAX) stop(422, 'VALIDATION_FAILED', [{ field: 'limit', rule: 'max' }]);
+  return limit;
+}
 /** An instant the way `before` is read: seconds to the microsecond, an offset or Z, a date that exists. Null when it is none. */
 function instantAt(value: string) {
   const [, year, month, day, , fraction = ''] = INSTANT.exec(value) ?? [];
@@ -987,14 +1028,7 @@ function instantAt(value: string) {
  * `unreadCount` counts every unread item, not only the page.
  */
 function inboxPage(query: URLSearchParams) {
-  const asked = query.get('limit');
-  let limit = INBOX_DEFAULT;
-  if (asked !== null) {
-    if (!/^[0-9]+$/.test(asked)) stop(422, 'VALIDATION_FAILED', [{ field: 'limit', rule: 'format' }]);
-    limit = Number(asked);
-    if (limit < 1) stop(422, 'VALIDATION_FAILED', [{ field: 'limit', rule: 'min' }]);
-    if (limit > INBOX_MAX) stop(422, 'VALIDATION_FAILED', [{ field: 'limit', rule: 'max' }]);
-  }
+  const limit = pageLimit(query.get('limit'));
   const text = query.get('before');
   const before = text === null ? null : instantAt(text);
   if (text !== null && before === null) stop(422, 'VALIDATION_FAILED', [{ field: 'before', rule: 'format' }]);
@@ -1003,6 +1037,227 @@ function inboxPage(query: URLSearchParams) {
   const items = older.slice(0, limit);
   const nextBefore = older.length > limit ? `${items[items.length - 1].createdAt.slice(0, 23)}000Z` : null;
   return respond(200, { items, unreadCount: world.inbox.filter(item => item.readAt === null).length, nextBefore } satisfies Inbox);
+}
+
+// ---- the journal and the freeze tickets ----
+// What server Task 44 answers (routes/journal.ts, routes/tickets.ts, sql/60-journal.sql, readModels/tickets.ts). Every route is for an
+// onboarded user (409 ONBOARDING_REQUIRED first, the rate limit of POST /journal before even that). The text of an entry never
+// leaves `world.journal`: nothing here logs it. The journal's clock is the machine's (an entry is created "now", a quote is recent
+// for 30 days of it); the tickets' clock is the server's wall clock in the user's zone, `world.hour` on the day of `world.day`
+// (the ticket window is the hour: yesterday from 03:00 to 15:00). Not modelled: the quote is the first fit, never a random one;
+// PET_STAGE_UP in the delta; a stored answer lost for a key that is already an entry (a test can seed that row).
+export type JournalRow = {
+  id: string;
+  createdAt: string;
+  body: string;
+  quoteCode: string;
+  logicalDate: string;
+  /** Another account's entry: row level security hides it from the caller (404 for GET one, never in the list). */
+  owner?: string;
+  /** A blob that does not open: left out of the list, 500 INTERNAL for GET one. */
+  corrupt?: boolean;
+};
+export function freshJournal() {
+  return { rows: [] as JournalRow[], calls: [] as number[] };
+}
+export function freshTickets() {
+  return {
+    /** Tickets in the order they were granted; `usedFor` is the date one was used for. */
+    list: [] as { grantWeek: string; usedFor: string | null }[],
+    /** ticket_grant_weeks: the decision of a week (true: a ticket was granted, false: forfeited at the cap). */
+    decided: {} as Record<string, boolean>,
+    /** progression_state.last_closed_date: the day-close has processed this date and every earlier one (default: yesterday). */
+    closed: undefined as string | undefined,
+    /** streak_before_break, break_date and missed_run: the break a rescue restores. */
+    beforeBreak: null as number | null,
+    breakDate: null as string | null,
+    missedRun: 0,
+    /** Whether all STORY quests were completed on a date other than today (today's come from `world.day`). */
+    stories: {} as Record<string, boolean>,
+    /** Minutes past `world.hour` on the server's clock. */
+    minute: 0,
+  };
+}
+/** Gives the caller `count` unused tickets, each from an earlier week than this one. */
+export function giveTickets(count: number) {
+  for (let n = 0; n < count; n += 1) world.tickets.list.push({ grantWeek: addDays(weekStartOf(world.day.logicalDate), -7 * (n + 1)), usedFor: null });
+}
+/** The day-close has broken a streak of `before` days on `date` (default yesterday): the streak is 0 and a rescue is open. */
+export function breakStreak(before: number, date = addDays(world.day.logicalDate, -1)) {
+  world.tickets.closed = date;
+  world.tickets.breakDate = date;
+  world.tickets.beforeBreak = before;
+  world.tickets.missedRun = 1;
+  if (world.me.progression) world.me = { ...world.me, progression: { ...world.me.progression, streakCurrent: 0, lastOutcome: 'MISSED', breakNotice: { previous: before, date } } };
+}
+export function seedJournal(rows: JournalRow[]) {
+  world.journal.rows.push(...rows);
+}
+const ticketUsedFor = (date: string) => world.tickets.list.some(ticket => ticket.usedFor === date);
+const closedOn = () => world.tickets.closed ?? addDays(world.day.logicalDate, -1);
+const storyOf = (date: string) => (date === world.day.logicalDate ? storyWhole() : world.tickets.stories[date] === true);
+const mine = (row: JournalRow) => (row.owner ?? USER) === USER;
+const newestFirst = (a: JournalRow, b: JournalRow) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
+
+/** AR-21: the 11th `POST /journal` of one account within a minute is 429 RATE_LIMITED; refused requests count too. */
+function limitJournal() {
+  const now = Date.now();
+  const calls = (world.journal.calls = world.journal.calls.filter(at => at > now - 60_000));
+  if (calls.length >= 10) stop(429, 'RATE_LIMITED');
+  calls.push(now);
+}
+/** The text of the request: a string of 1 to 5000 code points once trimmed (422 required / format / min / max on `body`). */
+function journalText(value: unknown) {
+  const refusal = (rule: string): never => stop(422, 'VALIDATION_FAILED', [{ field: 'body', rule }]);
+  if (value === undefined || value === null) refusal('required');
+  if (typeof value !== 'string') refusal('format');
+  const text = (value as string).trim();
+  const length = [...text].length;
+  if (length < LIMITS.journalBody.min) refusal('min');
+  if (length > LIMITS.journalBody.max) refusal('max');
+  return text;
+}
+const MONTH_MS = 30 * 24 * HOUR;
+/** The quote of a new entry: one the caller has not received in the last 30 days, else the one received longest ago. */
+function pickQuote(): Quote {
+  const lastOf = (code: string) => Math.max(0, ...world.journal.rows.filter(row => mine(row) && row.quoteCode === code).map(row => Date.parse(row.createdAt)));
+  const ranked = QUOTES.map((quote, n) => ({ quote, n, last: lastOf(quote.code) })).map(item => ({ ...item, recent: item.last > Date.now() - MONTH_MS }));
+  ranked.sort((a, b) => Number(a.recent) - Number(b.recent) || (a.recent ? a.last - b.last : 0) || a.n - b.n);
+  const { code, text, author } = ranked[0].quote;
+  return { code, text, author };
+}
+const unusedTickets = () => world.tickets.list.filter(ticket => ticket.usedFor === null).length;
+/** 2, or 3 with the perk TICKET_CAP_PLUS. */
+const ticketCap = () => (world.shop.unlocked.some(item => item.perk === 'TICKET_CAP_PLUS') ? 3 : 2);
+/** app._ticket_grant_check: the week has a decision (ALREADY_DECIDED), else a ticket at the cap is forfeited (AT_CAP), else a ticket of that week (GRANTED). */
+function grantCheck(week: string): JournalCreateResult['ticket']['outcome'] {
+  const { list, decided } = world.tickets;
+  if (week in decided) return 'ALREADY_DECIDED';
+  const have = list.some(ticket => ticket.grantWeek === week);
+  decided[week] = have || unusedTickets() < ticketCap();
+  if (!decided[week]) return 'AT_CAP';
+  if (!have) list.push({ grantWeek: week, usedFor: null });
+  return 'GRANTED';
+}
+
+/**
+ * `POST /journal`: the text (422), then journal_create in its order: the quote, the entry (an id that is already an entry:
+ * 409 IDEMPOTENCY_KEY_REUSED), 15 XP for the first entry of the logical day (0 after it), the week's ticket.
+ */
+function createEntry(id: string, body: Record<string, unknown>) {
+  const text = journalText(body.body);
+  const quote = pickQuote();
+  if (world.journal.rows.some(row => row.id === id)) stop(409, 'IDEMPOTENCY_KEY_REUSED');
+  const logicalDate = world.day.logicalDate;
+  const first = !world.journal.rows.some(row => mine(row) && row.logicalDate === logicalDate);
+  const createdAt = new Date().toISOString();
+  world.journal.rows.push({ id, createdAt, body: text, quoteCode: quote.code, logicalDate });
+  const events = first ? pay(JOURNAL_XP, 0) : [];
+  const outcome = grantCheck(weekStartOf(logicalDate));
+  const xp = first ? JOURNAL_XP : 0;
+  return respond(200, { entry: { id, createdAt }, quote, xpAwarded: xp, ticket: { outcome, available: unusedTickets(), cap: ticketCap() }, delta: { xp, coin: 0, events } } satisfies JournalCreateResult);
+}
+const PREVIEW_CHARS = 80;
+/**
+ * `GET /journal?limit&before`: newest first (created_at, then id). `limit` 1..50 (default 20), then `before`, the id of the last entry
+ * of the previous page (422 format; an id that is not the caller's entry gives an empty page). `nextBefore` is the id of the last
+ * row of the page when more rows follow, null on the last: an entry that cannot be opened is left out of `entries` but not of the
+ * count, so a page can hold fewer entries than `limit` and still have a cursor.
+ */
+function journalPage(query: URLSearchParams) {
+  const limit = pageLimit(query.get('limit'));
+  const before = query.get('before');
+  if (before !== null && !UUID.test(before)) stop(422, 'VALIDATION_FAILED', [{ field: 'before', rule: 'format' }]);
+  const rows = world.journal.rows.filter(mine).sort(newestFirst);
+  const cursor = before === null ? undefined : rows.find(row => row.id === before.toLowerCase());
+  const older = before === null ? rows : cursor ? rows.filter(row => newestFirst(cursor, row) < 0) : [];
+  const page = older.slice(0, limit);
+  const entries = page.filter(row => !row.corrupt).map(row => ({ id: row.id, createdAt: row.createdAt, preview: [...row.body].slice(0, PREVIEW_CHARS).join(''), quoteCode: row.quoteCode }));
+  return respond(200, { entries, nextBefore: older.length > limit ? page[page.length - 1].id : null } satisfies JournalList);
+}
+/** `GET /journal/{id}`: 422 for an id that is not a UUID, 404 NOT_FOUND for one that is not the caller's entry, 500 for a blob that does not open. */
+function journalEntry(id: string) {
+  if (!UUID.test(id)) stop(422, 'VALIDATION_FAILED', [{ field: 'id', rule: 'format' }]);
+  const row = world.journal.rows.find(item => mine(item) && item.id === id.toLowerCase());
+  if (!row) stop(404, 'NOT_FOUND');
+  if (row.corrupt) stop(500, 'INTERNAL');
+  const quote = QUOTES.find(item => item.code === row.quoteCode);
+  return respond(200, { id: row.id, createdAt: row.createdAt, body: row.body, quote: { code: row.quoteCode, text: quote?.text ?? '', author: quote?.author ?? null } } satisfies JournalEntry);
+}
+
+/** The server's clock: `world.hour` on the logical day of `world.day` (before 03:00 that is already the next calendar day), in Asia/Ho_Chi_Minh (UTC+7). */
+const clockMs = () => Date.parse(`${world.hour < 3 ? addDays(world.day.logicalDate, 1) : world.day.logicalDate}T00:00:00Z`) + ((world.hour - 7) * 60 + world.tickets.minute) * 60_000;
+const ticketState = (): StreakState => ({
+  streakCurrent: world.me.progression?.streakCurrent ?? 0,
+  streakBest: world.me.progression?.streakBest ?? 0,
+  streakBeforeBreak: world.tickets.beforeBreak,
+  breakDate: world.tickets.breakDate,
+  missedRun: world.tickets.missedRun,
+  lastOutcome: world.me.progression?.lastOutcome ?? null,
+});
+/** app._ticket_dates: today always, yesterday while the local hour is in [3, 15); newest first. */
+function ticketDates(): { day: string; target: 'TODAY' | 'YESTERDAY' }[] {
+  const today = world.day.logicalDate;
+  return [{ day: today, target: 'TODAY' }, ...(world.hour >= 3 && world.hour < 15 ? [{ day: addDays(today, -1), target: 'YESTERDAY' as const }] : [])];
+}
+/** app._close_days: the days after the last close through `through`, as the day-close will read them. */
+function openDays(through: string): DayInput[] {
+  const first = addDays(closedOn(), 1);
+  return Array.from({ length: Math.max(0, daysBetween(first, through) + 1) }, (_, n) => addDays(first, n)).map(date => ({ date, storyCompleted: storyOf(date), ticketApplied: ticketUsedFor(date) }));
+}
+/**
+ * app._ticket_needed. A date that is still open: its story is not done and the streak it would freeze is above 0 (the streak the
+ * day-close leaves once the open days before it are closed: walking back, the first day that is not frozen decides). A closed date:
+ * it is the break date and the streak before the break is kept.
+ */
+function ticketNeeded(date: string): boolean {
+  if (date <= closedOn()) return world.tickets.breakDate === date && world.tickets.beforeBreak !== null;
+  const decided = openDays(addDays(date, -1)).reverse().find(day => day.storyCompleted || !day.ticketApplied);
+  return (decided ? decided.storyCompleted : ticketState().streakCurrent > 0) && !storyOf(date);
+}
+/** app._ticket_block_reason: not eligible, already used, no ticket, not needed; null when a ticket may be used. */
+function ticketBlock(date: string | null): string | null {
+  if (date === null || !ticketDates().some(item => item.day === date)) return 'TICKET_DATE_NOT_ELIGIBLE';
+  if (ticketUsedFor(date)) return 'TICKET_ALREADY_USED_FOR_DATE';
+  if (unusedTickets() === 0) return 'NO_TICKET';
+  return ticketNeeded(date) ? null : 'TICKET_NOT_NEEDED';
+}
+/** What GET /freeze-tickets and POST /freeze-tickets/use answer. The previews are the domain's (an open date: the state the close will leave; a closed one: the break). */
+function ticketsState(): Tickets {
+  const state = ticketState();
+  return {
+    serverTime: new Date(clockMs()).toISOString(),
+    available: unusedTickets(),
+    cap: ticketCap(),
+    eligible: ticketDates().map(({ day, target }) => {
+      const open = day > closedOn();
+      const { withoutTicket, withTicket } = open ? ticketPreview(closeDays(state, openDays(addDays(day, -1))).state, 'TODAY') : ticketPreview(state, 'YESTERDAY');
+      const deadline = new Date(Date.parse(`${addDays(day, 1)}T00:00:00Z`) + (15 - 7) * HOUR).toISOString();
+      return { date: day, target, deadline, needed: ticketNeeded(day), withoutTicket, withTicket, alreadyUsed: ticketUsedFor(day) };
+    }),
+    progression: world.me.progression as NonNullable<Me['progression']>,
+  };
+}
+/**
+ * `POST /freeze-tickets/use`: `date` (422: not a string / required / format), then ticket_use: the refusal of app._ticket_block_reason.
+ * The oldest unused ticket gets the date; for a closed date the streak before the break comes back (the rescue). The answer is the tickets.
+ */
+function useTicket(body: Record<string, unknown>) {
+  const { date } = body;
+  if (date !== undefined && date !== null && typeof date !== 'string') stop(422, 'VALIDATION_FAILED', [{ field: 'date', rule: 'format' }]);
+  const day = dateOf(date as string | null | undefined, 'date');
+  const refused = ticketBlock(day);
+  if (refused) stop(409, refused);
+  const ticket = world.tickets.list.find(item => item.usedFor === null);
+  if (ticket) ticket.usedFor = day;
+  const { progression } = world.me;
+  if (progression && day <= closedOn()) {
+    world.me = { ...world.me, progression: { ...progression, streakCurrent: world.tickets.beforeBreak ?? progression.streakCurrent, lastOutcome: 'FROZEN', breakNotice: null } };
+    world.tickets.beforeBreak = null;
+    world.tickets.breakDate = null;
+    world.tickets.missedRun = Math.max(0, world.tickets.missedRun - 1);
+  }
+  return respond(200, ticketsState());
 }
 
 /** Keeps every `request` open until `release`; then the given response, or the server's own answer, comes back. */
@@ -1038,7 +1293,7 @@ export function installTodayTestEnv() {
   beforeEach(() => {
     replies.clear();
     ledger.clear();
-    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, hour: 19, closedDate: undefined, skew: 0, highWater: undefined, minutes: { resistance: 60, cardio: 45 }, history: {}, plan: freshPlan(), shop: freshShop(), guild: freshGuild(), inbox: [], answer: undefined });
+    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, hour: 19, closedDate: undefined, skew: 0, highWater: undefined, minutes: { resistance: 60, cardio: 45 }, history: {}, plan: freshPlan(), shop: freshShop(), guild: freshGuild(), inbox: [], journal: freshJournal(), tickets: freshTickets(), answer: undefined });
     fetchMock.mockImplementation(async (url, init) => {
       const request = `${init.method} ${url.replace(BASE, '')}`;
       const taken = await world.answer?.(request, init);
