@@ -26,7 +26,7 @@ function Glyphs({ available, cap }: { available: number; cap: number }) {
   return (
     <View style={styles.glyphs}>
       {Array.from({ length: cap }, (_, place) => (
-        <View key={place} style={[styles.glyph, place < available ? { backgroundColor: palette.primary } : [styles.outline, { borderColor: palette.primary }]]}>
+        <View key={place} testID={place < available ? 'ticket-held' : 'ticket-free'} style={[styles.glyph, place < available ? { backgroundColor: palette.primary } : [styles.outline, { borderColor: palette.primary }]]}>
           <Icon name="Ticket" size={22} color={place < available ? palette.white : palette.primary} />
         </View>
       ))}
