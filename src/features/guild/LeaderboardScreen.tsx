@@ -107,9 +107,9 @@ function Board({ board, week, guildName, noGuild, navigation }: { board: Leaderb
 }
 
 /** S28: the weekly ranking of guilds, this week or the last closed one; S73 is the same screen for a guild that is not on the board yet. */
-export function LeaderboardScreen({ navigation }: ScreenProps<'Leaderboard'>) {
+export function LeaderboardScreen({ navigation, route }: ScreenProps<'Leaderboard'>) {
   const focused = useIsFocused();
-  const [week, setWeek] = useState<BoardWeek>('current');
+  const [week, setWeek] = useState<BoardWeek>(route.params?.week ?? 'current');
   const query = useLeaderboard(week);
   const guild = useGuild().data;
   const board = query.data;
