@@ -33,7 +33,7 @@ export function JournalFeedbackScreen({ route, navigation }: ScreenProps<'Journa
         {quote.author ? <AppText variant="caption">{quote.author}</AppText> : null}
         <AppText variant="secondary">{vi.thanks}</AppText>
       </Card>
-      {/* motion: journal-saved (tier 1: "Đã lưu" appears at once, the page stays as it was) */}
+      {/* motion: journal-saved (tier 1: the saved line appears at once, the page stays as it was) */}
       <Reveal>
         <View style={[styles.chips, styles.section]}>
           <View style={[styles.chip, { backgroundColor: palette.soft }]}>

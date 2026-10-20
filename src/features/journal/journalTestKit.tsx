@@ -5,7 +5,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fireEvent, screen } from '@testing-library/react-native';
 import * as vi from '../../shared/i18n/vi/journal';
-import { journeyRows, seeTickets } from '../../shared/i18n/vi/progression';
+import { journeyRows, profileRows, seeTickets } from '../../shared/i18n/vi/progression';
 import { tabLabel } from '../../shared/i18n/vi/nav';
 import { openToday, settle, writes } from '../dashboard/todayTestKit';
 import { openJourney, openProfile } from '../progression/progressionTestKit';
@@ -26,7 +26,7 @@ const header = (name: string) => screen.findByRole('header', { name });
 /** The profile tab, then "Góc giải tỏa": S32. */
 export async function openWrite(options: Parameters<typeof openToday>[0] = {}) {
   const view = await openProfile(options);
-  fireEvent.press(screen.getByRole('button', { name: /^Góc giải tỏa\./ }));
+  fireEvent.press(screen.getByRole('button', { name: new RegExp(`^${profileRows.journal.title}[.]`) }));
   await header(vi.writeTitle);
   await landed();
   return view;
