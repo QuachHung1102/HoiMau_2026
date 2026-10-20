@@ -1,11 +1,11 @@
 /* eslint-env jest */
-// Test-only stand-ins for the screens that belong to other tasks (the leaderboard and the nudge: Task 43, the nudge
-// settings: Task 47), so that a guild test can follow a press to the route it names and read the params it carried.
+// Test-only stand-ins for the leaderboard and the nudge (Task 43), so that a guild test can follow a press to the route it names
+// and read the params it carried. The nudge settings (Task 47) are a real screen: GuildManageScreen.test opens the real one.
 // Used through `jest.mock('../../app/screens', ...)` in the guild tests; never imported by app code.
 import type { ComponentType } from 'react';
 import { Text } from 'react-native';
 
-const NAMES = ['Leaderboard', 'Nudge', 'NotificationSettings'];
+const NAMES = ['Leaderboard', 'Nudge'];
 
 const probe = (name: string): ComponentType<{ route: { params?: object } }> =>
   function Probe({ route }) {

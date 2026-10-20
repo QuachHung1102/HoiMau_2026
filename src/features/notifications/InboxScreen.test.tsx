@@ -1,8 +1,7 @@
 import { act, fetchMock, fireEvent, hold, inboxItem, installTodayTestEnv, landed, openInbox, refuse, requested, screen, seedInbox, world, writes, writesOf } from './inboxTestKit';
 import { forget, navigated } from '../guild/navigationSpy';
 
-// The real registry, every `navigate` recorded: NotificationSettings (Task 47) is not registered yet, so a link to it is
-// asserted by name; the other targets are real screens and are asserted by what arrives.
+// The real registry, every `navigate` recorded: a link is asserted by name, and by the screen that arrives.
 jest.mock('../../app/screens', () => require('../guild/navigationSpy').spied(jest.requireActual('../../app/screens')));
 
 installTodayTestEnv();
@@ -220,6 +219,7 @@ describe('S75: nothing yet', () => {
     navigated.length = 0;
     fireEvent.press(screen.getByRole('button', { name: 'Cài đặt thông báo' }));
     expect(navigated).toEqual([['NotificationSettings']]);
+    expect(await screen.findByRole('header', { name: 'Thông báo' })).toBeTruthy();
     view.unmount();
   });
 
@@ -228,6 +228,7 @@ describe('S75: nothing yet', () => {
     const view = await opened();
     fireEvent.press(screen.getByRole('button', { name: 'Cài đặt thông báo' }));
     expect(navigated).toEqual([['NotificationSettings']]);
+    expect(await screen.findByRole('header', { name: 'Thông báo' })).toBeTruthy();
     view.unmount();
   });
 });

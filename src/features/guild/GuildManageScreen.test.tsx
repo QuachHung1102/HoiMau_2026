@@ -1,7 +1,7 @@
 import { Share } from 'react-native';
 import { act, CODE, fireEvent, hold, installTodayTestEnv, landed, mateOf, mates, NAME, openManage, queryClient, requested, screen, seedGuild, settle, USER, within, world, writesOf } from './guildTestKit';
 
-// The nudge settings are Task 47's screen: a probe answers the route and shows its params.
+// The leaderboard and the nudge are answered by probes (guildProbes); the nudge settings are the real screen.
 jest.mock('../../app/screens', () => require('./guildProbes').withProbes(jest.requireActual('../../app/screens')));
 
 installTodayTestEnv();
@@ -64,7 +64,9 @@ describe('S54: the code and sharing it', () => {
     seedGuild();
     const view = await openManage();
     fireEvent.press(screen.getByRole('button', { name: /^Nhắc nhở trong nhóm/ }));
-    expect(await screen.findByRole('header', { name: /^NotificationSettings / })).toBeTruthy();
+    expect(await screen.findByRole('header', { name: 'Thông báo' })).toBeTruthy();
+    // the real screen: its own switch, read from the server's settings
+    expect(await screen.findByRole('switch', { name: 'Nhận lời nhắc từ tổ đội', checked: true })).toBeTruthy();
     view.unmount();
   });
 });

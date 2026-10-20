@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OnboardingProvider } from '../features/onboarding/OnboardingProvider';
 import { CelebrationHost } from '../features/progression/CelebrationHost';
+import { MotionFromSettings } from '../features/settings/MotionFromSettings';
 import { PendingBanner } from '../features/sync/PendingBanner';
 import { RejectedNotice } from '../features/sync/RejectedNotice';
 import { SessionProvider, wipeQueries } from '../shared/api/session';
@@ -23,20 +24,23 @@ function App() {
           <SessionProvider>
             {/* Slot: a provider that must sit above every navigator wraps <AppNavigation /> right here.
                 OnboardingProvider keeps what was typed while Back moves between the onboarding steps. */}
-            <MeTheme>
-              <OnboardingProvider>
-                <View style={styles.fill}>
-                  {/* Offline / waiting-to-send (S38): its own row above the app, so it never covers a screen or the
-                      snackbar. It also runs the pending queue; mounted exactly once. */}
-                  <PendingBanner />
-                  {/* The overlays S65 / S66 are not routes: the host lives inside the container, above the navigators. */}
-                  <AppNavigation>
-                    <CelebrationHost />
-                  </AppNavigation>
-                </View>
-                <RejectedNotice />
-              </OnboardingProvider>
-            </MeTheme>
+            {/* The `motion` setting reaches every screen below through `useReducedMotion()`. */}
+            <MotionFromSettings>
+              <MeTheme>
+                <OnboardingProvider>
+                  <View style={styles.fill}>
+                    {/* Offline / waiting-to-send (S38): its own row above the app, so it never covers a screen or the
+                        snackbar. It also runs the pending queue; mounted exactly once. */}
+                    <PendingBanner />
+                    {/* The overlays S65 / S66 are not routes: the host lives inside the container, above the navigators. */}
+                    <AppNavigation>
+                      <CelebrationHost />
+                    </AppNavigation>
+                  </View>
+                  <RejectedNotice />
+                </OnboardingProvider>
+              </MeTheme>
+            </MotionFromSettings>
           </SessionProvider>
         </QueryClientProvider>
       </ThemeProvider>

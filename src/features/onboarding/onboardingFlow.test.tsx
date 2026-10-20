@@ -185,12 +185,14 @@ describe('the Targets screen (opened later, from the main app)', () => {
     screen.unmount();
   });
 
-  test('"Chỉnh lại hồ sơ" is a link to the profile editor, inert until that screen is registered', async () => {
+  test('"Chỉnh lại hồ sơ" opens the profile editor (S37, Task 47), and Back returns to the targets, then to where they were opened from', async () => {
     serve({ 'GET /me': respond(200, meOnboarded), 'GET /me/prescription': respond(200, answer) });
     await openTargets();
     await screen.findByText(`${dotted(answer.calorieTarget)} kcal / ngày`);
     press('Chỉnh lại hồ sơ');
-    expect(screen.getByRole('header', { name: 'Mục tiêu cá nhân' })).toBeTruthy();
+    expect(await screen.findByRole('header', { name: 'Hồ sơ & mục tiêu' })).toBeTruthy();
+    press('Quay lại');
+    expect(await screen.findByRole('header', { name: 'Mục tiêu cá nhân' })).toBeTruthy();
     press('Quay lại');
     expect(await screen.findByText('tab root Today')).toBeTruthy();
     screen.unmount();

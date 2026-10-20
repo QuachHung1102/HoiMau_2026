@@ -168,19 +168,16 @@ describe('S12 without the day', () => {
 });
 
 describe('the way out of the account', () => {
-  test('with "Lộ trình" a real screen, "Đăng xuất" is still within reach of an onboarded person on some tab', async () => {
+  test('"Đăng xuất" is within reach of an onboarded person: on the Settings screen the Cá nhân tab opens, and on no tab root', async () => {
     const view = await openPlan();
-    const offering: string[] = [];
     for (const tab of ['Hôm nay', 'Lộ trình', 'Tổ đội', 'Cá nhân']) {
       fireEvent.press(screen.getByRole('tab', { name: tab }));
       await screen.findByRole('tab', { name: tab, selected: true });
       await act(async () => undefined);
-      if (screen.queryByRole('button', { name: 'Đăng xuất' })) offering.push(tab);
+      expect(screen.queryByRole('button', { name: 'Đăng xuất' })).toBeNull();
     }
-    // today: the two tabs that have no screen of their own yet. Whichever task gives the last of them a screen must
-    // have a sign-out of its own first, or this goes red.
-    expect(offering).not.toEqual([]);
-    expect(offering).not.toContain('Lộ trình');
+    fireEvent.press(screen.getByRole('button', { name: /^Cài đặt\./ }));
+    expect(await screen.findByRole('button', { name: 'Đăng xuất' })).toBeTruthy();
     view.unmount();
   });
 });

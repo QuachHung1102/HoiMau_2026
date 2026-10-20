@@ -43,6 +43,11 @@ import { LevelsScreen } from '../features/progression/LevelsScreen';
 import { ProfileScreen } from '../features/progression/ProfileScreen';
 import { EndOfDayScreen } from '../features/quests/EndOfDayScreen';
 import { QuestBoardScreen } from '../features/quests/QuestBoardScreen';
+import { DisplayScreen } from '../features/settings/DisplayScreen';
+import { EditProfileScreen } from '../features/settings/EditProfileScreen';
+import { HelpScreen } from '../features/settings/HelpScreen';
+import { NotificationSettingsScreen } from '../features/settings/NotificationSettingsScreen';
+import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { FocusSessionScreen } from '../features/workout/FocusSessionScreen';
 import { MoveDemoScreen } from '../features/workout/MoveDemoScreen';
 import { PlanScreen } from '../features/workout/PlanScreen';
@@ -111,6 +116,11 @@ export const detailScreens: ScreenEntry[] = [
   { name: 'JournalEntry', component: JournalEntryScreen },
   { name: 'Tickets', component: TicketsScreen },
   { name: 'TicketPreview', component: TicketPreviewScreen },
+  { name: 'Settings', component: SettingsScreen },
+  { name: 'NotificationSettings', component: NotificationSettingsScreen },
+  { name: 'EditProfile', component: EditProfileScreen },
+  { name: 'Display', component: DisplayScreen },
+  { name: 'Help', component: HelpScreen },
 ];
 
 /** Full-screen modal flow above the tabs; the tab bar cannot interrupt it. */
