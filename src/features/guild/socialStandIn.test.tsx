@@ -99,6 +99,18 @@ describe('GET /leaderboard', () => {
       mine: { ranked: true, rank: 1, avgCompletion: 0.7, activeMembers: 4 },
     });
   });
+
+  test('the closed week reads stored scores: a guild with no score row that week has mine null (leaderboard_final), a guild with an unranked row has it unranked', async () => {
+    seedGuild();
+    world.guild.boards.previous = { standings: [{ guildName: 'Bước nhỏ mỗi ngày', avgCompletion: 0.86, activeMembers: 5 }] };
+    const absent = await get('/leaderboard?week=previous');
+    expect([absent.json.mine, absent.json.entries.map((entry: { isMine: boolean }) => entry.isMine)]).toEqual([null, [false]]);
+    world.guild.boards.previous.unranked = { avgCompletion: 0.4, activeMembers: 2 };
+    expect((await get('/leaderboard?week=previous')).json.mine).toEqual({ ranked: false, rank: null, avgCompletion: 0.4, activeMembers: 2 });
+    // the running week is not stored scores: its guild is shown unranked
+    world.guild.boards.current = { standings: [{ guildName: 'Bước nhỏ mỗi ngày', avgCompletion: 0.86, activeMembers: 5 }] };
+    expect((await get('/leaderboard?week=current')).json.mine).toEqual({ ranked: false, rank: null, avgCompletion: 0, activeMembers: 0 });
+  });
 });
 
 describe('GET /guilds/nudge-templates', () => {

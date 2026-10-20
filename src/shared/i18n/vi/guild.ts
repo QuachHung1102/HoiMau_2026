@@ -133,14 +133,13 @@ export const noGuildBoardTitle = 'Bạn chưa có tổ đội';
 export const noGuildBoardBody = 'Vào tab Tổ đội để tạo nhóm hoặc tham gia bằng mã mời, rồi nhóm của bạn sẽ có mặt trên bảng.';
 export const toGuildTab = 'Đến tab Tổ đội';
 export const emptyBoardTitle = { current: 'Chưa có tổ đội nào lên bảng tuần này', previous: 'Chưa có kết quả tuần trước' } as const;
-export const emptyBoardBody = { current: 'Khi có nhóm đủ thành viên hoạt động, bảng sẽ hiện ở đây.', previous: 'Kết quả được chốt vào sáng thứ Hai. Bạn quay lại sau một chút nhé.' } as const;
+export const emptyBoardBody = { current: 'Khi có nhóm đủ thành viên hoạt động, bảng sẽ hiện ở đây.', previous: 'Tuần trước chưa có tổ đội nào lên bảng. Kết quả mỗi tuần được chốt vào sáng thứ Hai.' } as const;
 
 // S29 and S74: a nudge (Task 43)
 export const nudgeDailyLimit = 3;
 export const nudgeTitle = 'Gửi một lời nhắc';
 export const nudgeSubtitle = (name: string) => `Một lời mời nhẹ nhàng cho ${name}.`;
 export const templatesLabel = 'Lời nhắc có sẵn';
-export const templateKind = 'Mẫu lời nhắc';
 export const templatesFailed = 'Chưa tải được các lời nhắc. Bạn thử lại nhé.';
 export const templateGone = 'Lời nhắc này không còn nữa. Bạn chọn một lời nhắc khác nhé.';
 export const nudgeRules = (name: string) => `Chỉ gửi khi ${name} cho phép, trong giờ nhận nhắc và còn lượt gửi.`;

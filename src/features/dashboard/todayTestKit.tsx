@@ -904,13 +904,14 @@ function transferGuild(body: Record<string, unknown>) {
 // every few minutes, the Retry-After header, a nudge to a member in another time zone, a notification a nudge makes for the
 // receiver (the caller's own inbox is `world.inbox`).
 export type Standing = { guildName: string; avgCompletion: number; activeMembers: number };
-/** One week's ranked guilds, best first. `unranked`: the numbers of the caller's own guild when it is not among them. */
+/** One week's ranked guilds, best first. `unranked`: the score row of the caller's own guild when it has one but is not among them (a guild without a row that week has none: mine is null for the closed week). */
 export type Board = { weekStart?: string; updatedAt?: string; standings: Standing[]; unranked?: { avgCompletion: number; activeMembers: number } };
 const BOARD_TOP = 50;
 /**
  * `GET /leaderboard?week`: 422 for a week that is not current / previous (required, format). The top 50 as entries, `isMine` on the
  * caller's guild; `mine` is filled for a guild outside the top 50, unranked (rank null) when it is not on the board, null without a
- * guild. `previous` before the rollover stored it: no entries, mine null, final, as of now.
+ * guild. The closed week reads the stored scores (`leaderboard_final`): a guild with no score row that week (created after it, say)
+ * has mine null, as without a guild. `previous` before the rollover stored it: no entries, mine null, final, as of now.
  */
 function leaderboard(query: URLSearchParams) {
   const week = query.get('week');
@@ -921,7 +922,7 @@ function leaderboard(query: URLSearchParams) {
   const { standings = [], unranked, weekStart = week === 'current' ? monday : addDays(monday, -7), updatedAt = new Date().toISOString() } = board ?? {};
   const own = myTeam();
   const at = own ? standings.findIndex(standing => standing.guildName === own.name) : -1;
-  const mine: Leaderboard['mine'] = !own
+  const mine: Leaderboard['mine'] = !own || (week === 'previous' && at < 0 && !unranked)
     ? null
     : at >= 0
       ? { ranked: true, rank: at + 1, avgCompletion: standings[at].avgCompletion, activeMembers: standings[at].activeMembers }
