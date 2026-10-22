@@ -9,9 +9,8 @@ test('the route list declares 54 distinct names', () => {
   expect(routeNames).toHaveLength(54);
 });
 
-// Task 49 flips this to equality (every declared route is registered).
-test('every registered screen is a declared route, registered once', () => {
-  expect(registered.filter(name => !routeNames.includes(name))).toEqual([]);
+test('the registered screens are exactly the declared routes, each registered once (AR-25)', () => {
+  expect([...registered].sort()).toEqual([...routeNames].sort());
   expect(registered.filter((name, i) => registered.indexOf(name) !== i)).toEqual([]);
 });
 

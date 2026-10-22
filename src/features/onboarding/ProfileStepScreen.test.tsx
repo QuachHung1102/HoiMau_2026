@@ -30,7 +30,7 @@ test('S05 shows the step, the five fields, the privacy card and the action; the 
   expect(screen.getByText('Tổ đội không xem được cân nặng hay mục tiêu năng lượng của bạn.')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Tiếp tục' })).toBeTruthy();
   // quiet, after the main action: the way out for someone who is on the wrong account
-  expect(screen.getByRole('link', { name: 'Đăng xuất' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Đăng xuất' })).toBeTruthy();
   // the first step has nowhere to go back to
   expect(screen.queryByRole('button', { name: 'Quay lại' })).toBeNull();
   expect(sent().map(r => `${r.method} ${r.path}`).sort()).toEqual(['GET /me', 'GET /meta/timezones']);
@@ -51,7 +51,7 @@ test('valid values, written with a comma or a dot, move on to S06 and keep what 
   next();
   expect(await onActivity()).toBeTruthy();
   // the later steps keep Back only
-  expect(screen.queryByRole('link', { name: 'Đăng xuất' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Đăng xuất' })).toBeNull();
   press('Quay lại');
   await ready();
   expect(screen.getByLabelText('Chiều cao · cm').props.value).toBe('170,5');
@@ -66,10 +66,10 @@ test('"Đăng xuất" on S05 revokes the session once and returns to Welcome; S6
   fill({ birthYear: bornAt(15) });
   next();
   await screen.findByRole('header', { name: healthVi.under16.title });
-  expect(screen.queryByRole('link', { name: 'Đăng xuất' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Đăng xuất' })).toBeNull();
   press('Kiểm tra lại năm sinh');
   await ready();
-  const link = screen.getByRole('link', { name: 'Đăng xuất' });
+  const link = screen.getByRole('button', { name: 'Đăng xuất' });
   await act(async () => {
     fireEvent.press(link);
     fireEvent.press(link);

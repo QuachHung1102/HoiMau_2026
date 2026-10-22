@@ -41,19 +41,22 @@ function Home() {
         <Text>Insets (top/bottom): {insets.top}/{insets.bottom}</Text>
       </View>
       <View style={[styles.card, styles.row]}>
-        <Heart color="#E5484D" size={28} />
-        <Svg width={120} height={48}>
-          <Circle cx={24} cy={24} r={20} fill="#3E63DD" />
-          <Rect x={52} y={8} width={32} height={32} rx={6} fill="#30A46C" />
-          <Path d="M92 40 L106 8 L120 40 Z" fill="#F5A524" />
-        </Svg>
+        {/* decorative: hidden from screen readers */}
+        <View accessible={false} importantForAccessibility="no-hide-descendants" style={styles.row}>
+          <Heart color="#E5484D" size={28} />
+          <Svg width={120} height={48}>
+            <Circle cx={24} cy={24} r={20} fill="#3E63DD" />
+            <Rect x={52} y={8} width={32} height={32} rx={6} fill="#30A46C" />
+            <Path d="M92 40 L106 8 L120 40 Z" fill="#F5A524" />
+          </Svg>
+        </View>
         <Text>SVG + lucide</Text>
       </View>
       <View style={styles.card}>
         <Text>Query (pre-seeded): {data ? `${data.name} · cấp ${data.level}` : 'no data'}</Text>
         <Animated.View style={[styles.bar, { width: w }]} />
       </View>
-      <Pressable style={styles.btn} onPress={() => setTaps(t => t + 1)}>
+      <Pressable accessibilityRole="button" style={styles.btn} onPress={() => setTaps(t => t + 1)}>
         <Text style={styles.btnText}>Bấm ({taps})</Text>
       </Pressable>
     </ScrollView>

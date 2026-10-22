@@ -29,9 +29,9 @@ import type { IconName } from '../shared/ui/Icon';
 import { Screen } from '../shared/ui/Screen';
 import { SnackbarProvider } from '../shared/ui/Snackbar';
 import { EmptyState, ErrorState, LoadingState } from '../shared/ui/States';
-import { routeNames, type RouteName, type ScreenEntry, type TabRootName } from './routes';
 import { StandUpHost } from '../features/quests/useStandUp';
-import { authScreens,detailScreens, focusScreens, onboardingScreens, tabRoots } from './screens';
+import { routeNames, type RouteName, type ScreenEntry, type TabRootName } from './routes';
+import { authScreens, detailScreens, focusScreens, onboardingScreens, tabRoots } from './screens';
 import { TAB_BAR_HEIGHT, TabBar } from './TabBar';
 
 // Structure (PLAN P1.6): one root stack whose content follows the session.
