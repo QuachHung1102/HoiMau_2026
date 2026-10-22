@@ -5,7 +5,6 @@ import { grouped } from './onboarding';
 
 // the reason a change was taken back (a snackbar, followed by `failureText(code)` of sync.ts)
 export const notSaved = 'Chưa lưu được thay đổi này, nên mình đã để lại như cũ.';
-export const loadFailed = 'Chưa tải được cài đặt. Bạn thử lại nhé.';
 
 // S35
 export const title = 'Cài đặt';
@@ -18,8 +17,6 @@ export const rows = {
   help: { title: 'Giới thiệu & trợ giúp', description: 'An toàn sức khỏe, điều khoản' },
 } as const;
 export const sound = 'Âm thanh';
-/** AR-22: this build is silent. */
-export const soundUnavailable = 'Bản này chưa có âm thanh';
 export const motionWords = { SYSTEM: 'Theo cài đặt hệ thống', REDUCED: 'Giảm chuyển động', FULL: 'Chuyển động đầy đủ' } as const;
 
 // S36 / S80 (AR-23: nothing is sent outside the app, no permission is asked)
@@ -72,7 +69,6 @@ export const motionOptions = [
   { value: 'FULL', label: 'Đầy đủ' },
 ] as const;
 export const motionNote = 'Khi giảm chuyển động, mọi thông tin vẫn hiện bằng chữ.';
-export const mamPreview = 'Mầm, xem trước chuyển động';
 export const streakHeading = 'Chuỗi ngày';
 export const hideStreakLabel = 'Ẩn số ngày chuỗi';
 export const hideStreakNote = 'Chuỗi vẫn được tính, chỉ ẩn con số trên Hôm nay.';

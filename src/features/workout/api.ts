@@ -25,8 +25,10 @@ export const EQUIPMENT = ['tham', 'ta-tay', 'day-khang-luc'] as const;
  */
 export type CatalogFilters = { duration: (typeof DURATIONS)[number]; space: SpaceRequirement | null; equipment: readonly string[] };
 
-export const catalogKey = (filters: CatalogFilters) => ['workout', 'catalog', filters.duration, filters.space, filters.equipment.join(',')] as const;
-export const workoutKey = (id: string) => ['workout', 'item', id] as const;
+/** Everything the workout module has cached (catalog and items): what a new zone, new numbers or a new direction make stale. */
+export const workoutRootKey = ['workout'] as const;
+export const catalogKey = (filters: CatalogFilters) => [...workoutRootKey, 'catalog', filters.duration, filters.space, filters.equipment.join(',')] as const;
+export const workoutKey = (id: string) => [...workoutRootKey, 'item', id] as const;
 
 /**
  * `GET /workout/catalog`: the server filters and orders (recommended first); nothing is filtered on this device.

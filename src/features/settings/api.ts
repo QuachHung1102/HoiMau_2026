@@ -14,6 +14,7 @@ import { answered, mealPlanKey } from '../nutrition/api';
 import { prescriptionKey } from '../onboarding/api';
 import { dayKey, settingsKey } from '../quests/api';
 import { useServerWrite } from '../shop/api';
+import { workoutRootKey } from '../workout/api';
 
 export { settingsKey, useSettings } from '../quests/api';
 
@@ -92,9 +93,9 @@ export function usePatchSettings() {
 
 // ---- the profile: PATCH /me, POST /me/biometrics, PATCH /me/archetype ----
 
-/** What a new zone, new numbers or a new direction make stale: the day, the plan and what is suggested, and the profile's own stats. */
+/** What a new zone, new numbers or a new direction make stale: the day, the plan and what is suggested. */
 const refreshTargets = (queryClient: QueryClient) => {
-  for (const queryKey of [dayKey, mealPlanKey, ['workout'], meKey]) queryClient.invalidateQueries({ queryKey });
+  for (const queryKey of [dayKey, mealPlanKey, workoutRootKey]) queryClient.invalidateQueries({ queryKey });
 };
 
 /** The `Me` the server answered replaces the cached one, in memory and on disk (the disk copy must agree with the screens). */
@@ -131,12 +132,14 @@ export function useAddBiometrics() {
     (key, request: BiometricsRequest) => api.write<PrescriptionResponse>('POST', '/me/biometrics', request, { idempotencyKey: key }),
     prescription => {
       queryClient.setQueryData(prescriptionKey, prescription);
+      // the profile's own stats follow the numbers; the answer does not carry `Me`
+      queryClient.invalidateQueries({ queryKey: meKey });
       refreshTargets(queryClient);
     },
   );
 }
 
-/** `PATCH /me/archetype` (needs the network): the answer is `Me`; the targets of the new direction are read again. */
+/** `PATCH /me/archetype` (needs the network): the answer is `Me`, which is kept as it is; the targets of the new direction are read again. */
 export function useChangeArchetype() {
   const queryClient = useQueryClient();
   const accept = useAcceptMe();

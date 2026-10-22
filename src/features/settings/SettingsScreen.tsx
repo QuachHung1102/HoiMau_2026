@@ -4,6 +4,7 @@ import type { ScreenProps } from '../../app/routes';
 import { useSession } from '../../shared/api/session';
 import * as authVi from '../../shared/i18n/vi/auth';
 import * as vi from '../../shared/i18n/vi/settings';
+import { soundUnavailable } from '../../shared/i18n/vi/workout';
 import { spacing } from '../../shared/theme/tokens';
 import { Button } from '../../shared/ui/Button';
 import { ListRow } from '../../shared/ui/Card';
@@ -71,7 +72,7 @@ export function SettingsScreen({ navigation }: ScreenProps<'Settings'>) {
         <View style={styles.sound}>
           <Icon name="VolumeX" />
           <View style={styles.fill}>
-            <Switch label={`${vi.sound}. ${vi.soundUnavailable}`} value={false} onChange={() => undefined} disabled />
+            <Switch label={`${vi.sound}. ${soundUnavailable}`} value={false} onChange={() => undefined} disabled />
           </View>
         </View>
         {AFTER_SOUND.map(row)}

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { ScrollView } from 'react-native';
 import { healthVi } from '../../shared/i18n/vi/health';
 import { legalVi } from '../../shared/i18n/vi/legal';
@@ -14,6 +16,11 @@ const close = () => fireEvent.press(screen.getByRole('button', { name: 'Đóng' 
 const mentions = (body: string) => said().includes(JSON.stringify(body).slice(1, -1));
 
 describe('S53', () => {
+  test('the version the sheet shows is the one the Android app carries (package.json = versionName of build.gradle)', () => {
+    const gradle = readFileSync(join(__dirname, '../../../android/app/build.gradle'), 'utf8');
+    expect(/versionName "([^"]+)"/.exec(gradle)?.[1]).toBe(pkg.version);
+  });
+
   test('the title, the subtitle and the five rows of the frame, each with its words', async () => {
     const view = await openHelp();
     expect(screen.getByRole('header', { name: 'Trợ giúp & thông tin' })).toBeTruthy();
