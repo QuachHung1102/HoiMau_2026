@@ -57,6 +57,21 @@ export async function openHelp(options: Options = {}) {
   await landed();
   return view;
 }
+/** S35, then "Quyền riêng tư": S44. */
+export async function openPrivacy(options: Options = {}) {
+  const view = await openSettings(options);
+  press(new RegExp(`^${vi.rows.privacy.title}\\.`));
+  await header(vi.privacyTitle);
+  await landed();
+  return view;
+}
+/** S44, then "Xem & xác nhận xóa": S52. */
+export async function openDeleteAccount(options: Options = {}) {
+  const view = await openPrivacy(options);
+  press(new RegExp(`^${vi.deleteCard.action}`));
+  await header(vi.deleteTitle);
+  return view;
+}
 /** S35, then "Hồ sơ & mục tiêu": S37. */
 export async function openEditProfile(options: Options = {}) {
   const view = await openSettings(options);

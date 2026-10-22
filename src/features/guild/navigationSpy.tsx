@@ -1,7 +1,7 @@
 /* eslint-env jest */
 // Test-only: the real screen registry with every `navigate` call recorded on its way to the navigator, and the latest
 // `navigation` prop of each screen kept, so that a test can assert a link by name even to a route no task has registered yet
-// (inert, AR-25: `Privacy`, until Task 48), and can open a route with params no screen offers (a nudge whose reason is
+// (inert, AR-25: a declared route whose task has not landed), and can open a route with params no screen offers (a nudge whose reason is
 // already known). Used through `jest.mock('../../app/screens', () => require('../guild/navigationSpy').spied(jest.requireActual('../../app/screens')))`.
 import { createElement, type ComponentType } from 'react';
 

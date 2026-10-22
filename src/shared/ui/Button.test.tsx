@@ -9,6 +9,7 @@ test.each([
   ['primary', colors.primary],
   ['secondary', colors.soft],
   ['onPrimary', colors.lime],
+  ['danger', colors.flameSoft],
 ] as const)('%s variant uses its background token', (variant, expected) => {
   const view = render(<Button label="Tiếp tục" variant={variant} />);
   expect(flat(view.getByRole('button')).backgroundColor).toBe(expected);

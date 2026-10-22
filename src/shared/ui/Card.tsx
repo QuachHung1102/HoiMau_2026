@@ -35,9 +35,11 @@ type RowProps = {
   trailing?: ReactNode;
   /** Without it the row is plain (its trailing node is its own control). */
   onPress?: () => void;
+  /** Work started by this row is under way: it reads as disabled and busy, and a press does nothing. */
+  busy?: boolean;
 };
 
-export function ListRow({ title, description, icon, thumbnail, status, trailing, onPress }: RowProps) {
+export function ListRow({ title, description, icon, thumbnail, status, trailing, onPress, busy = false }: RowProps) {
   const palette = useTheme();
   const content = (
     <View style={styles.row}>
@@ -60,6 +62,8 @@ export function ListRow({ title, description, icon, thumbnail, status, trailing,
     <Touchable
       accessibilityRole="button"
       accessibilityLabel={[title, description, status].filter(Boolean).join('. ')}
+      accessibilityState={{ busy }}
+      disabled={busy}
       onPress={onPress}
     >
       {content}

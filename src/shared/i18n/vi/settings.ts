@@ -112,3 +112,51 @@ export const rhythm = {
   ticketsCap: (base: number, withPerk: number) => `Bạn giữ tối đa ${base} vé, hoặc ${withPerk} vé khi đã mở tiện ích tăng chỗ chứa vé.`,
   ticketsWindow: (deadline: string) => `Vé dùng được cho hôm nay, hoặc cho hôm qua cho đến ${deadline}.`,
 } as const;
+
+// S44: privacy, the copy of the data and the way to the deletion (Task 48)
+export const privacyTitle = 'Dữ liệu & quyền riêng tư';
+export const privacySubtitle = 'Bạn kiểm soát những gì mình chia sẻ.';
+export const ownDataRow = { title: 'Dữ liệu riêng của bạn', description: 'Số đo, mục tiêu và nhật ký' } as const;
+export const ownDataLines = [
+  'Số đo, mục tiêu và nhật ký chỉ mình bạn xem được.',
+  'Thành viên tổ đội chỉ thấy tên hiển thị, cấp độ và việc bạn đã hoàn thành.',
+] as const;
+export const exportRow = { title: 'Tải dữ liệu của tôi', description: 'Xuất bản sao dưới dạng JSON' } as const;
+export const exporting = 'Đang chuẩn bị bản sao…';
+export const exportedTitle = 'Đã tạo bản sao';
+// The share box is opened by the system and nothing here can tell whether it came up, so the note names the way to ask again.
+export const exportedNote = 'Bản sao có số đo và nhật ký của bạn, hãy chọn nơi lưu cẩn thận. Nếu hộp chia sẻ không hiện ra, bạn bấm lại "Tải dữ liệu của tôi".';
+export const exportTooLarge = 'Bản sao quá lớn để chia sẻ trên máy này';
+export const exportRateLimited = 'Bạn đã tải bản sao nhiều lần trong một giờ qua. Chờ một lúc rồi thử lại nhé, dữ liệu của bạn vẫn nguyên.';
+export const exportShareFailed = 'Chưa mở được hộp chia sẻ. Bạn thử lại nhé.';
+export const exportNotDone = (reason: string) => `Chưa tạo được bản sao. ${reason}`;
+export const exportFileName = (date: string) => `hoi-mau-du-lieu-${date}.json`;
+export const deleteCard = {
+  title: 'Xóa tài khoản',
+  body: 'Tài khoản sẽ bị vô hiệu hóa. Dữ liệu được xóa theo thời hạn trong chính sách riêng tư.',
+  action: 'Xem & xác nhận xóa',
+} as const;
+export const readPolicy = 'Đọc chính sách riêng tư';
+
+// S52: the account is deleted after the password is given
+export const deleteTitle = 'Xóa tài khoản?';
+export const deleteSubtitle = 'Hãy đọc kỹ trước khi xác nhận.';
+export const deleteHeadline = 'Bạn sẽ không thể tiếp tục sử dụng tài khoản này.';
+export const deleteConsequences = (purgeDays: number) =>
+  [
+    'Tài khoản ngừng hoạt động ngay lập tức.',
+    `Toàn bộ dữ liệu của bạn được xóa sau ${purgeDays} ngày.`,
+    'Nếu bạn đang là trưởng tổ đội, vai trò trưởng nhóm chuyển cho thành viên tham gia lâu nhất.',
+    'Các ghi nhận đang chờ gửi trên máy này sẽ bị bỏ.',
+    'Bạn không thể hoàn tác việc này trong ứng dụng.',
+  ] as const;
+export const deleteExportHint = 'Muốn giữ lại dữ liệu? Hãy tải bản sao ở màn hình Dữ liệu & quyền riêng tư trước.';
+export const passwordLabel = 'Mật khẩu của bạn';
+export const passwordHelper = 'Nhập mật khẩu để xác nhận. Nút xóa chỉ bật khi đã nhập.';
+export const keepAccount = 'Giữ tài khoản';
+export const deleteAction = 'Xóa tài khoản';
+// 401 INVALID_CREDENTIALS is also what the sixth try within a quarter of an hour gets, so it never says the password is certainly wrong.
+export const deleteRefused = 'Mật khẩu chưa đúng, hoặc bạn đã thử quá nhiều lần. Kiểm tra lại mật khẩu; nếu vẫn chưa được, chờ một lúc rồi thử lại. Tài khoản của bạn chưa bị xóa.';
+export const deleteUnknown = 'Chưa nhận được trả lời nên chưa rõ yêu cầu xóa đã được xử lý chưa. Bạn bấm lại "Xóa tài khoản"; nếu tài khoản đã đóng, ứng dụng sẽ đưa bạn về màn hình chào.';
+export const deleteNotDone = (reason: string) => `Chưa xóa được tài khoản. ${reason}`;
+export const accountClosed = 'Tài khoản đã được đóng.';

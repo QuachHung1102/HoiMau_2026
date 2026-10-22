@@ -14,12 +14,20 @@ export type Session = {
   userId: string | null;
   /** True after the server ended the session (401 SESSION_INVALID) until the next signIn or signOut: SignIn shows the notice. */
   expired: boolean;
+  /** True after the account was deleted on this device (S52) until the next signIn: Welcome says so, and nothing is kept. */
+  closed: boolean;
   signIn(token: string, userId: string): Promise<void>;
   /**
    * Resolves when the user is signed out, or when they chose to stay: with records still waiting to be sent the
    * provider first asks (they would be dropped), so reset any "leaving" state when this settles.
    */
   signOut(): Promise<void>;
+  /**
+   * The server has deleted the account (`POST /me/delete`, S52): every session is revoked, so nothing is sent for it. Forgets
+   * the token, the caches and the queue of this user (the question of `signOut` is not asked: the account they belong to is
+   * gone) and ends on Welcome, with `closed` set. Joins a sign-out or a "session ended" already under way.
+   */
+  closeAccount(): Promise<void>;
 };
 
 const SessionContext = createContext<Session | null>(null);
@@ -29,6 +37,9 @@ export function useSession(): Session {
   if (!session) throw new Error('useSession needs a SessionProvider above it');
   return session;
 }
+
+/** Welcome's question: was the account just closed (S52)? False without a provider, so the screen can be rendered alone. */
+export const useAccountClosed = () => useContext(SessionContext)?.closed ?? false;
 
 const bestEffort = (step: Promise<unknown>) => step.catch(() => undefined);
 
@@ -65,9 +76,13 @@ export function wipeQueries(queryClient: QueryClient) {
  */
 export function SessionProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const [state, setState] = useState<Pick<Session, 'status' | 'userId' | 'expired'>>({ status: 'loading', userId: null, expired: false });
+  const [state, setState] = useState<Pick<Session, 'status' | 'userId' | 'expired' | 'closed'>>({ status: 'loading', userId: null, expired: false, closed: false });
   const userIdRef = useRef<string | null>(null);
   const leaving = useRef<Promise<void> | null>(null);
+  // The account is gone: whichever way the session ends from here on (a 401 of the retry of a lost answer included), it ends as closed.
+  const closing = useRef(false);
+  // Whose session the flight under way is ending (`userIdRef` is already empty by then); null when none is.
+  const leavingUser = useRef<string | null>(null);
   // Sign-out guard: how many records would be dropped ('unknown': the stored queue could not be read), while the
   // person is being asked; and where the answer goes.
   const [unsent, setUnsent] = useState<number | 'unknown' | null>(null);
@@ -80,13 +95,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   // One flight for every way out: a second signOut, or a 401 that arrives while signing out, joins the first.
   const leave = useCallback(
-    (expired: boolean) => {
+    (expired: boolean, closed = false) => {
       leaving.current ??= (async () => {
         const userId = userIdRef.current;
+        leavingUser.current = userId;
         // From here on nothing more is recorded for this user: a record accepted during the wait below would be
         // wiped at the end without the question having been asked about it.
         if (!expired) stopRecording();
-        if (userId && !expired) {
+        if (userId && !expired && !closed) {
           // Revoke on the server while the token is still bound. Best effort: signing out must work offline, so a
           // failure or a timeout (the client's 10 s) just continues on the device.
           await bestEffort(api.write('POST', '/auth/logout'));
@@ -107,10 +123,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (userId) await bestEffort(clearCelebratedLevel(userId));
         // And the pet stage that was last celebrated, the same way.
         if (userId) await bestEffort(clearCelebratedStage(userId));
-        setState({ status: 'signedOut', userId: null, expired });
+        setState({ status: 'signedOut', userId: null, expired: expired && !closing.current, closed: closing.current });
         reply(false); // a question still open belongs to a session that is gone
       })().finally(() => {
         leaving.current = null;
+        leavingUser.current = null;
       });
       return leaving.current;
     },
@@ -136,8 +153,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return leave(false);
   }, [leave]);
 
+  const closeAccount = useCallback(async () => {
+    const userId = userIdRef.current ?? leavingUser.current;
+    closing.current = true;
+    stopRecording();
+    await leave(false, true);
+    // the queue of a session the server ended is kept; this account is gone, so its records can never be delivered
+    if (userId) await bestEffort(clearPendingFor(userId));
+  }, [leave]);
+
   const enter = useCallback(
     (token: string, userId: string) => {
+      closing.current = false;
       userIdRef.current = userId;
       bindApiSession({
         token,
@@ -146,7 +173,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           leave(true);
         },
       });
-      setState({ status: 'signedIn', userId, expired: false });
+      setState({ status: 'signedIn', userId, expired: false, closed: false });
     },
     [leave],
   );
@@ -159,7 +186,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (!current || userIdRef.current) return;
         // An empty password is what `forgetToken` leaves behind when the keychain would not reset: not a session.
         if (stored && stored.username && stored.password) enter(stored.password, stored.username);
-        else setState({ status: 'signedOut', userId: null, expired: false });
+        else setState({ status: 'signedOut', userId: null, expired: false, closed: false });
       });
     return () => {
       current = false;
@@ -175,8 +202,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         enter(token, userId);
       },
       signOut,
+      closeAccount,
     }),
-    [state, enter, signOut],
+    [state, enter, signOut, closeAccount],
   );
   return createElement(
     SessionContext.Provider,

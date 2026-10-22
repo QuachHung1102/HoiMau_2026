@@ -3,8 +3,8 @@ import * as Keychain from 'react-native-keychain';
 import { forget, navigated } from '../guild/navigationSpy';
 import { fetchMock, fireEvent, installTodayTestEnv, openSettings, requested, screen, seedQueue, settingsOf, settle, stored, world } from './settingsTestKit';
 
-// The real registry, every `navigate` recorded: `Privacy` is Task 48's screen and is not registered yet, so a press on that row is
-// asserted by name; the other targets are real screens and are also asserted by what arrives.
+// The real registry, every `navigate` recorded: a press on a row is asserted by the name it navigates to, and the targets that
+// are real screens are also asserted by what arrives.
 jest.mock('../../app/screens', () => require('../guild/navigationSpy').spied(jest.requireActual('../../app/screens')));
 
 installTodayTestEnv();
@@ -51,6 +51,16 @@ describe('S35', () => {
     const view = await openSettings();
     fireEvent.press(row('Thông báo'));
     expect(await screen.findByRole('header', { name: 'Thông báo' })).toBeTruthy();
+    view.unmount();
+  });
+
+  test('"Quyền riêng tư" is not a dead tap: it opens S44, and from there the way back is S35 again', async () => {
+    const view = await openSettings();
+    fireEvent.press(row('Quyền riêng tư'));
+    expect(await screen.findByRole('header', { name: 'Dữ liệu & quyền riêng tư' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Tải dữ liệu của tôi. Xuất bản sao dưới dạng JSON' })).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Quay lại' }));
+    expect(await screen.findByRole('header', { name: 'Cài đặt' })).toBeTruthy();
     view.unmount();
   });
 

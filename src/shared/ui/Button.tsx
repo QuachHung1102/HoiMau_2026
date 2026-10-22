@@ -4,7 +4,7 @@ import { radius, sizes, spacing, type Palette } from '../theme/tokens';
 import { AppText } from './AppText';
 import { Touchable } from './Touchable';
 
-type Variant = 'primary' | 'secondary' | 'onPrimary';
+type Variant = 'primary' | 'secondary' | 'onPrimary' | 'danger';
 
 type Props = {
   label: string;
@@ -20,6 +20,8 @@ const scheme: Record<Variant, { background: keyof Palette; text: keyof Palette }
   primary: { background: 'primary', text: 'white' },
   secondary: { background: 'soft', text: 'primary' },
   onPrimary: { background: 'lime', text: 'ink' },
+  // Not colour alone: the label says what it does. The same size as the safe button beside it (S52).
+  danger: { background: 'flameSoft', text: 'error' },
 };
 
 export function Button({ label, onPress, variant = 'primary', loading = false, disabled = false, accessibilityLabel, style }: Props) {
