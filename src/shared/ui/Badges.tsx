@@ -64,14 +64,14 @@ export function CoinChip({ coin }: { coin: number }) {
   return <Chip icon="Coins" text={vi.coinAmount(rolling)} accessibilityLabel={vi.coinAmount(coin)} background="goldSoft" color="gold" />;
 }
 
-/** The streak, shown only from 3 days on and always with the number of days. */
-export function StreakChip({ days }: { days: number }) {
-  return days >= 3 ? <Flame days={days} /> : null;
+/** The streak, shown only from 3 days on and always with the number of days. `active`: the screen's focus; the flame stands still while false. */
+export function StreakChip({ days, active = true }: { days: number; active?: boolean }) {
+  return days >= 3 ? <Flame days={days} active={active} /> : null;
 }
 
-function Flame({ days }: { days: number }) {
+function Flame({ days, active }: { days: number; active: boolean }) {
   const palette = useTheme();
-  const running = useLoopGate();
+  const running = useLoopGate(active);
   const [flicker] = useState(() => new Animated.Value(0));
   useEffect(() => {
     if (!running) return;

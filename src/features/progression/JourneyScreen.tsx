@@ -139,7 +139,7 @@ export function JourneyScreen({ navigation }: ScreenProps<'Journey'>) {
             </>
           ) : (
             <>
-              {provisional ? null : <StreakChip days={progression.streakCurrent} />}
+              {provisional ? null : <StreakChip days={progression.streakCurrent} active={focused} />}
               {provisional ? null : (
                 <AppText variant="headline" accessibilityRole="header">
                   {progression.streakCurrent > 0 ? vi.streakRunning : vi.streakIdle}

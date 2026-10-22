@@ -208,7 +208,7 @@ export function TodayScreen({ navigation }: ScreenProps<'Today'>) {
           />
         ) : null}
         <View style={styles.streak}>
-          {hideStreak ? null : <StreakChip days={view.streak.current} />}
+          {hideStreak ? null : <StreakChip days={view.streak.current} active={focused} />}
           <Touchable accessibilityRole="link" onPress={() => navigation.navigate('Journey')} style={[styles.link, styles.besideChip]}>
             <AppText weight="semibold" color="primary">
               {vi.seeJourney}

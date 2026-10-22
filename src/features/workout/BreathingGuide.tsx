@@ -1,19 +1,20 @@
 import { useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { motion } from '../../shared/motion/motion';
-import { useLoopGate } from '../../shared/motion/useLoopGate';
+import { useForeground, useLoopGate } from '../../shared/motion/useLoopGate';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { AppText } from '../../shared/ui/AppText';
 
 /**
  * Which of `phases` is on now: each lasts its `ms`, in order, looping, from the moment `active` became true. Read
  * from the clock (`Date.now()`), the timer only says when to look again. Not tied to motion: under reduced motion
- * the phases still change.
+ * the phases still change. In the background the timer is off, and on return the cycle starts again from its first phase.
  */
 export function usePhase(phases: readonly { ms: number }[] | undefined, active: boolean): number {
   const [index, setIndex] = useState(0);
+  const foreground = useForeground();
   useEffect(() => {
-    if (!phases?.length || !active) return undefined;
+    if (!phases?.length || !active || !foreground) return undefined;
     const total = phases.reduce((sum, phase) => sum + phase.ms, 0);
     const start = Date.now();
     let timer: ReturnType<typeof setTimeout>;
@@ -27,7 +28,7 @@ export function usePhase(phases: readonly { ms: number }[] | undefined, active: 
     };
     look();
     return () => clearTimeout(timer);
-  }, [phases, active]);
+  }, [phases, active, foreground]);
   return phases?.length ? Math.min(index, phases.length - 1) : 0;
 }
 
