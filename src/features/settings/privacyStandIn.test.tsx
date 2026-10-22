@@ -122,7 +122,7 @@ describe('POST /me/delete', () => {
   test('the anon routes never look at a session: after 204 sign-in, sign-up and the reset routes are not answered with 401 SESSION_INVALID', async () => {
     expect((await remove(PASSWORD)).status).toBe(204);
     for (const path of ['/auth/login', '/auth/register', '/auth/password/forgot', '/auth/password/reset']) {
-      expect(code(await send('POST', path, '{}', {}))).not.toBe('401 SESSION_INVALID');
+      expect(code(await send('POST', path, '{}'))).not.toBe('401 SESSION_INVALID');
     }
     expect(code(await send('POST', '/auth/logout', '{}', {}))).toBe('401 SESSION_INVALID');
   });
