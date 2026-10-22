@@ -140,6 +140,18 @@ describe('S52: the deletion', () => {
     view.unmount();
   });
 
+  test('two presses before the screen has re-rendered (a stale handler) are still one request', async () => {
+    const view = await openDeleteAccount();
+    type(PASSWORD);
+    act(() => {
+      fireEvent.press(deleteButton());
+      fireEvent.press(deleteButton());
+    });
+    expect(await closed()).toBeTruthy();
+    expect(removals()).toHaveLength(1);
+    view.unmount();
+  });
+
   test('the password is not right: said at the field without claiming to know why, and nothing was cleared, nothing left the screen', async () => {
     const view = await withTraces();
     const before = await mine();

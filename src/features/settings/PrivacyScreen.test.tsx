@@ -122,6 +122,18 @@ describe('S44: the copy of the data', () => {
     view.unmount();
   });
 
+  test('two presses before the screen has re-rendered (a stale handler) are still one request', async () => {
+    const view = await openPrivacy();
+    act(() => {
+      pressExport();
+      pressExport();
+    });
+    await screen.findByText('Đã tạo bản sao');
+    expect(exported()).toBe(1);
+    expect(share).toHaveBeenCalledTimes(1);
+    view.unmount();
+  });
+
   test('the row stays disabled while the share call itself is open (each share replaces the file of the one before)', async () => {
     let finish!: () => void;
     share.mockReturnValue(new Promise<void>(resolve => (finish = resolve)));
