@@ -6,6 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { addDays } from '../../domain/logicalDate.ts';
+import type { DateLabel } from '../../domain/types.ts';
 
 export type CallOptions = {
   token?: string;
@@ -36,6 +37,12 @@ export type ScenarioCtx = {
    * SCENARIO): only for a state that playing days cannot reach in a demo. Say so in `describe`.
    */
   grant(email: string, xp: number, coin: number): Promise<void>;
+  /**
+   * The logical day (Asia/Ho_Chi_Minh) the scenario should end on, or undefined for the fixed START.
+   * The CLI sets it to the real today so a phone with the real date shows the same day as the server;
+   * the tests leave it out so every date they assert stays fixed.
+   */
+  today?: DateLabel;
 };
 
 export type Scenario = {
@@ -49,6 +56,10 @@ export const PASSWORD = 'matkhau123';
 export const DISPLAY_NAME = 'An';
 /** 09:00 on 2027-03-01 in Asia/Ho_Chi_Minh (UTC+7 all year): where every scenario starts. */
 export const START = '2027-03-01T02:00:00.000Z';
+
+/** 09:00 local, `days` before `today`: where a scenario that lives `days` closed days starts so it ends on `today`. */
+export const startFor = (today: DateLabel, days: number) =>
+  new Date(`${addDays(today, -days)}T09:00:00+07:00`).toISOString();
 
 const HOUR_MS = 3_600_000;
 const ONBOARDING = {
@@ -79,11 +90,13 @@ export const getDay = (ctx: ScenarioCtx, token: string) =>
 /**
  * A clean start: the demo user of this name deleted, the clock at START, a new account
  * registered and, with `onboard`, onboarded. Returns what the later steps need.
+ * `days` is how many logical days the scenario closes after this: with `ctx.today` set the clock
+ * starts that many days before it, so the scenario ends on `ctx.today`.
  */
-export async function begin(ctx: ScenarioCtx, name: string, onboard: boolean) {
+export async function begin(ctx: ScenarioCtx, name: string, onboard: boolean, days = 0) {
   const email = demoEmail(name);
   await ctx.reset(email);
-  await ctx.setClock(START);
+  await ctx.setClock(ctx.today === undefined ? START : startFor(ctx.today, days));
   const session = await ctx.call('POST', '/auth/register', {
     body: { email, password: PASSWORD, displayName: DISPLAY_NAME, acceptedTerms: true },
   });

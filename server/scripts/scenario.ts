@@ -10,6 +10,8 @@ import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import pg from 'pg';
+import { logicalDateOf } from '../../domain/logicalDate.ts';
+import type { DateLabel } from '../../domain/types.ts';
 import { createPool, withRole } from '../src/db.ts';
 import { runJob } from '../src/jobs/scheduler.ts';
 import { createLogger } from '../src/log.ts';
@@ -136,11 +138,13 @@ export function makeCtx(opts: {
   admin: pg.Pool;
   app: pg.Pool;
   includeRealUsers?: boolean;
+  today?: DateLabel;
 }): ScenarioCtx {
-  const { baseUrl, admin, app, includeRealUsers = false } = opts;
+  const { baseUrl, admin, app, includeRealUsers = false, today } = opts;
   const quiet = createLogger(() => {});
   let checked = false;
   return {
+    today,
     async call(method, path, { token, body, key } = {}) {
       const response = await fetch(baseUrl + path, {
         method,
@@ -257,7 +261,7 @@ async function main(argv: string[]): Promise<void> {
       await fetch(`${baseUrl}/healthz`).catch(() => {
         throw new Error(`the API does not answer at ${baseUrl}: start it with npm run server:dev`);
       });
-      const done = await scenario!.run(makeCtx({ baseUrl, admin, app, includeRealUsers }));
+      const done = await scenario!.run(makeCtx({ baseUrl, admin, app, includeRealUsers, today: logicalDateOf(Date.now(), 'Asia/Ho_Chi_Minh') }));
       console.log(`scenario ${scenario!.name}: ${scenario!.describe}`);
       console.log(`email:    ${done.email}`);
       console.log(`password: ${done.password}`);

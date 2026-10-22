@@ -104,6 +104,40 @@ npm run android                   # terminal 3
 
 Nếu `adb` chưa có trong PATH, dùng `adb.exe` trong thư mục `platform-tools` của Android SDK. Nếu app báo "Không kết nối được mạng" ngay khi mở, kiểm tra `adb reverse --list` và mở `http://localhost:8787/api/v1/healthz` trên máy phát triển. Quy trình này chưa được chạy trên máy hiện tại vì không có thiết bị (xem mục "Không có thiết bị Android").
 
+### Chạy demo trên Android với server trên máy
+
+App luôn nói chuyện với server thật ở `localhost:8787` (không có chế độ giả lập trong app), nên demo cần: server chạy trên máy này, dữ liệu mẫu trong đó, và thiết bị Android nhìn thấy cổng 8787 qua `adb reverse`.
+
+**Điều kiện**
+
+- Một thiết bị: emulator (cần bật ảo hóa phần cứng, xem "Android trên Windows") hoặc điện thoại Android cắm USB, đã bật Tùy chọn nhà phát triển, Gỡ lỗi USB và chấp nhận hộp thoại cho máy tính này. APK debug có đủ 4 ABI, arm64 chạy được. Kiểm tra: `adb devices` phải liệt kê thiết bị ở trạng thái `device`.
+- `adb` trong PATH. Trong PowerShell, cho phiên hiện tại: `$env:Path += ";$env:LOCALAPPDATA\Android\Sdk\platform-tools"` (thêm `;$env:LOCALAPPDATA\Android\Sdk\emulator` để gọi `emulator`). Riêng `npm run demo:reverse` tự tìm `adb` trong `ANDROID_HOME`, `ANDROID_SDK_ROOT` hoặc `%LOCALAPPDATA%\Android\Sdk\platform-tools` khi PATH chưa có.
+- Đã build APK debug (`cd android; .\gradlew.bat assembleDebug`) hoặc để `npm run android` build.
+
+**Các bước** (mỗi lệnh chạy lâu để một terminal riêng)
+
+1. Server: `npm run server:dev`. Đợi dòng `API ready: http://127.0.0.1:8787/api/v1` (lần đầu khoảng 40 giây). Kiểm tra: `curl http://127.0.0.1:8787/api/v1/healthz` trả 200 `{"ok":true,"db":true,...}`. Server chỉ nghe `127.0.0.1`, nên điện thoại không vào được bằng IP mạng LAN hay `10.0.2.2`; chỉ `adb reverse` mới tới được.
+2. Dữ liệu mẫu (server phải đang chạy): `npm --prefix server run scenario -- list` để xem danh sách, rồi `npm --prefix server run scenario -- <tên>`. Tài khoản `demo-<tên>@hoimau.test`, mật khẩu `matkhau123`, tên hiển thị "An". Những kịch bản cho thấy nhiều nhất:
+
+   | Tên | Cho thấy |
+   | --- | --- |
+   | `guild4` | tổ đội "Tổ Bốn Mùa" bốn người, hoạt động tuần này (đăng nhập `demo-guild4@hoimau.test`) |
+   | `streak6` | chuỗi 6 ngày, 20:00 hôm nay; hoàn thành nhiệm vụ chính là gần mốc 7 ngày |
+   | `rich` | cấp 8, 500 xu, cửa hàng và đặc quyền |
+   | `ticket` | chuỗi 5 vừa đứt hôm qua, có 1 vé đóng băng để cứu chuỗi |
+
+   Ngày trong dữ liệu mẫu bám theo ngày thật của máy (kịch bản kết thúc vào "hôm nay" theo giờ Việt Nam), nên không cần chỉnh ngày giờ điện thoại; để điện thoại ở giờ tự động. Mọi kịch bản dùng chung một đồng hồ test đang đứng yên ở giờ lệnh in ra (dòng `clock:`), và chạy kịch bản khác sẽ đổi nó: **chạy kịch bản muốn trình diễn sau cùng**. `npm --prefix server run scenario -- clock off` trả đồng hồ về giờ thật (dữ liệu giữ nguyên). Muốn đóng ngày để thấy mốc 7 ngày: xem "Kịch bản phát triển và dịch chuyển thời gian" trong [backend](backend.md). Lệnh từ chối chạy nếu cơ sở dữ liệu dev có tài khoản thật đã onboarding (thêm `--include-real-users` nếu chấp nhận).
+3. Chuyển cổng: `npm run demo:reverse` (chạy `adb reverse tcp:8787 tcp:8787` và `tcp:8081`, rồi in danh sách). Làm lại sau mỗi lần cắm lại thiết bị hoặc khởi động lại emulator.
+4. Metro: `npm start`. Rồi, ở terminal khác, `npm run android` (cài và mở app debug). Hoặc cài APK đã build: `adb install -r android\app\build\outputs\apk\debug\app-debug.apk` rồi mở app. APK debug không chứa JavaScript mà lấy từ Metro, nên Metro phải đang chạy và bước 3 đã làm.
+5. Đăng nhập bằng tài khoản ở bước 2.
+
+**Sau khi sửa phần native** (thêm hoặc đổi module native, `codegenConfig`, dependency native trong `package.json`): xóa `android/app/.cxx` rồi build lại (`Remove-Item -Recurse -Force android\app\.cxx; cd android; .\gradlew.bat assembleDebug`), nếu không APK có thể giữ mã sinh ra cũ (thiếu `HoiMauNative`). Không cần xóa khi chỉ đổi JavaScript.
+
+**Lỗi ở lần chạy đầu**: `adb logcat "*:E" ReactNativeJS` (lỗi hệ thống và nhật ký JavaScript). App báo không kết nối được mạng: `adb reverse --list` phải có `tcp:8787`, và `healthz` ở bước 1 phải trả 200. Màn hình đỏ hoặc trắng: xem logcat, rồi `npm start -- --reset-cache`.
+
+**Dừng**: Ctrl+C ở terminal của `server:dev` và của Metro, `npm --prefix server run scenario -- clock off`, `adb reverse --remove-all`.
+
+Các bước 1 và 2 đã được chạy thật trên máy phát triển ngày 22/10/2026 (server lên, `healthz` 200, kịch bản `streak6` rồi đăng nhập và `GET /day` trả đúng ngày hôm nay). Các bước 3 đến 5 chưa được chạy vì máy không có thiết bị.
 ## Kiểm tra thay đổi
 
 ```sh

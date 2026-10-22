@@ -7,7 +7,7 @@ export default {
   describe:
     'broken (streak 5, yesterday missed and closed, 09:00 local) plus one unused freeze ticket, granted by a journal entry written this morning',
   async run(ctx) {
-    const { email, token } = await begin(ctx, 'ticket', true);
+    const { email, token } = await begin(ctx, 'ticket', true, 6);
     await playDays(ctx, token, [true, true, true, true, true, false]);
     await goTo(ctx, token, 9);
     const { ticket } = await ctx.call('POST', '/journal', {

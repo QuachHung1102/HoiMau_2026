@@ -12,7 +12,8 @@ import type { TestApp } from '../test/http.ts';
 import { createTestDb } from '../test/testdb.ts';
 import type { TestDb } from '../test/testdb.ts';
 import { assertDevDatabase, assertNoRealUsers, loadScenarios, makeCtx } from './scenario.ts';
-import { PASSWORD, START, closeDay, completeStory, getDay, goTo } from './scenarioKit.ts';
+import { logicalDateOf } from '../../domain/logicalDate.ts';
+import { PASSWORD, START, closeDay, completeStory, getDay, goTo, startFor } from './scenarioKit.ts';
 import type { ScenarioCtx } from './scenarioKit.ts';
 
 let db: TestDb;
@@ -380,4 +381,19 @@ test('the clock does not move while a non-demo onboarded user is there, unless t
 
 test('the database guard answers from the connection: the test database is refused', async () => {
   await assert.rejects(assertDevDatabase(db.admin), /refusing to run: connected to database t_[0-9a-f]+ on port 54329, not hoimau on port 54330/);
+});
+
+test('with a "today" every scenario ends on that day, so a phone with the real date agrees with the server', async () => {
+  const today = '2026-10-22';
+  const anchored = makeCtx({ baseUrl: app.baseUrl, admin: db.admin, app: db.app, today });
+  for (const scenario of await loadScenarios()) {
+    const done = await scenario.run(anchored);
+    const { rows } = await db.admin.query<{ now: Date }>('SELECT app.now() AS now');
+    assert.equal(logicalDateOf(rows[0].now.getTime(), 'Asia/Ho_Chi_Minh'), today, `${scenario.name} ended on another day`);
+    if (scenario.name !== 'fresh') {
+      const login = await app.call('POST', '/auth/login', { body: { email: done.email, password: done.password } });
+      assert.equal((await get(login.body.token, '/day')).logicalDate, today, scenario.name);
+    }
+  }
+  assert.equal(startFor('2026-10-22', 6), '2026-10-16T02:00:00.000Z');
 });

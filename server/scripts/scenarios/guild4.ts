@@ -26,10 +26,10 @@ export default {
     // the guild of a previous run, whole, leaderless or empty (deleting the accounts alone would
     // leave it holding the name); refused, loudly, if anyone but a demo account is in it
     await ctx.removeGuild(GUILD);
-    const leader = await begin(ctx, 'guild4', true);
+    const leader = await begin(ctx, 'guild4', true, 1);
     const members: string[] = [];
     for (const { name, displayName } of MEMBERS) {
-      const { token } = await begin(ctx, name, true);
+      const { token } = await begin(ctx, name, true, 1);
       await ctx.call('PATCH', '/me', { token, key: randomUUID(), body: { displayName } });
       members.push(token);
     }
