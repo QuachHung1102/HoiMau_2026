@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-quer
 import { Heart } from 'lucide-react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import { useReducedMotion } from '../../src/shared/motion/useReducedMotion';
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: '#F7F9FC' },
@@ -31,9 +32,14 @@ function Home() {
   const { data } = useQuery({ queryKey: ['profile'], queryFn: (): Promise<{ name: string; level: number }> => Promise.reject(new Error('not seeded')), staleTime: Infinity });
   const [taps, setTaps] = useState(0);
   const w = useRef(new Animated.Value(40)).current;
+  const reduced = useReducedMotion();
   useEffect(() => {
+    if (reduced) {
+      w.setValue(220);
+      return;
+    }
     Animated.timing(w, { toValue: 220, duration: 200, useNativeDriver: false }).start();
-  }, [w]);
+  }, [w, reduced]);
   return (
     <ScrollView style={styles.fill} contentContainerStyle={styles.content}>
       <View style={styles.card}>

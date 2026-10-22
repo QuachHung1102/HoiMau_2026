@@ -56,6 +56,112 @@ Hai bộ quét chạy trong `npm test` và phải luôn xanh:
 
 Những gì máy ở đây không kiểm được nằm trong danh sách kiểm tra trên thiết bị (Task 54): thứ tự đọc và tiêu điểm của TalkBack sau khi chuyển màn và sau khi đóng lớp phủ, cỡ chữ 2.0 thật ở bề rộng 360 dp, vùng bấm 48 dp trên màn hình thật, độ tương phản trên tấm nền thật (kể cả viền ô nhập `field-line`), bàn phím che ô đang nhập.
 
+### Chuyển động (Task 50)
+
+Bộ quét `__tests__/motion-sweep.test.tsx` chạy trong `npm test` và phải luôn xanh:
+
+- **Danh mục.** Mọi mục `tier: 1` của `design/motion/catalog.json` có ít nhất một tệp trong `src/` mang dấu `// motion: <id>` cạnh mã cài đặt nó (`exercise-*` là mọi mục `kind: "exercise"`, do `RigPlayer` vẽ); mục `tier: 2` hoặc có dấu như vậy, hoặc ghi "tĩnh (tier 2)". Dấu nào ghi sai id cũng bị đánh trượt. Bảng dưới được sinh từ mã bằng `MOTION_TABLE_WRITE=1 npx jest __tests__/motion-sweep.test.tsx -t "table in docs"`; bộ quét so bảng trong tệp này với bảng vừa sinh, nên sửa tay là trượt. Dấu chỉ chứng minh mã cài đặt tồn tại ở đó, không chứng minh nó đẹp hay mượt: nhiều mục tier 1 dựng ở trạng thái cuối (ví dụ `journal-saved`, `ticket-granted`, `ticket-freeze`: dòng "đã lưu" hay thẻ vé hiện ngay), điều đó được ghi trong chú thích cạnh dấu.
+- **Giảm chuyển động.** Mỗi mục xem trước được render hai lần, với `motion: 'FULL'` rồi `'REDUCED'` (bộ quét ép lựa chọn này vào `withApp`): ở lần thứ hai không một `Animated.timing / spring / loop / sequence / parallel` nào được `start`, và mọi chuỗi chữ hiện ở lần đầu cũng hiện ở lần thứ hai (chữ thêm, như số giây đếm ngược, thì được). Hoạt ảnh `animation: 'none'` của `@react-navigation/bottom-tabs` (một `timing` dài 0 ms mỗi lần đổi tab) được đếm riêng vì không chuyển động gì.
+- **Vòng đời** của `Mam`, `RigPlayer`, `LoadingState`, ngọn lửa chuỗi và `BreathingGuide`: vòng lặp chạy khi màn hình có tiêu điểm và app ở nền trước, dừng khi `active` thành false, khi `AppState` sang `background`, khi gỡ khỏi cây (các bộ lắng nghe `AppState` đều được gỡ và không bộ hẹn giờ nào của `src/` còn lại); một màn ăn mừng đã chạy xong không chạy lại khi app trở về hay màn lấy lại tiêu điểm.
+- **Quét tĩnh `src/`:** không hàm gọi lại của `.start(` / `.addListener(` nào gọi api, mutation, điều hướng hay đặt trạng thái "đã lưu" (hiện chỉ có ba hàm ghi nhớ "đã chạy xong" vào một `ref`, và các bộ nghe chỉ vẽ); mọi `setTimeout` / `setInterval` được giữ trong biến và có `clearTimeout` / `clearInterval` tương ứng; mọi `Animated.loop` nằm trong tệp có `useLoopGate` hoặc `AppState`; mọi hoạt ảnh được `start` đều có `stop` trong cùng tệp.
+- Đối chứng âm: một mục đồ giả bắt đầu `Animated.loop` dưới giảm chuyển động bị bắt; một mục mất chữ khi giảm bị bắt còn chữ thêm thì không; mục thiếu dấu tier 1 và dấu sai id bị báo; hàm gọi lại có `api.post`, bộ hẹn giờ không xóa và bộ hẹn giờ không giữ biến đều bị báo.
+
+Những gì chỉ thiết bị kiểm được (bật / tắt "Giảm chuyển động" của hệ thống khi app đang mở, 60 fps trên máy yếu, vòng lặp dừng khi khóa màn hình) nằm trong danh sách kiểm tra trên thiết bị (Task 54).
+
+<!-- motion-table:start -->
+| id | tier | kind | tệp cài đặt |
+|---|---|---|---|
+| press-scale | 1 | micro | src/shared/ui/Touchable.tsx |
+| check-draw | 1 | micro | src/shared/ui/Toggles.tsx |
+| switch-slide | 1 | micro | src/shared/ui/Toggles.tsx |
+| tab-pill | 1 | micro | src/app/TabBar.tsx |
+| chip-select | 2 | micro | src/shared/ui/Toggles.tsx |
+| list-stagger | 2 | transition | src/features/guild/LeaderboardScreen.tsx, src/features/notifications/InboxScreen.tsx, src/features/progression/DayHistoryScreen.tsx, src/features/progression/JourneyScreen.tsx, src/features/quests/QuestBoardScreen.tsx |
+| number-roll | 1 | feedback | src/features/onboarding/TargetsView.tsx, src/features/progression/LevelsScreen.tsx, src/features/shop/ShopScreen.tsx, src/shared/ui/Badges.tsx |
+| progress-fill | 1 | feedback | src/features/guild/GuildScreen.tsx, src/features/nutrition/MealPlanScreen.tsx, src/features/pet/PetScreen.tsx, src/shared/ui/LevelStrip.tsx |
+| skeleton-shimmer | 1 | ambient | src/shared/ui/States.tsx |
+| snackbar-undo | 1 | feedback | src/shared/ui/Snackbar.tsx |
+| field-error | 1 | feedback | src/shared/ui/Notices.tsx, src/shared/ui/TextField.tsx |
+| pending-pulse | 1 | ambient | src/features/quests/WaterTracker.tsx, src/features/sync/PendingBanner.tsx |
+| water-check-in | 1 | feedback | src/features/quests/WaterTracker.tsx |
+| quest-complete | 1 | reward | src/features/quests/QuestBoardScreen.tsx |
+| mam-idle | 1 | mascot | src/features/auth/WelcomeScreen.tsx, src/shared/ui/mam/Mam.tsx |
+| mam-happy | 1 | mascot | src/features/dashboard/CompanionCard.tsx, src/shared/ui/mam/Mam.tsx |
+| mam-cheer | 1 | celebration | src/features/workout/WorkoutResultScreen.tsx, src/shared/ui/mam/Mam.tsx |
+| mam-tired | 1 | mascot | src/shared/ui/mam/Mam.tsx |
+| mam-wave | 2 | mascot | src/features/auth/WelcomeScreen.tsx |
+| mam-sleep | 2 | mascot | src/features/quests/EndOfDayScreen.tsx |
+| exercise-xoay-vai | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-squat | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-chong-day-tua-ban | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-chung-chan-lui | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-plank-tua-goi | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-tha-long-vai | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-nghieng-co-nhe | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-mo-nguc | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-gian-co-tay | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-xoay-than-khi-ngoi | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-cui-nguoi-gian-lung | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-cong-va-vong-lung | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-gian-dui-truoc | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-gian-bap-chan | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-xoay-hong | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-dung-len-ngoi-xuong-ghe | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-chong-day-tua-tuong | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-nhon-got | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-cau-mong | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-tay-chan-doi-dien | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-squat-cam-ta-tay | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-day-vai-voi-ta-tay | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-cheo-ta-tay | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-gap-hong-voi-ta-tay | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-cuon-ta-tay-truoc | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-keo-day-khang-luc | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-buoc-ngang-voi-day-khang-luc | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-di-bo-tai-cho | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-nang-dau-goi | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-got-cham-mong | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-dang-tay-buoc-ngang | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-di-bo-nhanh | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-chay-bo-nhe | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-nhun-nhe-tai-cho | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-leo-nui-tua-ban | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-di-bo-cham | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-tho-bung | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-tho-ra-dai | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-tho-vuong | 1 | exercise | src/features/workout/RigPlayer.tsx |
+| exercise-tha-long-tung-vung | 1 | exercise | src/features/workout/MoveDemoView.tsx, src/features/workout/RigPlayer.tsx |
+| xp-float | 1 | reward | src/features/quests/WaterTracker.tsx |
+| coin-fly | 2 | reward | src/features/dashboard/TodayScreen.tsx |
+| reject-revert | 1 | feedback | src/features/quests/WaterTracker.tsx |
+| hidden-quest-reveal | 2 | transition | src/features/quests/QuestBoardScreen.tsx |
+| end-of-day-sky | 2 | ambient | src/features/quests/EndOfDayScreen.tsx |
+| welcome-sprout | 2 | mascot | src/features/auth/WelcomeScreen.tsx |
+| onboarding-step | 1 | transition | src/features/onboarding/StepScreen.tsx |
+| archetype-lift | 2 | micro | src/features/onboarding/ArchetypeStepScreen.tsx |
+| meal-swap | 1 | transition | src/features/nutrition/MealDetailScreen.tsx, src/features/nutrition/MealSwapScreen.tsx |
+| focus-ring | 1 | feedback | src/features/workout/FocusSessionScreen.tsx |
+| focus-demo | 1 | ambient | src/features/workout/FocusSessionScreen.tsx, src/features/workout/WorkoutDetailScreen.tsx |
+| focus-breathe | 2 | ambient | src/features/workout/BreathingGuide.tsx |
+| focus-pause | 1 | transition | src/features/workout/FocusSessionScreen.tsx |
+| workout-complete | 1 | celebration | src/features/workout/WorkoutResultScreen.tsx |
+| streak-flame | 1 | ambient | src/shared/ui/Badges.tsx |
+| streak-reset-soft | 2 | transition | src/features/progression/JourneyScreen.tsx |
+| purchase-unlock | 1 | reward | src/features/shop/ShopItemScreen.tsx |
+| theme-apply | 2 | transition | src/app/MeTheme.tsx |
+| nudge-sent | 1 | feedback | src/features/guild/NudgeScreen.tsx |
+| rank-roll | 2 | feedback | tĩnh (tier 2) |
+| unread-dot | 2 | micro | src/features/dashboard/TodayScreen.tsx, src/features/notifications/InboxScreen.tsx |
+| journal-saved | 1 | feedback | src/features/journal/JournalFeedbackScreen.tsx |
+| quote-reveal | 2 | transition | src/features/journal/JournalFeedbackScreen.tsx |
+| ticket-granted | 1 | reward | src/features/journal/JournalFeedbackScreen.tsx |
+| ticket-freeze | 1 | feedback | src/features/journal/TicketsScreen.tsx, src/features/progression/JourneyScreen.tsx |
+| level-up | 1 | celebration | src/features/progression/CelebrationHost.tsx, src/shared/ui/OverlayCelebration.tsx |
+| streak-milestone | 1 | celebration | src/features/progression/CelebrationHost.tsx, src/shared/ui/OverlayCelebration.tsx |
+| mam-evolve | 1 | celebration | src/features/progression/CelebrationHost.tsx, src/shared/ui/OverlayCelebration.tsx |
+| stage-path | 2 | transition | src/features/pet/PetStagesScreen.tsx |
+<!-- motion-table:end -->
+
 ### Lần chạy gần nhất (18/10/2026, Task 29, Windows)
 
 Mọi lệnh dưới đây đã chạy thật và thoát 0:
