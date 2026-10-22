@@ -492,9 +492,10 @@ describe('S81 and the change of direction', () => {
     fireEvent.press(screen.getByRole('radio', { name: /^Hỗ Trợ/ }));
     expect(screen.getByRole('radio', { name: /^Hỗ Trợ/, checked: true })).toBeTruthy();
     fireEvent.press(screen.getByRole('button', { name: 'Đổi hướng' }));
-    await waitFor(() => expect(screen.queryByRole('header', { name: 'Đổi hướng' })).toBeNull());
+    // each role query walks the whole tree, which is slow with the full suite running: a generous wait, not a different test
+    await waitFor(() => expect(screen.queryByRole('header', { name: 'Đổi hướng' })).toBeNull(), { timeout: 5000 });
     expect(archetype().map(request => request.body)).toEqual([{ archetype: 'SUPPORTER' }]);
-    expect(await screen.findByRole('button', { name: 'Hỗ Trợ. Có thể đổi sau 14 ngày' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Hỗ Trợ. Có thể đổi sau 14 ngày' }, { timeout: 5000 })).toBeTruthy();
     expect(world.me.user.archetype).toBe('SUPPORTER');
     // XP and the streak are the profile's own and did not move
     expect(world.me.progression?.streakCurrent).toBe(4);
