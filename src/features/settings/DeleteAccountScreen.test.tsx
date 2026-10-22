@@ -36,7 +36,7 @@ describe('S52: the screen', () => {
   test('the frame: the title, what it means as a list of five (the days are the server\'s), the field, the safe button first and both of one size', async () => {
     const view = await openDeleteAccount();
     expect(screen.getByRole('header', { name: 'Xóa tài khoản?' })).toBeTruthy();
-    expect(screen.getByText('Hãy đọc kỹ trước khi xác nhận.')).toBeTruthy();
+    expect(screen.getByText('Hãy đọc trước khi xác nhận.')).toBeTruthy();
     expect(screen.getByRole('header', { name: 'Bạn sẽ không thể tiếp tục sử dụng tài khoản này.' })).toBeTruthy();
     const lines = [
       'Tài khoản ngừng hoạt động ngay lập tức.',

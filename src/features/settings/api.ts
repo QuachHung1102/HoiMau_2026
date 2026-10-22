@@ -218,12 +218,12 @@ export function useDeleteAccount() {
       const secret = normalizePassword(password);
       try {
         await api.write('POST', '/me/delete', { password: secret } satisfies DeleteAccountRequest, { idempotencyKey: key.of(secret) });
-        await closeAccount();
+        await closeAccount(userId);
         return { state: 'done' };
       } catch (error) {
         const code = error instanceof ApiError ? error.code : 'INTERNAL';
         if (code === 'SESSION_INVALID' && unanswered.current) {
-          await closeAccount();
+          await closeAccount(userId);
           return { state: 'done' };
         }
         unanswered.current = !answered(error);

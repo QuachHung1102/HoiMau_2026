@@ -3,10 +3,13 @@ import { QueryClient, QueryClientProvider, useMutation, useQuery } from '@tansta
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { Text } from 'react-native';
 import * as Keychain from 'react-native-keychain';
+import { clearExports } from '../native/hoiMauNative';
 import { readCache, writeCache } from '../storage/cache';
 import { enqueueAction, resetPendingForTests } from '../storage/pendingActions';
 import { api } from './client';
 import { SessionProvider, useSession, type Session } from './session';
+
+jest.mock('../native/hoiMauNative', () => ({ ...jest.requireActual('../native/hoiMauNative'), clearExports: jest.fn() }));
 
 const TOKEN = 'tok-secret-session-1';
 const USER = '5f0c2a8e-1d37-4a55-9c1b-0c8a4d2e7b10';
@@ -38,6 +41,8 @@ const mount = () =>
 
 const realFetch = globalThis.fetch;
 beforeEach(() => {
+  jest.mocked(clearExports).mockReset();
+  jest.mocked(clearExports).mockResolvedValue(undefined);
   fetchMock.mockReset();
   fetchMock.mockResolvedValue(respond(204));
   globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -618,6 +623,48 @@ describe('the pet stage last celebrated (celebratedStage:v1:<userId>, an index o
   });
 });
 
+describe('the last export file leaves with the session (clearExports of the native module)', () => {
+  const cleared = jest.mocked(clearExports);
+  beforeEach(() => cleared.mockClear());
+  async function signedIn() {
+    mount();
+    await screen.findByText('signedOut|-|ok');
+    await act(() => session.signIn(TOKEN, USER));
+  }
+
+  test('a sign-out clears it, once', async () => {
+    await signedIn();
+    expect(cleared).not.toHaveBeenCalled();
+    await act(() => session.signOut());
+    expect(cleared).toHaveBeenCalledTimes(1);
+  });
+
+  test('a session the server ended clears it too', async () => {
+    await signedIn();
+    fetchMock.mockResolvedValue(sessionInvalid());
+    await act(() => api.get('/me').catch(() => undefined));
+    expect(await screen.findByText('signedOut|-|expired')).toBeTruthy();
+    expect(cleared).toHaveBeenCalledTimes(1);
+  });
+
+  test('a deleted account clears it', async () => {
+    await signedIn();
+    await act(() => session.closeAccount(USER));
+    expect(cleared).toHaveBeenCalledTimes(1);
+  });
+
+  test('a native call that fails stops nothing: the rest of the sign-out is done', async () => {
+    await signedIn();
+    await writeCache(USER, 'me', { user: { id: USER } });
+    cleared.mockRejectedValue(new Error('E_CLEAR'));
+    await act(() => session.signOut());
+    expect(screen.getByText('signedOut|-|ok')).toBeTruthy();
+    expect(await Keychain.getGenericPassword()).toBe(false);
+    expect(await readCache(USER, 'me')).toBeUndefined();
+  });
+
+});
+
 describe('closeAccount: the server deleted the account (S52)', () => {
   const QUEUE = `pending:v1:${USER}`;
   const paths = () => bearers().map(([path]) => path);
@@ -636,7 +683,7 @@ describe('closeAccount: the server deleted the account (S52)', () => {
 
   test('forgets the token, the caches and the queue of that user only, asks nothing, sends no sign-out request, and ends as closed', async () => {
     await signedInWithRecord();
-    await act(() => session.closeAccount());
+    await act(() => session.closeAccount(USER));
     expect(screen.getByText('signedOut|-|closed')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Ở lại' })).toBeNull();
     expect(paths()).toEqual([]);
@@ -648,7 +695,7 @@ describe('closeAccount: the server deleted the account (S52)', () => {
 
   test('the next sign-in is not "closed" any more', async () => {
     await signedInWithRecord();
-    await act(() => session.closeAccount());
+    await act(() => session.closeAccount(USER));
     await act(() => session.signIn(TOKEN, USER));
     expect(screen.getByText(`signedIn|${USER}|ok`)).toBeTruthy();
     await act(() => session.signOut());
@@ -661,19 +708,22 @@ describe('closeAccount: the server deleted the account (S52)', () => {
     await act(async () => {
       const failed = api.get('/me').catch(() => undefined);
       await failed;
-      await session.closeAccount();
+      await session.closeAccount(USER);
     });
     expect(screen.getByText('signedOut|-|closed')).toBeTruthy();
     expect(await AsyncStorage.getAllKeys()).toEqual(['pending:v1:someone-else']);
   });
 
-  test('without a session it changes nothing: a queue kept for a user whose session expired stays', async () => {
+  test('a session that had already ended and been cleared (expired) when the deletion is known: the queue it kept goes with the account, and the end is "closed", not "expired"', async () => {
     await signedInWithRecord();
     fetchMock.mockResolvedValue(sessionInvalid());
     await act(() => api.get('/me').catch(() => undefined));
     expect(await screen.findByText('signedOut|-|expired')).toBeTruthy();
-    await act(() => session.closeAccount());
     expect(await AsyncStorage.getItem(QUEUE)).not.toBeNull();
+    await act(() => session.closeAccount(USER));
+    expect(screen.getByText('signedOut|-|closed')).toBeTruthy();
+    expect(await AsyncStorage.getItem(QUEUE)).toBeNull();
+    expect(await AsyncStorage.getAllKeys()).toEqual(['pending:v1:someone-else']);
   });
 
   test('a plain sign-out is not "closed"', async () => {

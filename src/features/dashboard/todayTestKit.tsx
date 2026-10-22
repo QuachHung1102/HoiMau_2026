@@ -317,13 +317,17 @@ function ticksOf(code: string) {
 const UNDO_WINDOW_MS = 10_000;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** The routes of `auth: 'anon'` (routes/auth.ts, routes/meta.ts). */
+const ANONYMOUS = new RegExp('^(GET /healthz|GET /meta/timezones|POST /auth/(register|login|password/forgot|password/reset))$');
+
 /** What the stand-in server answers by itself; a test that takes a request over can still let it happen. */
 export function serverAnswer(request: string, init: Init): unknown {
   if (world.down) throw new TypeError('Network request failed');
-  // account_delete revoked every session: any route that needs one answers 401 from then on (only the timezone list is anonymous)
-  // (the key of a write is read before the session is looked up)
-  if (world.privacy.deleted && request !== 'GET /meta/timezones') return guard(() => {
-    if (init.method !== 'GET') checkKey(init);
+  // account_delete revoked every session: any route that needs one answers 401 from then on (the key of a write is read before the
+  // session is looked up); the anon routes never look at a session (app.ts), so they answer as before
+  if (world.privacy.deleted && !ANONYMOUS.test(request)) return guard(() => {
+    // (the sign-out is the one write that takes no key)
+    if (init.method !== 'GET' && request !== 'POST /auth/logout') checkKey(init);
     return refuse(401, 'SESSION_INVALID');
   });
   if (request === 'GET /me') return respond(200, world.me);

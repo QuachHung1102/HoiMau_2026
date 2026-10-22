@@ -2,6 +2,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as Keychain from 'react-native-keychain';
 import * as syncVi from '../i18n/vi/sync';
+import { clearExports } from '../native/hoiMauNative';
 import { clearUserCache } from '../storage/cache';
 import { clearCelebratedLevel, clearCelebratedStage } from '../storage/celebrated';
 import { clearPendingFor, flushPending, unsentCount } from '../storage/pendingActions';
@@ -25,9 +26,10 @@ export type Session = {
   /**
    * The server has deleted the account (`POST /me/delete`, S52): every session is revoked, so nothing is sent for it. Forgets
    * the token, the caches and the queue of this user (the question of `signOut` is not asked: the account they belong to is
-   * gone) and ends on Welcome, with `closed` set. Joins a sign-out or a "session ended" already under way.
+   * gone) and ends on Welcome, with `closed` set. Joins a sign-out or a "session ended" already under way. `userId` is the account the
+   * deletion was sent for: its queue goes even when a 401 has already ended the session (that keeps queues) and cleared the bound user.
    */
-  closeAccount(): Promise<void>;
+  closeAccount(userId: string): Promise<void>;
 };
 
 const SessionContext = createContext<Session | null>(null);
@@ -81,8 +83,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const leaving = useRef<Promise<void> | null>(null);
   // The account is gone: whichever way the session ends from here on (a 401 of the retry of a lost answer included), it ends as closed.
   const closing = useRef(false);
-  // Whose session the flight under way is ending (`userIdRef` is already empty by then); null when none is.
-  const leavingUser = useRef<string | null>(null);
   // Sign-out guard: how many records would be dropped ('unknown': the stored queue could not be read), while the
   // person is being asked; and where the answer goes.
   const [unsent, setUnsent] = useState<number | 'unknown' | null>(null);
@@ -98,7 +98,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     (expired: boolean, closed = false) => {
       leaving.current ??= (async () => {
         const userId = userIdRef.current;
-        leavingUser.current = userId;
         // From here on nothing more is recorded for this user: a record accepted during the wait below would be
         // wiped at the end without the question having been asked about it.
         if (!expired) stopRecording();
@@ -114,6 +113,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // stops here and cannot write to the disk cache after it is cleared below.
         wipeQueries(queryClient);
         if (userId) await bestEffort(clearUserCache(userId));
+        // The last JSON export sits in the app's cache with the whole account in it: it goes with the session, whoever it belonged to.
+        await bestEffort(clearExports());
         // What was still waiting to be sent goes only when the user asked to leave (and was warned by `signOut`).
         // A session the server ended keeps its queue: it is sent when that user signs in again, never under another.
         if (userId && !expired) await bestEffort(clearPendingFor(userId));
@@ -127,7 +128,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         reply(false); // a question still open belongs to a session that is gone
       })().finally(() => {
         leaving.current = null;
-        leavingUser.current = null;
       });
       return leaving.current;
     },
@@ -153,13 +153,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return leave(false);
   }, [leave]);
 
-  const closeAccount = useCallback(async () => {
-    const userId = userIdRef.current ?? leavingUser.current;
+  const closeAccount = useCallback(async (userId: string) => {
     closing.current = true;
     stopRecording();
     await leave(false, true);
     // the queue of a session the server ended is kept; this account is gone, so its records can never be delivered
-    if (userId) await bestEffort(clearPendingFor(userId));
+    await bestEffort(clearPendingFor(userId));
   }, [leave]);
 
   const enter = useCallback(
