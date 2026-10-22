@@ -284,8 +284,8 @@ const planted = (): Planted[] => [
 
 /**
  * Whether a log line carries `needle`. Text is looked for anywhere in the line. A number is looked
- * for as a value of the line's fields except the clock (`ts`, `ms`, `status`): as text, "1987"
- * is also a piece of a uuid.
+ * for in the values of the line's fields except the clock (`ts`, `ms`, `status`): as a number, and
+ * as a word inside a text value (not as a piece of one: "1987" is also a piece of a uuid).
  */
 function leaks(line: string, needle: string | number): boolean {
   if (typeof needle === 'string') {
@@ -294,12 +294,18 @@ function leaks(line: string, needle: string | number): boolean {
       ? new RegExp(`(?<![0-9A-Za-z-])${needle}(?![0-9A-Za-z-])`).test(line)
       : line.includes(needle);
   }
+  // inside a text it counts when no letter, digit or dash is before it (a uuid group) and no letter,
+  // digit or decimals follow it: "boom 173.4." and "kcal 512 over" are leaks, "-1987-" is not
+  const inText = new RegExp(`(?<![0-9A-Za-z-]|[0-9]\\.)${String(needle).replace('.', '\\.')}(?![0-9A-Za-z]|\\.[0-9])`);
   const found = (value: unknown, key?: string): boolean => {
     if (key === 'ts' || key === 'ms' || key === 'status') {
       return false;
     }
     if (typeof value === 'number') {
       return value === needle;
+    }
+    if (typeof value === 'string') {
+      return inText.test(value);
     }
     if (value !== null && typeof value === 'object') {
       return Object.entries(value).some(([k, v]) => found(v, k));
@@ -316,12 +322,19 @@ test('no log line carries anything the person gave the server', async () => {
   for (const { name, needle, inFixture } of values) {
     // 1. the value is in the fixture
     assert.equal(await inFixture(), true, `${name} is in the fixture`);
-    // 2. the scanner sees it in a line that leaks it (as a field, and inside a longer text)
-    let caught = '';
-    createLogger(line => {
-      caught = line;
-    }).line({ evt: 'x', note: typeof needle === 'number' ? needle : `a ${needle} b` });
-    assert.equal(leaks(caught, needle), true, `the scanner finds ${name} in a leaking line`);
+    // 2. the scanner sees it in a line that leaks it: as a field, inside a longer text, and (a
+    // number) as a field that holds text
+    const leakingFields: Record<string, unknown>[] = [{ note: needle }, { note: `kcal ${needle} over target` }, { note: `boom ${needle}.` }];
+    if (typeof needle === 'number') {
+      leakingFields.push({ note: String(needle) });
+    }
+    for (const fields of leakingFields) {
+      let caught = '';
+      createLogger(line => {
+        caught = line;
+      }).line({ evt: 'x', ...fields });
+      assert.equal(leaks(caught, needle), true, `the scanner finds ${name} in ${caught}`);
+    }
     // 3. and no real line has it
     const hit = everything.find(line => leaks(line, needle));
     assert.equal(hit, undefined, `${name} is in a log line: ${hit}`);
@@ -337,12 +350,20 @@ test('the scanner does not call an honest number a leak (a uuid that contains th
   const line = JSON.stringify({ evt: 'ledger', userId: '0000a1987b00-0000-0000-0000-000000000000', amount: 10, ms: 1987, status: 200 });
   assert.equal(leaks(line, 1987), false);
   assert.equal(leaks(JSON.stringify({ amount: 1987 }), 1987), true);
+  // a four-digit group of a uuid, a longer number and a longer decimal are not the value
+  const honest = [{ userId: '0f3a1c2b-1987-4abc-8def-001122334455' }, { note: 'order 19871' }, { note: 'x1987' }, { note: '2027-03-10' }];
+  for (const fields of honest) {
+    assert.equal(leaks(JSON.stringify({ evt: 'x', ...fields }), 1987), false, JSON.stringify(fields));
+  }
+  assert.equal(leaks(JSON.stringify({ note: 'height 173.45' }), 173.4), false);
+  assert.equal(leaks(JSON.stringify({ note: 'height 173.4 cm' }), 173.4), true);
+  assert.equal(leaks(JSON.stringify({ note: '1173.4' }), 173.4), false);
 });
 
 // ---------------------------------------------------------------------------------------------
 // job_late
 
-/** A day-close that does what the test says; the other fields are the real job's. */
+/** A job named like the real day-close, so the scheduler's late check applies to it, that succeeds or fails as the test says. */
 function dayCloseThat(succeeds: boolean): Job {
   return {
     name: 'day-close',
