@@ -53,6 +53,16 @@ class HoiMauNativeModule(reactContext: ReactApplicationContext) : NativeHoiMauNa
     }
   }
 
+  // The last export (email, measurements, journal in the clear) must not outlive the session that made it. Resolves when there is nothing to delete.
+  override fun clearExports(promise: Promise) {
+    try {
+      File(reactApplicationContext.cacheDir, "exports").deleteRecursively()
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject("E_CLEAR", e.message, e)
+    }
+  }
+
   companion object {
     const val NAME = "HoiMauNative"
     const val AUTHORITY = "com.hoi_mau.fileprovider"

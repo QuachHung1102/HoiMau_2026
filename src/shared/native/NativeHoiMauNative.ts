@@ -6,6 +6,7 @@ import { TurboModuleRegistry } from 'react-native';
 export interface Spec extends TurboModule {
   setKeepAwake(on: boolean): void;
   shareTextFile(fileName: string, mimeType: string, content: string): Promise<void>;
+  clearExports(): Promise<void>;
 }
 
 export default TurboModuleRegistry.get<Spec>('HoiMauNative');

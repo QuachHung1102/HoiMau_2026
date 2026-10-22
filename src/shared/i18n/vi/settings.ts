@@ -140,7 +140,7 @@ export const readPolicy = 'Đọc chính sách riêng tư';
 
 // S52: the account is deleted after the password is given
 export const deleteTitle = 'Xóa tài khoản?';
-export const deleteSubtitle = 'Hãy đọc kỹ trước khi xác nhận.';
+export const deleteSubtitle = 'Hãy đọc trước khi xác nhận.';
 export const deleteHeadline = 'Bạn sẽ không thể tiếp tục sử dụng tài khoản này.';
 export const deleteConsequences = (purgeDays: number) =>
   [

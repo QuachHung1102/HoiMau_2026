@@ -1,6 +1,6 @@
 import type * as Wrapper from './hoiMauNative';
 
-type Native = { setKeepAwake: jest.Mock; shareTextFile: jest.Mock };
+type Native = { setKeepAwake: jest.Mock; shareTextFile: jest.Mock; clearExports: jest.Mock };
 
 // The spec module reads NativeModules.HoiMauNative when it is first imported, so each case loads a fresh copy of
 // react-native and the wrapper after setting the platform and the mock.
@@ -17,6 +17,7 @@ function load(os: 'android' | 'ios', native: Native | undefined) {
 const mockNative = (): Native => ({
   setKeepAwake: jest.fn(),
   shareTextFile: jest.fn().mockResolvedValue(null),
+  clearExports: jest.fn().mockResolvedValue(null),
 });
 
 describe('setKeepAwake', () => {
@@ -48,6 +49,33 @@ describe('setKeepAwake', () => {
     const { setKeepAwake } = load('ios', native);
     setKeepAwake(true);
     expect(native.setKeepAwake).not.toHaveBeenCalled();
+  });
+});
+
+describe('clearExports', () => {
+  test('calls through on Android', async () => {
+    const native = mockNative();
+    const { clearExports } = load('android', native);
+    await clearExports();
+    expect(native.clearExports).toHaveBeenCalledTimes(1);
+  });
+
+  test('is a no-op off Android and without the module', async () => {
+    const native = mockNative();
+    await expect(load('ios', native).clearExports()).resolves.toBeUndefined();
+    expect(native.clearExports).not.toHaveBeenCalled();
+    await expect(load('android', undefined).clearExports()).resolves.toBeUndefined();
+  });
+
+  test('a module that rejects or throws does not make it reject', async () => {
+    const rejecting = mockNative();
+    rejecting.clearExports.mockRejectedValue(new Error('E_CLEAR'));
+    await expect(load('android', rejecting).clearExports()).resolves.toBeUndefined();
+    const throwing = mockNative();
+    throwing.clearExports.mockImplementation(() => {
+      throw new Error('no window');
+    });
+    await expect(load('android', throwing).clearExports()).resolves.toBeUndefined();
   });
 });
 

@@ -18,6 +18,13 @@ export function setKeepAwake(on: boolean): void {
   } catch {}
 }
 
+/** Deletes the last file `shareTextFile` wrote (sign-out and account deletion). Never throws: off Android, or with the module missing, there is nothing to delete. */
+export async function clearExports(): Promise<void> {
+  try {
+    await nativeModule()?.clearExports();
+  } catch {}
+}
+
 export async function shareTextFile(fileName: string, mimeType: string, content: string): Promise<void> {
   const native = nativeModule();
   if (native) {
