@@ -7,6 +7,8 @@ import { act, fetchMock, fireEvent, hold, installTodayTestEnv, openEditProfile, 
 installTodayTestEnv();
 // the whole app is mounted for each test and some of them walk through several steps
 jest.setTimeout(20_000);
+// a failing test must not leave faked time to the ones after it
+afterEach(() => jest.useRealTimers());
 
 const DAY = 24 * 60 * 60 * 1000;
 /** The input of this label (once it has an error its label goes on with ", lỗi: ..."). */
@@ -461,7 +463,6 @@ describe('S81 and the change of direction', () => {
     expect(await screen.findByText('Bạn có thể đổi hướng từ 10:30 ngày 29/10/2026.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Đỡ Đòn. Có thể đổi sau 16 ngày' })).toBeTruthy();
     view.unmount();
-    jest.useRealTimers();
   });
 
   test('the server says "not yet" while `Me` said the date had passed: 409 opens the same dialog with the server\'s date, and the sheet is gone', async () => {
@@ -491,12 +492,19 @@ describe('S81 and the change of direction', () => {
     expect(screen.getByRole('button', { name: 'Đổi hướng' })).toBeDisabled();
     fireEvent.press(screen.getByRole('radio', { name: /^Hỗ Trợ/ }));
     expect(screen.getByRole('radio', { name: /^Hỗ Trợ/, checked: true })).toBeTruthy();
+    const meReads = reads('/me');
+    const dayReads = reads('/day');
     fireEvent.press(screen.getByRole('button', { name: 'Đổi hướng' }));
-    // each role query walks the whole tree, which is slow with the full suite running: a generous wait, not a different test
-    await waitFor(() => expect(screen.queryByRole('header', { name: 'Đổi hướng' })).toBeNull(), { timeout: 5000 });
+    // a failing toBeNull() pretty-prints the whole tree on every poll; a plain throw keeps the poll cheap
+    await waitFor(() => {
+      if (screen.queryByRole('header', { name: 'Đổi hướng' })) throw new Error('the sheet is still open');
+    });
     expect(archetype().map(request => request.body)).toEqual([{ archetype: 'SUPPORTER' }]);
-    expect(await screen.findByRole('button', { name: 'Hỗ Trợ. Có thể đổi sau 14 ngày' }, { timeout: 5000 })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Hỗ Trợ. Có thể đổi sau 14 ngày' })).toBeTruthy();
     expect(world.me.user.archetype).toBe('SUPPORTER');
+    // the targets are read again, but the `Me` the server just answered is kept, not fetched a second time
+    await waitFor(() => expect(reads('/day')).toBeGreaterThan(dayReads));
+    expect(reads('/me')).toBe(meReads);
     // XP and the streak are the profile's own and did not move
     expect(world.me.progression?.streakCurrent).toBe(4);
     view.unmount();
