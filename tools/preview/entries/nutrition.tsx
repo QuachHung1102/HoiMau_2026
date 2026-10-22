@@ -1,10 +1,10 @@
-import { useEffect } from 'react';
 import type { Meal, MealPlanState, SwapCandidates } from '../../../domain/contract/content.ts';
 import { calorieWindow } from '../../../domain/energy.ts';
 import type { IngredientTag, MealSlot } from '../../../domain/types.ts';
 import { MEALS } from '../../../server/content/meals.ts';
 import { mealPlanKey, swapCandidatesKey } from '../../../src/features/nutrition/api';
 import type { Entries } from '../harness';
+import { PressWhen } from './guild';
 import { app, settingsOf } from './today';
 
 // The meals are the real content (server/content/meals.ts), by code; the ids are their codes. The numbers of the
@@ -35,19 +35,6 @@ const offered = (codes: string[], planned: Meal): SwapCandidates['candidates'] =
 const LUNCH_CANDIDATES = ['COM_CA_RAU_LUOC', 'BUN_GA_RAU_THOM', 'DAU_HU_COM_NAM'];
 const candidates = (swapsRemaining: number, list: SwapCandidates['candidates']): [readonly unknown[], SwapCandidates] => [swapCandidatesKey('LUNCH'), { mealSlot: 'LUNCH', swapsRemaining, candidates: list }];
 
-/** shot.mjs cannot press anything: this presses the first control `find` returns once it is on the page. */
-function PressWhen({ find }: { find: () => HTMLElement | null }) {
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const control = find();
-      if (!control) return;
-      clearInterval(timer);
-      control.click();
-    }, 50);
-    return () => clearInterval(timer);
-  }, [find]);
-  return null;
-}
 const firstChoice = () => document.querySelector<HTMLElement>('[role="radio"]');
 
 const swapRoute = { route: 'MealSwap', params: { mealSlot: 'LUNCH' } } as const;

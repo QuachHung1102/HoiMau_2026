@@ -9,6 +9,7 @@ export const colors = {
   ink: '#182743',
   muted: '#56647B',
   line: '#DCE3EE',
+  fieldLine: '#7F8CA1',
   white: '#FFFFFF',
   error: '#B63838',
   flame: '#C2410C',

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { withApp, type Entries } from '../harness';
+import { beginDrive, withApp, type Entries } from '../harness';
 
 const session = { userId: '5f0c2a8e-1d37-4a55-9c1b-0c8a4d2e7b10' };
 // The gate decides before any route shows, so the route named here only matters once a tab root exists.
@@ -14,12 +14,13 @@ const refuse = (status: number, code: string) => answer(status, { error: { code,
 
 /**
  * The error and confirmation states of the auth screens only exist after the person has typed and pressed, so
- * these entries type and press for them (browser only: under Jest there is no document and nothing happens).
+ * these entries type and press for them (in the browser, and in the Jest a11y sweep through its document shim).
  * `fill` maps an input's accessibility label to its text, `press` is the name of the button to press.
  */
 function Drive({ fill, press }: { fill: Record<string, string>; press: string }) {
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
+    const done = beginDrive();
     const timer = setTimeout(() => {
       for (const [label, text] of Object.entries(fill)) {
         const input = document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);
@@ -28,11 +29,17 @@ function Drive({ fill, press }: { fill: Record<string, string>; press: string })
         input?.dispatchEvent(new Event('input', { bubbles: true }));
       }
       setTimeout(() => {
-        const buttons = [...document.querySelectorAll<HTMLElement>('[role="button"]')];
-        buttons.find(button => button.textContent === press)?.click();
+        const button = [...document.querySelectorAll<HTMLElement>('[role="button"]')].find(item => item.textContent === press);
+        // not found: the drive stays open, so the sweep reports the entry instead of checking the state before it
+        if (!button) return;
+        button.click();
+        done();
       }, 100);
     }, 400);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      done();
+    };
   }, [fill, press]);
   return null;
 }

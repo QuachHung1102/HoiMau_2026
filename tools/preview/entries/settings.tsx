@@ -8,7 +8,7 @@ import { inventoryKey, petKey } from '../../../src/features/shop/api';
 import * as authVi from '../../../src/shared/i18n/vi/auth';
 import * as onb from '../../../src/shared/i18n/vi/onboarding';
 import * as vi from '../../../src/shared/i18n/vi/settings';
-import type { Entries } from '../harness';
+import { beginDrive, type Entries } from '../harness';
 import { byText, PressWhen } from './guild';
 import { app, dayOf, meOf, pathOf, respond, settingsOf } from './today';
 
@@ -45,14 +45,19 @@ const waiting = (): Me => {
 /** shot.mjs cannot type: this writes into the field with this label, as a person would. */
 export function Type({ label, text }: { label: string; text: string }) {
   useEffect(() => {
+    const done = beginDrive();
     const timer = setInterval(() => {
       const input = document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);
       if (!input) return;
       clearInterval(timer);
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, text);
       input.dispatchEvent(new Event('input', { bubbles: true }));
+      done();
     }, 50);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      done();
+    };
   }, [label, text]);
   return null;
 }

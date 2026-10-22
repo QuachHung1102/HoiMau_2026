@@ -14,7 +14,7 @@ test('shows the visible label and a labelled input; a placeholder does not repla
   const view = render(wrap(<TextField label="Email" placeholder="ban@example.com" value="" onChangeText={() => undefined} />));
   expect(view.getByText('Email')).toBeTruthy();
   expect(view.getByLabelText('Email').props.placeholder).toBe('ban@example.com');
-  expect(boxStyle(view).borderColor).toBe(rgba(colors.line));
+  expect(boxStyle(view).borderColor).toBe(rgba(colors.fieldLine));
   view.unmount();
 });
 
@@ -57,7 +57,7 @@ test('focus thickens the border in the primary colour and blur restores it', () 
   fireEvent(view.getByLabelText('Email'), 'focus');
   expect(boxStyle(view)).toMatchObject({ borderColor: colors.primary, borderWidth: 2 });
   fireEvent(view.getByLabelText('Email'), 'blur');
-  expect(boxStyle(view)).toMatchObject({ borderColor: rgba(colors.line), borderWidth: 1 });
+  expect(boxStyle(view)).toMatchObject({ borderColor: rgba(colors.fieldLine), borderWidth: 1 });
   view.unmount();
 });
 

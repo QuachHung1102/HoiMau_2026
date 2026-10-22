@@ -86,6 +86,16 @@ for (const [fg, bg] of TEXT_PAIRS) {
   check(r >= 4.5, `contrast ${fg} on ${bg} = ${r.toFixed(2)} (< 4.5)`);
 }
 
+// 3b. Non-text contrast >= 3:1 (WCAG 1.4.11): the resting border of an input field against the field (white) and every theme's bg
+const NON_TEXT_PAIRS = [['field-line', 'white'], ['field-line', 'bg'], ['field-line', 'forest-bg'], ['field-line', 'sky-bg']];
+const nonText = [];
+for (const [fg, bg] of NON_TEXT_PAIRS) {
+  if (!colors[fg] || !colors[bg]) { fails.push(`colour token ${fg} or ${bg} missing from DESIGN.md`); continue; }
+  const r = ratio(colors[fg], colors[bg]);
+  nonText.push(`${fg}/${bg} ${r.toFixed(2)}`);
+  check(r >= 3, `non-text contrast ${fg} on ${bg} = ${r.toFixed(2)} (< 3)`);
+}
+
 // 4. Mầm layered SVGs expose the parts that motion targets
 const mamDir = join(D, 'assets/mam');
 const stageFiles = existsSync(mamDir) ? readdirSync(mamDir).filter(f => /^stage-[\w-]+\.svg$/.test(f)) : [];
@@ -170,4 +180,4 @@ if (catalog.length) {
 }
 
 if (fails.length) { console.error(`FAIL (${fails.length})\n- ` + fails.join('\n- ')); process.exit(1); }
-console.log(`OK: ${screens.length} screens, ${catalog.length} motions, ${stageFiles.length} Mầm stages, ${TEXT_PAIRS.length} contrast pairs`);
+console.log(`OK: ${screens.length} screens, ${catalog.length} motions, ${stageFiles.length} Mầm stages, ${TEXT_PAIRS.length} contrast pairs, non-text ${nonText.join(', ')}`);

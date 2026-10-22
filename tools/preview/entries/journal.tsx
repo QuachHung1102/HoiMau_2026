@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import type { JournalCreateResult, JournalEntry, JournalList, Tickets } from '../../../domain/contract/social.ts';
 import * as vi from '../../../src/shared/i18n/vi/journal';
 import { journalKey, ticketsKey } from '../../../src/features/journal/api';
-import type { Entries } from '../harness';
+import { beginDrive, type Entries } from '../harness';
 import { byText } from './guild';
 import { app, meOf, respond } from './today';
 
@@ -44,15 +44,27 @@ const HEAVY_WORDS = 'Mình mệt lắm rồi.\nMình không thiết sống nữa
 /** shot.mjs cannot type or press: this writes into the field, then presses save once the button is enabled. */
 function TypeAndSave({ text, scrollDown = false }: { text: string; scrollDown?: boolean }) {
   useEffect(() => {
+    const done = beginDrive();
+    let save: ReturnType<typeof setTimeout> | undefined;
     const timer = setInterval(() => {
       const area = document.querySelector<HTMLTextAreaElement>('textarea');
       if (!area) return;
       clearInterval(timer);
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(area, text);
       area.dispatchEvent(new Event('input', { bubbles: true }));
-      setTimeout(() => byText('button', vi.save)()?.click(), 150);
+      save = setTimeout(() => {
+        const button = byText('button', vi.save)();
+        // not found: the drive stays open and the sweep reports the entry
+        if (!button) return;
+        button.click();
+        done();
+      }, 150);
     }, 50);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(save);
+      done();
+    };
   }, [text]);
   // the support block stands below the fold of a 844 px screen: keep every scroller at its end so the shot shows it whole
   useEffect(() => {

@@ -25,12 +25,15 @@ export function framesWithoutEntry(codes: string[], entryNames: string[]): strin
   return codes.filter(code => !entryNames.some(name => name.startsWith(`${code.toLowerCase()}-`)));
 }
 
+/** The source without its comments, so a `navigate('X')` written in a comment does not count. */
+export const withoutComments = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
+
 /**
  * Routes nobody can reach: not a navigator root and never the target of navigate / push / replace with its name as the
  * first argument, nor named as `route: '<Name>'` in a row table whose rows navigate to their `route`.
  */
 export function unreachable(routes: string[], roots: string[], sources: string[]): string[] {
-  const text = sources.join('\n');
+  const text = sources.map(withoutComments).join('\n');
   return routes.filter(
     name => !roots.includes(name) && !new RegExp(`\\b(navigate|push|replace)\\(\\s*'${name}'|\\broute: '${name}'`).test(text),
   );
@@ -80,5 +83,7 @@ describe('negative controls', () => {
   });
   test('a route nobody navigates to is reported unreachable', () => {
     expect(unreachable(['Orphan', 'Today'], ['Today'], ["navigation.navigate('Shop')"])).toEqual(['Orphan']);
+    expect(unreachable(['Orphan'], [], ["// navigation.navigate('Orphan')\n/* route: 'Orphan' */ const url = 'http://x';"])).toEqual(['Orphan']);
+    expect(unreachable(['Shop'], [], ["const url = 'http://x'; navigation.navigate('Shop'); // back"])).toEqual([]);
   });
 });

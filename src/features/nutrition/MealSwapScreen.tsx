@@ -124,7 +124,7 @@ export function MealSwapScreen({ route, navigation }: ScreenProps<'MealSwap'>) {
         accessibilityLabel={`${vi.excludeLabel}. ${excluded.length > 0 ? vi.excludeFieldWith(excluded.map(tag => vi.tagLabel[tag]).join(', ')) : vi.excludeField}`}
         disabled={!settings.data}
         onPress={() => setSheet(true)}
-        style={[styles.field, { backgroundColor: palette.white, borderColor: palette.line }, !settings.data && styles.unavailable]}
+        style={[styles.field, { backgroundColor: palette.white, borderColor: palette.fieldLine }, !settings.data && styles.unavailable]}
       >
         <AppText style={styles.fieldText}>{excluded.length > 0 ? vi.excludeFieldWith(excluded.map(tag => vi.tagLabel[tag]).join(', ')) : vi.excludeField}</AppText>
         <Icon name="ChevronDown" color={palette.muted} />

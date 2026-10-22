@@ -9,6 +9,7 @@ colors:
   ink: "#182743"
   muted: "#56647B"
   line: "#DCE3EE"
+  field-line: "#7F8CA1"
   white: "#FFFFFF"
   error: "#B63838"
   flame: "#C2410C"
@@ -105,7 +106,8 @@ Các token ở frontmatter là nguồn giá trị chuẩn; phần dưới mô t�
 - **Nền sương — `bg`:** nền màn hình.
 - **Mực xanh đậm — `ink`:** tiêu đề và nội dung chính.
 - **Mực dịu — `muted`:** hướng dẫn, mô tả và thông tin bổ sung.
-- **Đường phân cách — `line`:** viền trường nhập và ranh giới cần thiết.
+- **Đường phân cách — `line`:** đường phân cách và ranh giới trang trí (thẻ, thanh điều hướng, nền thanh tiến độ).
+- **Viền ô nhập — `field-line`:** viền của ô nhập khi đang nghỉ (ô chữ, ô chọn, ô nhật ký), tương phản ≥ 3:1 với `white` và với `bg` của mọi giao diện màu, để nhìn thấy ô khi còn trống (WCAG 1.4.11). Khi đang nhập viền chuyển sang `primary`, khi lỗi sang `error`.
 - **Trắng — `white`:** bề mặt nhập liệu, thanh điều hướng và chữ trên nền xanh chính.
 
 Màu `error` dành cho thông báo lỗi. Luôn đi cùng lời giải thích và cách xử lý; không chỉ đổi màu để báo trạng thái. Chưa định nghĩa bảng màu tối; dark theme chờ triển khai native và kiểm tra tương phản riêng.
@@ -120,7 +122,7 @@ Màu `error` dành cho thông báo lỗi. Luôn đi cùng lời giải thích v�
 
 ### Chủ đề mua bằng xu
 
-Chủ đề chỉ thay ba vai trò `primary`, `soft`, `bg`; `lime`, `ink`, `muted`, `line`, `error` và màu trạng thái giữ nguyên. **Rừng xanh:** `forest-primary`, `forest-soft`, `forest-bg`. **Bầu trời:** `sky-primary`, `sky-soft`, `sky-bg`. Mọi cặp chữ/nền của chủ đề được kiểm tra tương phản bằng `design/check.mjs`. Chủ đề là vật phẩm thẩm mỹ, không ảnh hưởng XP, chuỗi hay điểm tổ đội (R-10.1).
+Chủ đề chỉ thay ba vai trò `primary`, `soft`, `bg`; `lime`, `ink`, `muted`, `line`, `field-line`, `error` và màu trạng thái giữ nguyên. **Rừng xanh:** `forest-primary`, `forest-soft`, `forest-bg`. **Bầu trời:** `sky-primary`, `sky-soft`, `sky-bg`. Mọi cặp chữ/nền của chủ đề được kiểm tra tương phản bằng `design/check.mjs`. Chủ đề là vật phẩm thẩm mỹ, không ảnh hưởng XP, chuỗi hay điểm tổ đội (R-10.1).
 
 ## Typography
 
@@ -165,7 +167,7 @@ Khối đồng hành dùng nền xanh và Mầm; khối giải thích dùng nề
 
 ### Inputs / Fields
 
-Ô nhật ký dùng bề mặt trắng, viền `line` và góc bo bề mặt. Khi triển khai cần nhãn truy cập được, focus nhìn thấy, bàn phím phù hợp và lỗi tại đúng trường. Placeholder không thay thế nhãn. Dòng “Chỉ mình bạn đọc được” diễn đạt yêu cầu quyền riêng tư, không chứng minh cơ chế bảo mật đã tồn tại.
+Ô nhập (kể cả ô nhật ký và ô chọn) dùng bề mặt trắng, viền `field-line` và góc bo bề mặt. Khi triển khai cần nhãn truy cập được, focus nhìn thấy, bàn phím phù hợp và lỗi tại đúng trường. Placeholder không thay thế nhãn. Dòng “Chỉ mình bạn đọc được” diễn đạt yêu cầu quyền riêng tư, không chứng minh cơ chế bảo mật đã tồn tại.
 
 ### Navigation
 

@@ -11,7 +11,7 @@ import { meKey } from '../../../src/features/auth/api';
 import { dayKey, settingsKey, tickPath, WATER } from '../../../src/features/quests/api';
 import { PendingBanner } from '../../../src/features/sync/PendingBanner';
 import { waterTitle } from '../../../src/shared/i18n/vi/quests';
-import { withApp, type Entries } from '../harness';
+import { beginDrive, withApp, type Entries } from '../harness';
 
 export const USER = '5f0c2a8e-1d37-4a55-9c1b-0c8a4d2e7b10';
 const HOUR = 60 * 60 * 1000;
@@ -95,22 +95,33 @@ export const pathOf = (url: string) => url.slice(url.indexOf('/api/v1') + '/api/
 /** Puts what an earlier run of the app would have left on disk, then mounts the app. */
 function Seeded({ storage, children }: { storage: Record<string, unknown>; children: ReactNode }) {
   const [ready, setReady] = useState(false);
+  // a drive until the app is mounted: the driver inside it (if any) registers first, its effects run before this one's
+  const [done] = useState(beginDrive);
   useEffect(() => {
     AsyncStorage.setMany(Object.fromEntries(Object.entries(storage).map(([key, value]) => [key, JSON.stringify(value)]))).then(() => setReady(true));
   }, [storage]);
+  useEffect(() => {
+    if (ready) done();
+  }, [ready, done]);
+  useEffect(() => done, [done]);
   return ready ? <>{children}</> : null;
 }
 
 /** shot.mjs cannot press anything: this presses the water tracker once it is on the page. */
 function PressTracker() {
   useEffect(() => {
+    const done = beginDrive();
     const timer = setInterval(() => {
       const row = document.querySelector<HTMLElement>(`[aria-label^="${waterTitle}"]`);
       if (!row) return;
       clearInterval(timer);
       row.click();
+      done();
     }, 50);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      done();
+    };
   }, []);
   return null;
 }

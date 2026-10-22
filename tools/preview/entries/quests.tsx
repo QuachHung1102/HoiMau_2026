@@ -1,9 +1,9 @@
-import { useEffect } from 'react';
 import type { ActionResult } from '../../../domain/contract/common.ts';
 import type { DayState, Me } from '../../../domain/contract/core.ts';
 import { boardQuestTitle } from '../../../src/shared/i18n/vi/quests';
 import { saveAction } from '../../../src/shared/i18n/vi/nutrition';
 import type { Entries } from '../harness';
+import { PressWhen } from './guild';
 import { app, dayOf, meOf, pathOf, respond, settingsOf } from './today';
 
 const HOUR = 60 * 60 * 1000;
@@ -19,19 +19,6 @@ const withQuest = (day: DayState, code: string, more: Partial<DayState['quests']
   day.quests.map(quest => (quest.code === code ? { ...quest, ...more } : quest));
 const open = (day: DayState) => ({ quests: withQuest(day, HIDDEN, { locked: false }) });
 
-/** shot.mjs cannot press anything: this presses the first control `find` returns once it is on the page. */
-function PressWhen({ find }: { find: () => HTMLElement | null }) {
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const control = find();
-      if (!control) return;
-      clearInterval(timer);
-      control.click();
-    }, 50);
-    return () => clearInterval(timer);
-  }, [find]);
-  return null;
-}
 const byLabel = (prefix: string) => () => document.querySelector<HTMLElement>(`[aria-label^="${prefix}"]`);
 const byText = (text: string) => () => [...document.querySelectorAll<HTMLElement>('[role="button"]')].find(item => item.textContent === text) ?? null;
 
