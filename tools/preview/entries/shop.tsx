@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import type { Inventory, PurchaseResult, Shop, ShopItem } from '../../../domain/contract/content.ts';
 import type { Perks } from '../../../domain/contract/core.ts';
 import { SHOP_ITEMS } from '../../../server/content/shopItems.ts';
@@ -8,6 +7,7 @@ import { progressionKey } from '../../../src/features/progression/api';
 import * as vi from '../../../src/shared/i18n/vi/shop';
 import type { Entries } from '../harness';
 import { petOf } from './pet';
+import { PressWhen } from './guild';
 import { app, meOf, pathOf, respond } from './today';
 
 // The items are the server's own content (server/content/shopItems.ts); what is owned, equipped or locked is worked out
@@ -32,19 +32,6 @@ const perksOf = (pointsAvailable: number): Perks => ({
 const FOREST = 'THEME_FOREST';
 const FOX = 'SKIN_FOX';
 
-/** shot.mjs cannot press anything: this presses the first control `find` returns once it is on the page. */
-function PressWhen({ find }: { find: () => HTMLElement | null }) {
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const control = find();
-      if (!control) return;
-      clearInterval(timer);
-      control.click();
-    }, 50);
-    return () => clearInterval(timer);
-  }, [find]);
-  return null;
-}
 const byText = (role: string, text: string) => () => Array.from(document.querySelectorAll<HTMLElement>(`[role="${role}"]`)).find(node => node.textContent?.includes(text)) ?? null;
 
 const seeded = (coin: number, owned?: string[], equipped?: Partial<Record<Kind, string>>, level = 5): [readonly unknown[], unknown][] => [

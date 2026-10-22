@@ -6,6 +6,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ReactTestInstance } from 'react-test-renderer';
+import { resetPendingForTests } from '../src/shared/storage/pendingActions';
 
 // Task 49: every preview entry is rendered under Jest and its tree is checked for what a machine can see of
 // accessibility (P1.6-UI-STD). What only a device shows is in .superpowers/sdd/device-checks.md.
@@ -24,11 +25,17 @@ const isPressable = (n: Node) => isHost(n) && (typeof n.props.onPress === 'funct
 const shown = (n: Node) => `<${typeOf(n)} role=${roleOf(n) ?? '-'} label=${JSON.stringify(n.props.accessibilityLabel ?? textOf(n).slice(0, 40))}>`;
 const RAW_KEY = /^[A-Z_]{4,}$/;
 
-/** Hidden from the screen reader, by itself or by an ancestor. */
+/**
+ * Hidden from the screen reader: by itself (`accessible={false}`, `importantForAccessibility` "no" / "no-hide-descendants",
+ * `accessibilityElementsHidden`), or by an ancestor that hides its descendants. An ancestor's `accessible={false}` hides
+ * nothing below it: its children stay focusable.
+ */
 function hidden(n: Node): boolean {
-  if (n.props.importantForAccessibility === 'no') return true;
-  for (let p: Node | null = n; p; p = p.parent)
-    if (isHost(p) && (p.props.accessible === false || p.props.importantForAccessibility === 'no-hide-descendants')) return true;
+  const own = n.props;
+  if (own.accessible === false || own.importantForAccessibility === 'no' || own.importantForAccessibility === 'no-hide-descendants' || own.accessibilityElementsHidden === true)
+    return true;
+  for (let p = n.parent; p; p = p.parent)
+    if (isHost(p) && (p.props.importantForAccessibility === 'no-hide-descendants' || p.props.accessibilityElementsHidden === true)) return true;
   return false;
 }
 /** Not read on its own: hidden, or inside an accessible group that is read as one element. */
@@ -101,7 +108,6 @@ export function assertAccessible(root: Node): number {
 // browser preview, since shot.mjs cannot. Here the same few selectors are answered from the rendered tree, so the sweep
 // checks those states too.
 let tree: Node | null = null;
-let lastQuery = 0;
 class HTMLInputElement {
   node: Node | null = null;
   text = '';
@@ -133,7 +139,6 @@ const asElement = (n: Node) => {
 function select(selector: string): Node[] {
   const hosts = tree ? all(tree).filter(isHost) : [];
   if (selector === '*') return []; // scroll-to-the-end has no meaning here
-  lastQuery = performance.now();
   if (selector === 'textarea') return hosts.filter(n => typeOf(n) === 'TextInput' && n.props.multiline);
   if (selector === '[dir="auto"]') return hosts.filter(n => typeOf(n) === 'Text');
   const m = /^(input)?\[(role|aria-label)(\^?)="(.*)"\]$/.exec(selector);
@@ -150,10 +155,19 @@ Object.assign(globalThis, {
   document: { querySelector: (s: string) => select(s).map(asElement)[0] ?? null, querySelectorAll: (s: string) => select(s).map(asElement) },
 });
 
-// Let the session restore, the queries settle and the first effects run (an entry that drives the screen starts after up to
-// 400 ms); while it is still driving it (it queried the document lately), keep going a little longer. performance.now, not
-// Date.now: the focus-session entries move the device clock forward.
-const settle = async () => {
+// The entries that drive their screen count themselves while they do (`beginDrive` in tools/preview/harness.tsx).
+const drives = () => (globalThis as { __previewDrives?: { pending: number; lastDoneAt: number } }).__previewDrives ?? { pending: 0, lastDoneAt: 0 };
+export const DRIVE_LIMIT_MS = 15000;
+/** After the last step of a drive, the answer it causes (a refused request, a dialog) is given this long to show. */
+const AFTER_DRIVE_MS = 300;
+
+/**
+ * Lets the session restore, the queries settle and the first effects run (600 ms at least), then waits until no entry is
+ * driving, and the screen has had AFTER_DRIVE_MS to answer the last step. An entry still driving at DRIVE_LIMIT_MS fails:
+ * its designed state was never reached, and the state before it must not pass for it. performance.now, not Date.now: the
+ * focus-session entries move the device clock forward.
+ */
+export async function settle(limitMs = DRIVE_LIMIT_MS) {
   const start = performance.now();
   const now = () => performance.now();
   // As testing-library's waitFor does: while waiting the screen runs as it does in the app (act off), so the async work of
@@ -162,11 +176,25 @@ const settle = async () => {
   const previous = env.IS_REACT_ACT_ENVIRONMENT;
   env.IS_REACT_ACT_ENVIRONMENT = false;
   try {
-    while (now() - start < 600 || (now() - lastQuery < 400 && now() - start < 5000)) await new Promise(resolve => setTimeout(resolve, 25));
+    while (now() - start < 600 || drives().pending > 0 || now() - drives().lastDoneAt < AFTER_DRIVE_MS) {
+      if (now() - start > limitMs) throw new Error(`entry never reached its driven state: ${drives().pending} drive(s) still running after ${limitMs} ms`);
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
   } finally {
     env.IS_REACT_ACT_ENVIRONMENT = previous;
   }
   await act(async () => undefined);
+}
+
+/** What some driven entries must show when they are checked: the designed state itself, not the screen before it. */
+const DRIVEN_STATE: Record<string, string> = {
+  'auth.tsx s02-sign-in-error': 'Email hoặc mật khẩu chưa đúng.',
+  'guild.tsx s26-guild-join-invalid': 'Mã này chưa đúng, bạn kiểm tra lại nhé',
+  'privacy.tsx s52-delete-account-wrong-password': 'Tài khoản của bạn chưa bị xóa.',
+  'workout.tsx s41-focus-paused': 'Đang tạm dừng',
+  'workout.tsx s63-exit-dialog': 'Thoát buổi tập?',
+  'workout.tsx s20-result-queued': 'Buổi tập đã lưu trên máy, đang chờ gửi',
+  'workout.tsx s20-result-refused-later': 'Buổi tập không được tính',
 };
 
 const entriesDir = path.join(__dirname, '../tools/preview/entries');
@@ -180,25 +208,30 @@ const realFetch = globalThis.fetch;
 const realNow = Date.now;
 afterEach(async () => {
   tree = null;
+  drives().pending = 0; // a failed entry must not hold up the next one
   globalThis.fetch = realFetch;
   Date.now = realNow; // the focus-session entries move the clock forward
+  // each entry starts from an empty device: the pending queue lives in memory too, and a record one entry left waiting
+  // would be sent by the next one
+  resetPendingForTests();
   await AsyncStorage.clear();
 });
 afterAll(() => {
   console.log(`a11y sweep: ${tally.rendered} entries rendered, ${tally.pressables} pressables checked`);
 });
 
-test.each(entries.map(e => [`${e.file} ${e.name}`, e] as const))('%s', async (_, { make }) => {
+test.each(entries.map(e => [`${e.file} ${e.name}`, e] as const))('%s', async (name, { make }) => {
   const view = render(make());
   tree = view.UNSAFE_root;
-  await settle();
   try {
+    await settle();
+    if (DRIVEN_STATE[name]) expect(textOf(view.UNSAFE_root)).toContain(DRIVEN_STATE[name]);
     tally.pressables += assertAccessible(view.UNSAFE_root);
     tally.rendered += 1;
   } finally {
     view.unmount();
   }
-}, 20000);
+}, DRIVE_LIMIT_MS + 10000);
 
 test('negative control: an unlabelled pressable with no role fails the audit', () => {
   const view = render(
@@ -236,10 +269,37 @@ export function vietnameseLines(text: string): number[] {
     .flatMap((line, i) => (!/^\s*(\/\/|\/\*|\*)/.test(line) && VIETNAMESE.test(line) ? [i + 1] : []));
 }
 
-test('only Touchable imports a press primitive from react-native', () => {
-  const banned = /import\s*\{[^}]*\b(Pressable|TouchableOpacity|TouchableHighlight|TouchableWithoutFeedback|Button)\b[^}]*\}\s*from\s*'react-native'/;
-  const hits = sources.filter(f => !isTest(f) && rel(f) !== 'shared/ui/Touchable.tsx' && banned.test(read(f))).map(rel);
+const PRESS = '(Pressable|TouchableOpacity|TouchableHighlight|TouchableWithoutFeedback|TouchableNativeFeedback|Button)';
+/**
+ * The press primitives of react-native a file takes: named imports, destructured requires, and member use through a namespace
+ * import, a require binding or `require('react-native').X`, in either quote style.
+ */
+export function pressPrimitives(text: string): string[] {
+  const RN = String.raw`['"]react-native['"]`;
+  const named = [...text.matchAll(new RegExp(String.raw`import\s*(?:type\s+)?\{([^}]*)\}\s*from\s*${RN}|\{([^}]*)\}\s*=\s*require\(\s*${RN}\s*\)`, 'g'))].flatMap(m =>
+    (m[1] ?? m[2]).split(',').map(part => part.trim().split(/\s+as\s+|\s*:\s*/)[0]),
+  );
+  const spaces = [...text.matchAll(new RegExp(String.raw`import\s*\*\s*as\s+(\w+)\s+from\s*${RN}|(\w+)\s*=\s*require\(\s*${RN}\s*\)`, 'g'))].map(m => m[1] ?? m[2]);
+  const members = [...spaces.map(ns => `\\b${ns}`), String.raw`require\(\s*${RN}\s*\)`].flatMap(owner =>
+    [...text.matchAll(new RegExp(`${owner}\\.${PRESS}\\b`, 'g'))].map(m => m[1]),
+  );
+  return [...named.filter(name => new RegExp(`^${PRESS}$`).test(name)), ...members];
+}
+
+// Test files too: a test that renders its own Pressable would hide a role or 48 dp gap behind the kit.
+test('only Touchable takes a press primitive from react-native, anywhere in src/', () => {
+  const hits = sources.filter(f => rel(f) !== 'shared/ui/Touchable.tsx').flatMap(f => pressPrimitives(read(f)).map(name => `${rel(f)}: ${name}`));
   expect(hits).toEqual([]);
+});
+
+test('negative control: every way of taking a press primitive is seen', () => {
+  expect(pressPrimitives("import { View, Pressable } from 'react-native';")).toEqual(['Pressable']);
+  expect(pressPrimitives('import { TouchableNativeFeedback as T } from "react-native";')).toEqual(['TouchableNativeFeedback']);
+  expect(pressPrimitives("import * as RN from 'react-native';\nconst x = <RN.TouchableOpacity />;")).toEqual(['TouchableOpacity']);
+  expect(pressPrimitives("const { Button } = require('react-native');")).toEqual(['Button']);
+  expect(pressPrimitives("const RN = require('react-native');\nRN.Pressable;")).toEqual(['Pressable']);
+  expect(pressPrimitives("const P = require('react-native').Pressable;")).toEqual(['Pressable']);
+  expect(pressPrimitives("import { Text, type PressableProps } from 'react-native';\nimport { Button } from './Button';")).toEqual([]);
 });
 
 test('font scaling is never switched off, and capped only on the tab labels', () => {

@@ -34,7 +34,7 @@ export function FieldFrame({ label, error, helper, focused = false, children }: 
     return () => run.stop();
   }, [invalid, reduced, tint]);
 
-  const errorTint = tint.interpolate({ inputRange: [0, 1], outputRange: [palette.line, palette.error] });
+  const errorTint = tint.interpolate({ inputRange: [0, 1], outputRange: [palette.fieldLine, palette.error] });
   const emphasised = focused || invalid;
   return (
     <View style={styles.frame}>

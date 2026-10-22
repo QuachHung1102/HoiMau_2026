@@ -31,6 +31,24 @@ export type EntryOptions = {
 
 export type Entries = Record<string, () => ReactElement>;
 
+/**
+ * An entry that types or presses for its designed state (shot.mjs cannot) counts itself as driving: `beginDrive()` when it
+ * starts, the returned `done()` after its last step (and on unmount; extra calls do nothing). The Jest a11y sweep waits
+ * until no entry is driving, and fails an entry still driving at its time limit.
+ */
+export const drives = { pending: 0, lastDoneAt: 0 };
+(globalThis as { __previewDrives?: typeof drives }).__previewDrives = drives;
+export function beginDrive(): () => void {
+  drives.pending += 1;
+  let open = true;
+  return () => {
+    if (!open) return;
+    open = false;
+    drives.pending -= 1;
+    drives.lastDoneAt = performance.now();
+  };
+}
+
 export function withApp(node: ReactElement | null, opts: EntryOptions = {}): ReactElement {
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, gcTime: Infinity, retry: false } } });
   for (const [key, data] of opts.queries ?? []) client.setQueryData(key, data);

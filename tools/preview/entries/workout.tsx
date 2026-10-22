@@ -11,7 +11,7 @@ import * as vi from '../../../src/shared/i18n/vi/workout';
 import { meKey } from '../../../src/features/auth/api';
 import { dayKey, settingsKey } from '../../../src/features/quests/api';
 import type { RouteName } from '../../../src/app/routes';
-import { withApp, type Entries } from '../harness';
+import { beginDrive, withApp, type Entries } from '../harness';
 import { app, dayOf, meOf, pathOf, respond, settingsOf, USER } from './today';
 
 // The answers of the server for a person who has 15 minutes, a room and no equipment: values copied from the real
@@ -27,12 +27,18 @@ const withDetail: [readonly unknown[], unknown][] = [[workoutKey(detail.id), det
  */
 function Script({ steps }: { steps: readonly (() => boolean)[] }) {
   useEffect(() => {
+    const done = beginDrive();
     let next = 0;
     const timer = setInterval(() => {
-      if (next >= steps.length) return clearInterval(timer);
       if (steps[next]()) next += 1;
+      if (next < steps.length) return;
+      clearInterval(timer);
+      done();
     }, 50);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      done();
+    };
   }, [steps]);
   return null;
 }
@@ -166,9 +172,13 @@ export const entries: Entries = {
   // Ended after ten minutes with no network (no fetch stub: every request fails): kept on this device, no reward named.
   's20-result-queued': () => session([afterTraining(600), shown('05:00'), press(vi.endSession), press(vi.endAndSave)]),
   // The same, then the network returns and the retry of the S38 row sends it: refused, the day had closed. (The
-  // app-wide notice that says the same is RejectedNotice, mounted by App.tsx and not by these entries.)
+  // app-wide notice that says the same is RejectedNotice, mounted by App.tsx and not by these entries.) The queue may send it
+  // by itself first (any request that succeeds flushes it): then the row and its "Thử lại" are gone and the refusal shows.
   's20-result-refused-later': () =>
-    session([afterTraining(600), shown('05:00'), press(vi.endSession), press(vi.endAndSave), shown(vi.queuedTitle), press(retry)], refusedLater()),
+    session(
+      [afterTraining(600), shown('05:00'), press(vi.endSession), press(vi.endAndSave), shown(vi.queuedTitle), () => shown(vi.refusedTitle)() || press(retry)()],
+      refusedLater(),
+    ),
   's82-move-demo': () => demoOf(detail, 1),
   's82-move-demo-reduced-motion': () => app({ route: 'MoveDemo', params: { workoutId: detail.id, code: SQUAT.move.code }, queries: withDetail }),
   's82-move-demo-text-only': () => demoOf(withMove(1, { ...SQUAT.move, demoCode: null }), 1),

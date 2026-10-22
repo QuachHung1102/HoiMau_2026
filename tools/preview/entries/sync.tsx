@@ -12,7 +12,7 @@ import { usePendingActions, useWaitingCount } from '../../../src/shared/storage/
 import { OfflineBadge } from '../../../src/shared/ui/Badges';
 import { ListRow } from '../../../src/shared/ui/Card';
 import { Screen } from '../../../src/shared/ui/Screen';
-import { withApp, type Entries } from '../harness';
+import { beginDrive, withApp, type Entries } from '../harness';
 
 const USER = '5f0c2a8e-1d37-4a55-9c1b-0c8a4d2e7b10';
 const me = {
@@ -39,10 +39,16 @@ const action = (id: string, path: string, body: Record<string, unknown>) => ({
 /** Puts what an earlier run of the app would have left on disk, then mounts the app. */
 function Seeded({ storage, children }: { storage: Record<string, unknown>; children: ReactNode }) {
   const [ready, setReady] = useState(false);
+  // a drive until the app is mounted on the seeded storage
+  const [done] = useState(beginDrive);
   useEffect(() => {
     const entries = Object.fromEntries(Object.entries(storage).map(([key, value]) => [key, JSON.stringify(value)]));
     AsyncStorage.setMany(entries).then(() => setReady(true));
   }, [storage]);
+  useEffect(() => {
+    if (ready) done();
+  }, [ready, done]);
+  useEffect(() => done, [done]);
   return ready ? <>{children}</> : null;
 }
 

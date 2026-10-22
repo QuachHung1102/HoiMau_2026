@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import type { GuildMember, GuildState } from '../../../domain/contract/social.ts';
 import { guildKey } from '../../../src/features/guild/api';
 import * as vi from '../../../src/shared/i18n/vi/guild';
-import type { Entries } from '../harness';
+import { beginDrive, type Entries } from '../harness';
 import { app } from './today';
 
 // Illustrative values, as in frames S27 and S76: a guild of four, the week at 79 %. The server's `GuildState` is what the
@@ -47,13 +47,18 @@ export const seen = (state: GuildState): [readonly unknown[], unknown][] => [[gu
 /** shot.mjs cannot press anything: this presses the first control `find` returns once it is on the page. */
 export function PressWhen({ find }: { find: () => HTMLElement | null }) {
   useEffect(() => {
+    const done = beginDrive();
     const timer = setInterval(() => {
       const control = find();
       if (!control) return;
       clearInterval(timer);
       control.click();
+      done();
     }, 50);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      done();
+    };
   }, [find]);
   return null;
 }
