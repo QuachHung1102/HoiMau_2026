@@ -22,11 +22,10 @@ import { ErrorState, LoadingState } from '../../shared/ui/States';
 import { TextField, type TextFieldInput } from '../../shared/ui/TextField';
 import { useMe } from '../auth/api';
 import { displayNameProblem, focusFirstInvalid, noErrors, type FormErrors } from '../auth/form';
-import { prescriptionKey, usePrescription } from '../onboarding/api';
+import { usePrescription } from '../onboarding/api';
 import { BiometricsFields, checkBiometrics, fieldMessage, parseDecimal, parseYear, TimezoneField, timezoneProblem, useTimezoneChoice, type BiometricsText } from '../onboarding/BiometricsFields';
 import { SafetySheet } from '../onboarding/SafetySheet';
 import { TargetsView } from '../onboarding/TargetsView';
-import { useQueryClient } from '@tanstack/react-query';
 import { ArchetypeChange } from './ArchetypeChange';
 import { useAddBiometrics, usePatchMe } from './api';
 
@@ -80,7 +79,6 @@ function biometricsFailure(code: string, details: unknown): FormErrors<Field> {
  */
 function ProfileForm({ loaded, goBack }: { loaded: Loaded; goBack?: () => void }) {
   const { user, prescription } = loaded;
-  const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Draft>(() => draftOf(loaded));
   const [errors, setErrors] = useState<FormErrors<Field>>(noErrors);
   const [saved, setSaved] = useState(false);
@@ -151,11 +149,10 @@ function ProfileForm({ loaded, goBack }: { loaded: Loaded; goBack?: () => void }
 
   const header = { onBack: goBack };
   if (saved) {
-    // the targets of the server: the answer of the last write, or the ones read when this screen opened
-    const targets = queryClient.getQueryData<PrescriptionResponse>(prescriptionKey) ?? prescription;
+    // the targets of the server: `prescription` is the live query, which the answer of the last write has just replaced
     return (
       <Screen title={vi.profileSavedTitle} subtitle={vi.profileSavedSubtitle} {...header}>
-        <TargetsView archetype={targets.archetype} prescription={targets}>
+        <TargetsView archetype={prescription.archetype} prescription={prescription}>
           <Button label={vi.done} onPress={goBack} />
         </TargetsView>
       </Screen>

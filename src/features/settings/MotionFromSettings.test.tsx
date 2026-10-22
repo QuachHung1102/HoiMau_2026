@@ -7,7 +7,7 @@ import { useSession } from '../../shared/api/session';
 import { useReducedMotion } from '../../shared/motion/useReducedMotion';
 import { mountApp } from '../sync/syncTestKit';
 import { useMe } from '../auth/api';
-import { fireEvent, hold, installTodayTestEnv, openSettings, reads, screen, settingsOf, settle, USER, waitFor, world } from './settingsTestKit';
+import { act, app, fireEvent, hold, installTodayTestEnv, openSettings, reads, screen, settingsOf, settle, USER, waitFor, world } from './settingsTestKit';
 
 // The `motion` setting reaches the whole app through App.tsx's MotionFromSettings; the kit mounts the same provider in the same place.
 installTodayTestEnv();
@@ -71,6 +71,37 @@ describe('a cold start: the preference kept on the device is in force from the f
     await waitFor(() => expect(early.at(-1)).toBe('full'));
     expect(early[0]).toBe('reduced');
     expect(early.filter(value => value === 'reduced').length).toBeGreaterThan(0);
+    settingsRead.release();
+    await settle();
+    view.unmount();
+  });
+
+  test('another person signing in does not inherit the kept word of the one who left: static until their own word is read', async () => {
+    jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
+    const OTHER = '9a0c2a8e-1d37-4a55-9c1b-0c8a4d2e7b99';
+    await AsyncStorage.setItem(PREFS, JSON.stringify({ motion: 'FULL' }));
+    await AsyncStorage.setItem(`prefs:v1:${OTHER}`, JSON.stringify({ motion: 'REDUCED' }));
+    const real = AsyncStorage.getItem.bind(AsyncStorage);
+    jest.spyOn(AsyncStorage, 'getItem').mockImplementation(async key => {
+      if (key === `prefs:v1:${OTHER}`) await new Promise(resolve => setTimeout(resolve, 80));
+      return real(key);
+    });
+    const settingsRead = hold('GET /settings');
+    const forOther: string[] = [];
+    function Watch() {
+      const reduced = useReducedMotion();
+      if (useSession().userId === OTHER) forOther.push(reduced ? 'reduced' : 'full');
+      return null;
+    }
+    const view = await mountApp({ landed: false, motion: 'settings', extra: <Watch /> });
+    await screen.findByRole('header', { name: 'Hôm nay' });
+    await settle();
+    await act(() => app.session.signOut());
+    await act(() => app.session.signIn('tok-other', OTHER));
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    });
+    expect([...new Set(forOther)]).toEqual(['reduced']);
     settingsRead.release();
     await settle();
     view.unmount();

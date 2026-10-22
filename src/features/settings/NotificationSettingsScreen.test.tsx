@@ -1,5 +1,5 @@
 import { PermissionsAndroid } from 'react-native';
-import { act, app, fetchMock, fireEvent, hold, installTodayTestEnv, openNotifications, openSettings, queryClient, refuse, reads, screen, settingsOf, settingsPatches, settle, switchOf, waitFor, world } from './settingsTestKit';
+import { act, app, fetchMock, fireEvent, hold, installTodayTestEnv, openNotifications, openSettings, queryClient, refuse, reads, respond, screen, settingsOf, settingsPatches, settle, switchOf, waitFor, world } from './settingsTestKit';
 
 installTodayTestEnv();
 
@@ -300,15 +300,22 @@ describe('rapid toggles: an older failure never overwrites a newer success', () 
 
   test('a read that is on its way when a toggle is made does not undo it', async () => {
     const view = await openNotifications();
+    const out = hold(PATCH);
     const late = hold('GET /settings');
     act(() => {
       queryClient().invalidateQueries({ queryKey: ['settings'] });
     });
+    await settle();
     fireEvent.press(switchOf(NUDGES));
-    await act(async () => late.release());
+    await settle();
+    // the read answers with what the server held before the change, while the PATCH is still out
+    await act(async () => late.release(respond(200, settingsOf())));
     await settle();
     expect(switchOf(NUDGES).props.accessibilityState).toMatchObject({ checked: false });
+    await act(async () => out.release());
     await waitFor(() => expect(settingsPatches()).toHaveLength(1));
+    await settle();
+    expect(switchOf(NUDGES).props.accessibilityState).toMatchObject({ checked: false });
     view.unmount();
   });
 });
