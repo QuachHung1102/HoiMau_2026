@@ -401,6 +401,24 @@ describe('ARCHETYPE_NOT_ALLOWED: the safety sheet, and the choice goes along wit
     view.unmount();
   });
 
+  test('a refusal that does not say what is allowed: the sheet still offers only the directions the numbers allow (the same rule, applied here)', async () => {
+    assassinAt(LIGHT_KG);
+    let refused = false;
+    world.answer = request => {
+      if (request !== 'POST /me/biometrics' || refused) return undefined;
+      refused = true;
+      return refuse(422, 'ARCHETYPE_NOT_ALLOWED');
+    };
+    const view = await openEditProfile();
+    type('Cân nặng · kg', LIGHT_KG);
+    save();
+    expect(await screen.findByRole('header', { name: 'Chọn mục tiêu an toàn' })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /^Chọn hướng/ })).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Chọn hướng tăng sức mạnh' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Chọn hướng cân bằng' })).toBeTruthy();
+    view.unmount();
+  });
+
   test('"Kiểm tra lại hồ sơ" closes the sheet, keeps what was typed and sends nothing more', async () => {
     assassinAt(LIGHT_KG);
     const view = await openEditProfile();
