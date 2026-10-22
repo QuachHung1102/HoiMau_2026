@@ -125,7 +125,7 @@ export function ProfileStepScreen({ navigation }: ScreenProps<'OnbProfile'>) {
       <Button label={common.next} onPress={next} style={styles.next} />
       {/* The only step with a way out of the account (wrong account, shared phone); the session makes it one flight. */}
       <View style={styles.signOut}>
-        <TextLink label={authVi.signOut} onPress={() => signOut()} />
+        <TextLink role="button" label={authVi.signOut} onPress={() => signOut()} />
       </View>
     </StepScreen>
   );

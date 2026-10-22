@@ -3,11 +3,11 @@ import { StyleSheet } from 'react-native';
 import { sizes } from '../../shared/theme/tokens';
 import { Touchable } from '../../shared/ui/Touchable';
 
-/** A text-only action drawn like the links of the S02 / S03 frames. */
-export function TextLink({ label, onPress, small = false }: { label: string; onPress: () => void; small?: boolean }) {
+/** A text-only control drawn like the links of the S02 / S03 frames. `role="button"` when it acts (signs out) instead of going somewhere. */
+export function TextLink({ label, onPress, small = false, role = 'link' }: { label: string; onPress: () => void; small?: boolean; role?: 'link' | 'button' }) {
   return (
     // a 48 dp row of its own: the target never reaches into the control above it
-    <Touchable accessibilityRole="link" onPress={onPress} style={styles.row}>
+    <Touchable accessibilityRole={role} onPress={onPress} style={styles.row}>
       <AppText variant={small ? 'caption' : 'body'} weight="semibold" color="primary">
         {label}
       </AppText>

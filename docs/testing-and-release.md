@@ -45,6 +45,17 @@ Trong PowerShell: `$env:E2E_BASE_URL='http://127.0.0.1:8787/api/v1'; npm run tes
 - Khi xong, bộ test dựng lại `fresh` và trả đồng hồ về giờ thật (`scenario -- clock off`). Nó dời đồng hồ của cả cơ sở dữ liệu dev, nên cũng từ chối chạy khi có tài khoản dev đã onboarding không phải `demo-*@hoimau.test` (xem [backend](backend.md#kịch-bản-phát-triển-và-dịch-chuyển-thời-gian-scriptsscenariots-scriptsscenariosts)).
 - Chạy xong thì dừng `server:dev` (Ctrl+C); nếu nó bị buộc dừng, chạy `npm run db:cleanup`.
 
+### Trợ năng và độ phủ (Task 49)
+
+Hai bộ quét chạy trong `npm test` và phải luôn xanh:
+
+- `__tests__/a11y-sweep.test.tsx` render **mọi** mục xem trước (`tools/preview/entries/*.tsx`) trong Jest và kiểm tra cây đã render: mọi phần tử bấm được có `accessibilityRole` và có tên (nhãn hoặc chữ bên trong; vùng bấm ẩn có chủ đích như lớp nền của sheet thì không cần); thành phần đang tắt / đang bận / đã chọn / đã đánh dấu thì báo đúng `accessibilityState`; không có nút đang bật mà bấm không làm gì; mọi ảnh (`Image`, SVG) có nhãn hoặc bị ẩn khỏi trình đọc màn hình; thanh tiến độ có `accessibilityValue` và một con số nhìn thấy; không có chữ rỗng hay khóa dịch thô (`/^[A-Z_]{4,}$/`); không `Text` nào có chiều cao cố định. Các mục tự gõ và bấm để tới trạng thái thiết kế (lỗi, xác nhận) được chạy qua một `document` giả dựa trên chính cây render, nên các trạng thái đó cũng được kiểm. Thêm các kiểm tra tĩnh trên mã nguồn: chỉ `src/shared/ui/Touchable.tsx` được nhập `Pressable` / `Touchable*` / `Button` của `react-native`; không tắt co giãn chữ; `maxFontSizeMultiplier` chỉ ở `src/app/TabBar.tsx`; không viết chữ tiếng Việt trong `src/features`, `src/app`, `src/shared/ui` (kể cả dạng tổ hợp NFD hay `\u…`).
+- `__tests__/coverage-sweep.test.ts`: mỗi mã khung S01…S82 trong `docs/design/screen-map.md` có ít nhất một mục xem trước; mọi route khai báo trong `RootParamList` đều được đăng ký trong `src/app/screens.tsx` và ngược lại; mọi route đã đăng ký đều tới được (là gốc của một tab / ngăn xếp, hoặc là đích của một `navigate(...)` trong mã app). Bộ in ba con số này.
+- Mỗi bộ có đối chứng âm: một `Pressable` không nhãn, không vai trò làm phép kiểm tra trượt; mã khung bịa `S99` bị báo thiếu.
+- `node design/check.mjs` kiểm tra độ tương phản ≥ 4,5:1 cho mọi cặp màu chữ / nền mà bộ thành phần `src/shared/ui/` dùng, cả ở ba giao diện màu.
+
+Những gì máy ở đây không kiểm được nằm trong danh sách kiểm tra trên thiết bị (Task 54): thứ tự đọc và tiêu điểm của TalkBack sau khi chuyển màn và sau khi đóng lớp phủ, cỡ chữ 2.0 thật ở bề rộng 360 dp, vùng bấm 48 dp trên màn hình thật, độ tương phản trên tấm nền thật (kể cả viền ô nhập 1,29:1 theo thiết kế), bàn phím che ô đang nhập.
+
 ### Lần chạy gần nhất (18/10/2026, Task 29, Windows)
 
 Mọi lệnh dưới đây đã chạy thật và thoát 0:

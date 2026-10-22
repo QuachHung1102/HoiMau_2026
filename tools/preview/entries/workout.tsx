@@ -115,7 +115,8 @@ function PosterCheck() {
   return (
     <View style={styles.posters}>
       {POSTER_CHECK.map(code => (
-        <View key={code} style={styles.posterRow}>
+        // a visual check of two drawings side by side, nothing to read
+        <View key={code} accessible={false} importantForAccessibility="no-hide-descendants" style={styles.posterRow}>
           <View style={styles.poster}>
             <Rig move={moves[code]} tracks={tracksOf(moves[code])} at={moves[code].poster} />
           </View>

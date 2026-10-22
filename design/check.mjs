@@ -35,7 +35,8 @@ const REQUIRED_FILES = [
 const TEXT_PAIRS = [['ink', 'bg'], ['ink', 'white'], ['muted', 'bg'], ['muted', 'white'], ['muted', 'soft'], ['primary', 'white'], ['primary', 'soft'], ['white', 'primary'], ['ink', 'lime'], ['error', 'white'],
   ['flame', 'white'], ['flame', 'bg'], ['flame', 'flame-soft'], ['ink', 'flame-soft'], ['white', 'flame'], ['frost', 'white'], ['frost', 'frost-soft'], ['ink', 'frost-soft'], ['gold', 'white'], ['gold', 'gold-soft'], ['ink', 'gold-soft'], ['white', 'ink'], ['lime', 'ink'],
   ['white', 'forest-primary'], ['forest-primary', 'forest-soft'], ['forest-primary', 'white'], ['ink', 'forest-bg'], ['muted', 'forest-bg'], ['muted', 'forest-soft'], ['white', 'sky-primary'], ['sky-primary', 'sky-soft'], ['sky-primary', 'white'], ['ink', 'sky-bg'], ['muted', 'sky-bg'], ['muted', 'sky-soft'],
-  ['ink', 'soft'], ['primary', 'bg'], ['error', 'bg'], ['lime', 'primary']];
+  ['ink', 'soft'], ['primary', 'bg'], ['error', 'bg'], ['lime', 'primary'],
+  ['error', 'flame-soft'], ['ink', 'forest-soft'], ['ink', 'sky-soft'], ['lime', 'forest-primary'], ['lime', 'sky-primary']];
 
 const SYNC = process.argv.includes('--sync');
 const D = dirname(fileURLToPath(import.meta.url));

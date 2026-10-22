@@ -102,7 +102,7 @@ test('signed in and not onboarded: onboarding opens on its first step (S05), wit
   expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${TOKEN}`);
 
   fetchMock.mockResolvedValue(respond(204));
-  fireEvent.press(screen.getByRole('link', { name: 'Đăng xuất' }));
+  fireEvent.press(screen.getByRole('button', { name: 'Đăng xuất' }));
   expect(await screen.findByRole('button', { name: 'Bắt đầu hành trình' })).toBeTruthy();
   expect(requests().filter(request => request === 'POST /auth/logout')).toHaveLength(1);
   expect(requests().at(-1)).toBe('POST /auth/logout');
