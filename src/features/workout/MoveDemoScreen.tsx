@@ -49,8 +49,10 @@ export function MoveDemoScreen({ route, navigation }: ScreenProps<'MoveDemo'>) {
   }
 
   const { move } = step;
-  // Controls only for a demo that moves: a still pose has nothing to pause or slow down, breathing keeps its pace.
+  // A figure that moves can be paused and slowed; a still pose (reduced motion) has nothing to pause or slow down. A timed demo
+  // (breathing, body scan) keeps its phase text running whatever the motion setting, so it keeps Pause too.
   const moving = move.demoCode !== null && !reduced;
+  const timed = move.demoCode === 'focus-breathe' || (move.demoCode !== null && !!moves[move.demoCode]?.pattern);
   const slowable = moving && move.demoCode !== null && moves[move.demoCode]?.demo === 'rig';
   return (
     <Screen onBack={back} title={move.name} subtitle={vi.moveLine(vi.phaseShort[step.phase], step.repsText)}>
@@ -59,7 +61,7 @@ export function MoveDemoScreen({ route, navigation }: ScreenProps<'MoveDemo'>) {
           <View style={[styles.stage, { backgroundColor: palette.white }]}>
             <MoveDemoView demoCode={move.demoCode} speed={slow ? 0.5 : 1} active={focused && !paused} />
           </View>
-          {moving ? <Button variant="secondary" label={paused ? vi.demoPlay : vi.demoPause} onPress={() => setPaused(value => !value)} /> : null}
+          {moving || timed ? <Button variant="secondary" label={paused ? vi.demoPlay : vi.demoPause} onPress={() => setPaused(value => !value)} /> : null}
           {slowable ? <Switch label={vi.slowMotion} value={slow} onChange={setSlow} /> : null}
           <AppText variant="caption">{vi.noSound}</AppText>
         </Card>

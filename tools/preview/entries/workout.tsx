@@ -184,6 +184,11 @@ export const entries: Entries = {
   's82-move-demo-text-only': () => demoOf(withMove(1, { ...SQUAT.move, demoCode: null }), 1),
   's82-move-demo-front': () => demoOf(withMove(1, NECK_TILT, '3 lần mỗi bên'), 1),
   's82-move-demo-breath': () => demoOf(withMove(1, BOX_BREATH, '3 vòng thở'), 1),
+  // Reduced motion keeps Pause on a timed demo: the phase text still cycles.
+  's82-move-demo-breath-reduced': () => {
+    const breath = withMove(1, BOX_BREATH, '3 vòng thở');
+    return app({ route: 'MoveDemo', params: { workoutId: breath.id, code: breath.steps[1].move.code }, queries: [[workoutKey(breath.id), breath]] });
+  },
   's82-move-demo-body-scan': () => demoOf(withMove(1, BODY_SCAN, '50 giây'), 1),
   's82-rig-poster-check': () => <PosterCheck />,
   's18-workout-detail-demo': () => moving('WorkoutDetail', { id: detail.id }),

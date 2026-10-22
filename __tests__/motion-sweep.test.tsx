@@ -154,10 +154,11 @@ export const stringsOf = (tree: Node): Set<string> =>
 /** What the full-motion screen shows and the reduced one does not. */
 export const lostUnderReduced = (full: Set<string>, reduced: Set<string>) => [...full].filter(s => !reduced.has(s));
 /**
- * Controls that exist only to act on movement. S82 hides "Tạm dừng" and "Xem chậm" under reduced motion, because the figure is
- * a still pose and has nothing to pause or slow down (MoveDemoScreen.tsx: `moving`); "Đang tắt" is the switch's own state.
+ * Controls that exist only to act on a moving figure. The S82 rig demos (squat, neck tilt) show a still pose under reduced
+ * motion, which has nothing to pause or slow down, so "Tạm dừng" and "Xem chậm" go (MoveDemoScreen.tsx: `moving`); "Đang tắt" is
+ * the switch's own state. The timed demos (breath, body scan) are NOT listed: their phase text keeps cycling, so they keep Pause.
  */
-const MOVEMENT_CONTROLS: [RegExp, string[]][] = [[/^workout.tsx s82-move-demo/, ['Tạm dừng', 'Xem chậm 0,5×', 'Đang tắt']]];
+const MOVEMENT_CONTROLS: [RegExp, string[]][] = [[/^workout\.tsx s82-move-demo(-reduced-motion|-front)?$/, ['Tạm dừng', 'Xem chậm 0,5×', 'Đang tắt']]];
 const allowedLoss = (name: string) => MOVEMENT_CONTROLS.filter(([entry]) => entry.test(name)).flatMap(([, strings]) => strings);
 
 /**

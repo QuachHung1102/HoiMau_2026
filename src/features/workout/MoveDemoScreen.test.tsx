@@ -4,7 +4,7 @@ import { poses } from '../../assets/motion/poses';
 import { healthVi } from '../../shared/i18n/vi/health';
 import { hold, queryClient, respond } from '../dashboard/todayTestKit';
 import { RigPlayer } from './RigPlayer';
-import { detail, fakeTimers, foreground, gym, installWorkoutTestEnv, openCatalog, openDetail } from './workoutTestKit';
+import { detail, fakeTimers, foreground, gym, pass, installWorkoutTestEnv, openCatalog, openDetail } from './workoutTestKit';
 
 // What the figure is given (the figure itself: RigPlayer.test.tsx).
 jest.mock('./RigPlayer', () => ({ RigPlayer: jest.fn(() => null) }));
@@ -71,6 +71,27 @@ describe('S82: one move, shown and told', () => {
     expect(screen.queryByRole('switch', { name: /Xem chậm/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Tạm dừng' })).toBeNull();
     SQUAT.move.steps.forEach(line => expect(screen.getByText(line)).toBeTruthy());
+    view.unmount();
+  });
+
+  // The phase text of a timed demo keeps cycling under reduced motion (WCAG 2.2.2: auto-updating content can be paused).
+  test.each([
+    ['exercise-tho-bung', ['Hít vào', 'Thở ra']],
+    ['exercise-tha-long-tung-vung', ['Thả lỏng trán', 'Thả lỏng vai']],
+  ])('reduced motion: the timed demo %s keeps "Tạm dừng", and pressing it stops the phase text', async (demoCode, [first, second]) => {
+    fakeTimers();
+    foreground();
+    gym.workout = { ...detail, steps: detail.steps.map((step, i) => (i === 1 ? { ...step, move: { ...step.move, demoCode } } : step)) };
+    const view = await openMove(SQUAT, {});
+    expect(screen.queryByRole('switch', { name: /Xem chậm/ })).toBeNull();
+    expect(screen.getByText(first)).toBeTruthy();
+    await pass(5000);
+    expect(screen.getByText(second)).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Tạm dừng' }));
+    await pass(30000);
+    expect(screen.getByText(second)).toBeTruthy(); // stopped on the phase it was on
+    fireEvent.press(screen.getByRole('button', { name: 'Phát tiếp' }));
+    expect(screen.getByText(first)).toBeTruthy(); // running again, from its first phase
     view.unmount();
   });
 
