@@ -17,6 +17,7 @@ import type { PoolClient } from 'pg';
 import { weekInputs } from '../src/leaderboardCache.ts';
 import { createLogger } from '../src/log.ts';
 import { runJob } from '../src/jobs/scheduler.ts';
+import { setTestClock } from '../test/helpers.ts';
 import { startTestApp } from '../test/http.ts';
 import type { TestApp } from '../test/http.ts';
 import { createTestDb } from '../test/testdb.ts';
@@ -172,8 +173,17 @@ const say = (line = '') => {
   report.push(line);
 };
 
+// The whole run happens at one frozen instant, as in every other server test, so that no clock can
+// cross 03:00 of a zone or Monday 00:00 in Ho Chi Minh City between the load and the last
+// measurement. Wednesday 2027-03-10 10:00 UTC is 17:00 in Ho Chi Minh City, 11:00 in Paris and
+// 05:00 in New York (standard time until 14 March): midday-ish everywhere, so every user's
+// "today" is the 10th (the 9th is the last logical day with a log) and the closed weeks are the
+// four Mondays 2027-02-08, 02-15, 02-22 and 03-01.
+const NOW = '2027-03-10T10:00:00.000Z';
+
 before(async () => {
   db = await createTestDb();
+  await setTestClock(db.admin, NOW);
   app = await startTestApp(db);
 });
 after(async () => {
@@ -195,7 +205,7 @@ async function machine(client: PoolClient): Promise<string> {
     await readFile(new URL('../node_modules/embedded-postgres/package.json', import.meta.url), 'utf8'),
   ) as { version: string };
   return (
-    `${cpus[0].model.trim()} (${cpus.length} threads), ${(os.totalmem() / 2 ** 30).toFixed(1)} GiB RAM, ` +
+    `${cpus[0]?.model.trim() ?? 'unknown CPU'} (${cpus.length} threads), ${(os.totalmem() / 2 ** 30).toFixed(1)} GiB RAM, ` +
     `${os.type()} ${os.release()}, Node ${process.version}, PostgreSQL ${rows[0].server_version} (embedded-postgres ${pkg.version})`
   );
 }
@@ -297,7 +307,7 @@ test('endpoints: 200 sequential calls each', async () => {
 test('jobs: one day-close over every user, one weekly-rollover', async () => {
   const lines: string[] = [];
   const log = createLogger(line => lines.push(line));
-  const now = new Date();
+  const now = new Date(NOW);
   const ledgerRows = async () =>
     Number((await db.admin.query('SELECT (SELECT count(*) FROM xp_ledger) + (SELECT count(*) FROM coin_ledger) AS n')).rows[0].n);
   const rowsBefore = await ledgerRows();
@@ -319,7 +329,9 @@ test('jobs: one day-close over every user, one weekly-rollover', async () => {
   assert.equal(dayClose.failed, 0);
   assert.equal(dayClose.applied, USERS);
   assert.equal(ledgerLines, created, 'one ledger line per ledger row the jobs wrote');
-  assert.ok((rollover.applied as string[]).length > 0, 'at least one closed week was settled');
+  // the clock is frozen, so the weeks are known: the four Mondays before the open week of 8 March
+  assert.deepEqual(rollover.applied, ['2027-02-08', '2027-02-15', '2027-02-22', '2027-03-01']);
+  assert.equal(rollover.grants, 4 * MEMBERS, 'every member of a ranked guild was paid for each of the four weeks');
 });
 
 test('table and verdict', async () => {

@@ -44,6 +44,8 @@ async function queries(): Promise<Query[]> {
 
 type Person = {
   name: string;
+  /** The domain of the email; the decoys of the schema live on decoy.invalid. */
+  domain?: string;
   /** Onboarded on this date (null: registered only). */
   onboarded: string | null;
   streak?: number;
@@ -72,6 +74,10 @@ const PEOPLE: Person[] = [
   // second day is today: not over, in no D1 denominator
   { name: 'o7', onboarded: '2027-03-09', streak: 6, logs: ['2027-03-10'] },
   { name: 'o8', onboarded: '2027-03-10', streak: 1 },
+  // a decoy account that is onboarded and active, with the best numbers of the file in every metric
+  // (the decoys of the schema are never onboarded, so only this one shows whether each query
+  // really leaves out @decoy.invalid): in no result
+  { name: 'dx', domain: 'decoy.invalid', onboarded: '2027-03-01', streak: 200, clamped: true, guild: 'G', logs: ['2027-03-02', '2027-03-08', '2027-03-10'] },
 ];
 
 async function seed(target: TestDb) {
@@ -84,7 +90,7 @@ async function seed(target: TestDb) {
     await target.admin.query(
       `INSERT INTO users (id, email, display_name, archetype, onboarded_at, terms_accepted_at, deleted_at)
        VALUES ($1, $2, $3, $4, $5, '2027-02-01T00:00:00Z', $6)`,
-      [id, `${p.name}@example.com`, p.name, p.onboarded === null ? null : 'SUPPORTER', onboardedAt, p.deleted ? '2027-03-09T00:00:00Z' : null],
+      [id, `${p.name}@${p.domain ?? 'example.com'}`, p.name, p.onboarded === null ? null : 'SUPPORTER', onboardedAt, p.deleted ? '2027-03-09T00:00:00Z' : null],
     );
     if (p.onboarded !== null) {
       await target.admin.query(
