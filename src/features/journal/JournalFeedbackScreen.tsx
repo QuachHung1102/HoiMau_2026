@@ -33,7 +33,7 @@ export function JournalFeedbackScreen({ route, navigation }: ScreenProps<'Journa
         {quote.author ? <AppText variant="caption">{quote.author}</AppText> : null}
         <AppText variant="secondary">{vi.thanks}</AppText>
       </Card>
-      {/* motion: journal-saved (tier 1: the saved line appears at once, the page stays as it was) */}
+      {/* motion: journal-saved (tier 1, through Reveal: a short fade and 8 dp rise; reduced motion: simply there) */}
       <Reveal>
         <View style={[styles.chips, styles.section]}>
           <View style={[styles.chip, { backgroundColor: palette.soft }]}>
@@ -52,7 +52,7 @@ export function JournalFeedbackScreen({ route, navigation }: ScreenProps<'Journa
         </View>
       </Reveal>
       {ticket.outcome === 'GRANTED' ? (
-        // motion: ticket-granted (tier 1: the card and its "+1 vé" label appear and stay)
+        // motion: ticket-granted (tier 1, through Reveal after 120 ms: fade and 8 dp rise; reduced motion: simply there)
         <Reveal delayMs={120}>
           <Card testID="ticket-card" style={[styles.ticket, styles.section, { borderColor: palette.primary }]}>
             <View style={styles.ticketHead}>

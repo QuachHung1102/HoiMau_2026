@@ -70,7 +70,7 @@ export function TicketsScreen({ route, navigation }: ScreenProps<'Tickets'>) {
   return (
     <Screen {...header}>
       {usedDate ? (
-        // motion: ticket-freeze (tier 1: the kept day shows its snowflake and "Đã dùng vé"; nothing moves before the server said so)
+        // motion: ticket-freeze (tier 1, through Reveal: fade and 8 dp rise once the server said the ticket was used; reduced motion: simply there)
         <Reveal>
           <Card tone="soft">
             <FrostDot />
