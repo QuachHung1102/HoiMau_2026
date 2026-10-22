@@ -10,6 +10,24 @@ import { MotionPreferenceProvider } from '../shared/motion/useReducedMotion';
 import { AppNavigation, stateForRoute } from './navigation';
 import { TAB_BAR_HEIGHT } from './TabBar';
 
+// Every native stack the app builds reports the screenOptions it was given.
+const mockStackOptions: { animation?: string }[] = [];
+jest.mock('@react-navigation/native-stack', () => {
+  const actual = jest.requireActual('@react-navigation/native-stack');
+  const { createElement } = require('react');
+  return {
+    ...actual,
+    createNativeStackNavigator: () => {
+      const stack = actual.createNativeStackNavigator();
+      const Navigator = (props: { screenOptions: { animation?: string } }) => {
+        mockStackOptions.push(props.screenOptions);
+        return createElement(stack.Navigator, props);
+      };
+      return { ...stack, Navigator };
+    },
+  };
+});
+
 // A stand-in registry with every group filled, so the real navigators are exercised before the features land.
 // Each stub shows its name and params and has links: "go <Route>", "back" and "snack" (shows a snackbar).
 // `SignUp` is declared but not registered here; `Nowhere` is not a route at all.
@@ -93,8 +111,8 @@ afterEach(async () => {
 });
 
 // Reduced motion keeps the OS setting (an async read) out of these tests.
-const app = (initialState?: ReturnType<typeof stateForRoute>) => (
-  <MotionPreferenceProvider value="REDUCED">
+const app = (initialState?: ReturnType<typeof stateForRoute>, motion: 'REDUCED' | 'FULL' = 'REDUCED') => (
+  <MotionPreferenceProvider value={motion}>
     <QueryClientProvider client={client}>
       <SessionProvider>
         <AppNavigation initialState={initialState} />
@@ -103,12 +121,13 @@ const app = (initialState?: ReturnType<typeof stateForRoute>) => (
   </MotionPreferenceProvider>
 );
 
-type Options = { signedIn?: boolean; onboarded?: boolean; initialState?: ReturnType<typeof stateForRoute> };
-async function open({ signedIn = true, onboarded = true, initialState }: Options = {}) {
+type Options = { signedIn?: boolean; onboarded?: boolean; initialState?: ReturnType<typeof stateForRoute>; motion?: 'REDUCED' | 'FULL' };
+async function open({ signedIn = true, onboarded = true, initialState, motion }: Options = {}) {
   if (signedIn) await Keychain.setGenericPassword(USER, 'tok-1');
   // The stand-up reminder (StandUpHost) reads the day in every onboarded shell; this stand-in has none to give.
   fetchMock.mockImplementation(async (url: string) => (url.endsWith('/day') ? respond(404) : respond(200, meOf(onboarded))));
-  render(app(initialState));
+  mockStackOptions.length = 0;
+  render(app(initialState, motion));
 }
 const press = (text: string) => fireEvent.press(screen.getByText(text));
 const tabNames = () => screen.queryAllByRole('tab').map(tab => tab.props.accessibilityLabel);
@@ -120,6 +139,34 @@ const snackbarLift = (message: string) => {
   }
   throw new Error('snackbar host not found');
 };
+
+// Screen transitions are native animations: the Animated spies of the motion sweep cannot see them, so the option is checked here.
+describe.each([
+  ['REDUCED', 'none'],
+  ['FULL', 'default'],
+] as const)('with motion %s every native stack has animation "%s"', (motion, animation) => {
+  const all = () => mockStackOptions.map(options => options.animation);
+  test('signed out (the root stack)', async () => {
+    await open({ signedIn: false, motion });
+    await screen.findByText('screen Welcome {}');
+    expect(all().length).toBeGreaterThan(0);
+    expect(all()).toEqual(all().map(() => animation));
+  });
+  test('signed in, onboarding (the root stack)', async () => {
+    await open({ onboarded: false, motion });
+    await screen.findByText('screen OnbProfile {}');
+    expect(all().length).toBeGreaterThan(0);
+    expect(all()).toEqual(all().map(() => animation));
+  });
+  test('the main app: the root stack and the stack of a tab with a detail open', async () => {
+    await open({ motion });
+    await screen.findByText('screen Today {}');
+    press('go QuestBoard');
+    await screen.findByText('screen QuestBoard {}');
+    expect(all().length).toBeGreaterThan(1);
+    expect(all()).toEqual(all().map(() => animation));
+  });
+});
 
 test('signed out: the auth screens, starting on Welcome, and no request', async () => {
   await open({ signedIn: false });

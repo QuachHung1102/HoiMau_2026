@@ -19,6 +19,7 @@ import { StyleSheet, View } from 'react-native';
 import { useMe } from '../features/auth/api';
 import { ApiError } from '../shared/api/client';
 import { useSession } from '../shared/api/session';
+import { useReducedMotion } from '../shared/motion/useReducedMotion';
 import * as authVi from '../shared/i18n/vi/auth';
 import * as commonVi from '../shared/i18n/vi/common';
 import * as navVi from '../shared/i18n/vi/nav';
@@ -59,6 +60,15 @@ const tabRootOf = (name: TabRootName) => tabRoots.find(tab => tab.name === name)
 
 // Every screen draws its own header (`Screen`); Back is the native one.
 const noHeader = { headerShown: false } as const;
+/**
+ * The options of every native stack: no header, and no push / pop / modal transition while the in-app motion setting is reduced
+ * (those are native animations, so the Animated sweep cannot see them; the system "remove animations" switch stops them too).
+ * The tab navigator has its own `animation: 'none'`.
+ */
+function useStackOptions() {
+  const reduced = useReducedMotion();
+  return useMemo(() => ({ ...noHeader, animation: reduced ? ('none' as const) : ('default' as const) }), [reduced]);
+}
 const focusFlow = { presentation: 'fullScreenModal', gestureEnabled: false } as const;
 
 const screensOf = (Nav: typeof Stack, entries: readonly ScreenEntry[]) =>
@@ -85,10 +95,11 @@ function ShellTabBar(props: BottomTabBarProps) {
 const renderTabBar = (props: BottomTabBarProps) => <ShellTabBar {...props} />;
 
 function TabStack({ route }: { route: { name: string } }) {
+  const stackOptions = useStackOptions();
   const name = TAB_ORDER.find(root => tabNameOf(root) === route.name) ?? TAB_ORDER[0];
   const root = tabRootOf(name);
   return (
-    <Stack.Navigator screenOptions={noHeader}>
+    <Stack.Navigator screenOptions={stackOptions}>
       <Stack.Screen name={rootNameOf(name)} component={root ? (root.component as ComponentType) : GroupPending} options={root?.options} />
       {screensOf(Stack, detailScreens)}
     </Stack.Navigator>
@@ -172,15 +183,16 @@ function GroupPending() {
 /** Signed in: `GET /me` decides between onboarding and the main app. */
 function SignedIn() {
   const me = useMe();
+  const stackOptions = useStackOptions();
   // A failed refresh keeps the data already on screen; only a first load without data stops here.
   if (!me.data) return me.isError ? <LoadFailed error={me.error} onRetry={() => me.refetch()} /> : <Pending />;
   if (!me.data.user.onboarded) {
     if (!onboardingScreens.length) return <GroupPending />;
-    return <Root.Navigator screenOptions={noHeader}>{screensOf(Root, onboardingScreens)}</Root.Navigator>;
+    return <Root.Navigator screenOptions={stackOptions}>{screensOf(Root, onboardingScreens)}</Root.Navigator>;
   }
   return (
     <>
-      <Root.Navigator screenOptions={noHeader}>
+      <Root.Navigator screenOptions={stackOptions}>
         <Root.Screen name={MAIN_TABS} component={MainTabs} />
         <Root.Group screenOptions={focusFlow}>{screensOf(Root, focusScreens)}</Root.Group>
       </Root.Navigator>
@@ -192,6 +204,7 @@ function SignedIn() {
 
 function RootNavigator() {
   const session = useSession();
+  const stackOptions = useStackOptions();
   const navigation = useNavigation();
   const expired = session.status === 'signedOut' && session.expired;
   useEffect(() => {
@@ -200,7 +213,7 @@ function RootNavigator() {
   }, [expired, navigation]);
 
   if (session.status === 'loading') return <Pending />;
-  if (session.status === 'signedOut') return <Root.Navigator screenOptions={noHeader}>{screensOf(Root, authScreens)}</Root.Navigator>;
+  if (session.status === 'signedOut') return <Root.Navigator screenOptions={stackOptions}>{screensOf(Root, authScreens)}</Root.Navigator>;
   return <SignedIn />;
 }
 
