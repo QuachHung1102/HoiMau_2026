@@ -3,7 +3,6 @@
 // Never the test cluster (54329), never the machine's own PostgreSQL service (5432).
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
-import { loadConfig } from '../src/config.ts';
 import {
   guardProcess,
   loadEnvFile,
@@ -12,13 +11,9 @@ import {
 } from '../src/main.ts';
 import { migrate } from '../src/migrate.ts';
 import { APP_CONN, DEV, SUPERUSER, startCluster } from './cluster.ts';
+import { DATABASE, HOST, devConfig } from './devConfig.ts';
 
-const DATABASE = 'hoimau';
 const SQL_DIR = fileURLToPath(new URL('../sql', import.meta.url));
-const HOST = '127.0.0.1';
-// Development only, like the passwords in cluster.ts: journal entries written by one run stay
-// readable in the next. Production sets JOURNAL_KEY out of band.
-const DEV_JOURNAL_KEY = Buffer.alloc(32, 'hoi-mau-dev').toString('base64');
 
 async function asOwner(
   database: string,
@@ -86,13 +81,7 @@ try {
   });
 
   loadEnvFile();
-  const config = loadConfig({
-    JOURNAL_KEY: process.env.JOURNAL_KEY || DEV_JOURNAL_KEY,
-    PORT: process.env.PORT,
-    HOST,
-    // always the cluster started above, whatever the environment names
-    DATABASE_URL: `postgres://${APP_CONN.user}:${APP_CONN.password}@${HOST}:${DEV.port}/${DATABASE}`,
-  });
+  const config = devConfig();
   // the development server mails to the outbox unless the environment names something else
   const api = await serve(
     config,
