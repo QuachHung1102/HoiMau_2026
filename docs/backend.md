@@ -1897,3 +1897,77 @@ Nội bộ (không role nào EXECUTE): `app._is_decoy(user)`, `app._guild_depart
 - Việc mọi bảng xóa lan, việc có chỉ mục cho mọi khóa của việc xóa lan, việc dữ liệu xuất không chứa người khác, và thứ tự khóa do test giữ, không do cổng 1 hay 3.
 
 Sửa `61-privacy.sql` thì chạy `npm run server:test` và `npm run db:api-check`.
+
+## Hiệu năng (`checks/perf.test.ts`, `npm run server:perf`)
+
+NFR-01 (p95 của API < 300 ms; bảng xếp hạng < 500 ms, có cache) được **đo**, không giả định. Lệnh nằm ngoài `server:test` (mất khoảng 80 giây, nạp hơn hai triệu dòng) và chạy trên cụm test như các cổng khác, nên cũng chỉ chạy được một lệnh một lúc.
+
+- **Bộ dữ liệu**, nạp bằng `admin` vào một bản sao của template (không đi qua hàm SQL: đây là dữ liệu, không phải luồng; luồng có test riêng) rồi `ANALYZE` (cơ sở dữ liệu đã dùng một thời gian có thống kê, autovacuum sẽ tạo chúng rất lâu trước người dùng thật đầu tiên): 2 000 người dùng đã onboarding cách đây 30 ngày (một phần mười ở New York, một phần mười ở Paris, còn lại ở Hồ Chí Minh; ba nguyên mẫu xen kẽ), 300 tổ đội 3–8 thành viên (1 650 người trong tổ đội, 350 người không), và 30 ngày `daily_logs` mỗi người (ngày hôm nay chưa có dòng nào), cùng tiến độ nhiệm vụ, tick, nhật ký ăn, buổi tập, sổ cái, hộp thư. Số dòng đã đo ở lần chạy cuối (nạp thêm / tổng trong bảng; phần chênh là các dòng mồi nhử của lược đồ):
+
+| Bảng | Nạp thêm | Tổng |
+|---|---:|---:|
+| `users` | 2 000 | 2 002 |
+| `daily_logs` | 60 000 | 60 001 |
+| `quest_completions` | 220 927 | 220 928 |
+| `quest_ticks` | 648 334 | 648 335 |
+| `xp_ledger` | 179 888 | 179 889 |
+| `coin_ledger` | 179 888 | 179 889 |
+| `nutrition_logs` | 180 003 | 180 004 |
+| `workout_sessions` | 60 000 | 60 001 |
+| `notifications` | 10 000 | 10 001 |
+| `guilds` | 300 | 301 |
+| `guild_memberships` | 1 650 | 1 652 |
+
+- **Phép đo**: qua HTTP thật (app thật, pool `app_conn`), 200 lần gọi tuần tự mỗi endpoint sau một lần khởi động. Các lệnh `GET` xoay vòng qua 200 thành viên tổ đội khác nhau (chặt hơn một người dùng duy nhất: mỗi request gặp dòng mà request trước không chạm); `POST /day/quests/WATER_8/progress` dùng 200 người dùng khác nhau chưa có dòng hôm nay (nên không bao giờ hoàn thành, nhiệm vụ cần 8 lần). Bảng xếp hạng được tính một lần ở lần khởi động và 200 request sau đó đọc từ cache: test đếm số lần đọc `job_guild_week_inputs` và đòi đúng một (giới hạn 500 ms một mình không chứng minh cache, vì tính bảng chỉ mất khoảng 200 ms).
+- **Ngưỡng**: p95 `< 300 ms` (`< 500 ms` cho bảng xếp hạng). Vượt ngưỡng thì sửa nguyên nhân (chỉ mục, câu truy vấn) trong file SQL sở hữu nó, không bao giờ sửa ngưỡng. Lần đo đầu tiên đã dưới ngưỡng hàng chục lần nên **Task 51 không thêm chỉ mục nào**.
+- **Hai job** được đo một lần, không có ngưỡng: `day-close` trên 2 000 người (mỗi người một ngày để đóng) và `weekly-rollover` (bốn tuần đã đóng, 300 tổ đội mỗi tuần, 6 600 lần trả thưởng). Số dòng sổ cái hai job tạo ra bằng số dòng log `evt:'ledger'` của chúng.
+
+Lần chạy cuối (Windows, ngày 23/10/2026). Máy: AMD Ryzen 5 5600X 6 nhân (12 luồng), 31,9 GiB RAM, Windows 11 (10.0.26300), Node v24.8.0, PostgreSQL 18.4 (`embedded-postgres` 18.4.0-beta.17), server và cơ sở dữ liệu cùng một máy:
+
+| Endpoint | p50 ms | p95 ms | max ms | lần đầu ms | giới hạn p95 |
+|---|---:|---:|---:|---:|---|
+| `GET /day` | 4,1 | 6,1 | 16,8 | 91,7 | < 300 ms |
+| `POST /day/quests/WATER_8/progress` | 7,1 | 9,5 | 12,4 | 34,8 | < 300 ms |
+| `GET /me` | 3,4 | 4,9 | 14,8 | 16,7 | < 300 ms |
+| `GET /nutrition/plan` | 5,0 | 6,7 | 12,9 | 14,0 | < 300 ms |
+| `GET /guilds/me` | 6,0 | 10,1 | 20,5 | 35,3 | < 300 ms |
+| `GET /leaderboard?week=current` | 2,0 | 2,4 | 21,7 | 201,1 | < 500 ms |
+
+`day-close` trên 2 000 người: 2,94 giây. `weekly-rollover`: 9,50 giây. Cột "lần đầu" là request đầu tiên của endpoint trong tiến trình (kế hoạch truy vấn, bộ nhớ đệm; với bảng xếp hạng là lần tính bảng). Đây là số của **một máy phát triển, không có mạng giữa máy khách và server**: thời gian trên điện thoại thêm thời gian mạng và của chính điện thoại (xem danh sách kiểm tra thiết bị).
+
+Đổi một câu truy vấn của sáu endpoint trên, hay thêm bảng vào `buildDay`, thì chạy lại `npm run server:perf`.
+
+## Quan trắc (`test/observability.test.ts`)
+
+NFR-10: log có cấu trúc cho mọi bút toán sổ cái, và cảnh báo khi `day-close` không chạy đúng lịch. Cách ghi log (một dòng JSON mỗi request, `evt:'ledger'`, những gì không bao giờ được vào log) nằm ở "Log" trong "Tầng HTTP"; phần này nói test giữ những gì.
+
+- **Một dòng `ledger` cho mỗi dòng sổ cái.** Test chạy luồng của lát cắt 1 (đăng ký, onboarding, ba ngày logic với tick nước, calo, buổi tập, `day-close` sau mỗi 03:00) cộng một lần hoàn tác tick, một dòng nhật ký, một lần mua đồ. Số dòng `xp_ledger` + `coin_ledger` mới tạo bằng số dòng log `evt:'ledger'` (log của app cộng log của job), và **tập các bộ (loại, người, số lượng, lý do, ref) trong log bằng tập các dòng sổ cái**, không chỉ cùng số đếm. Gửi lại mọi lượt ghi với đúng khóa cũ không thêm dòng sổ cái nào và không thêm dòng log nào. Với hai job: `perf.test.ts` đòi cùng đẳng thức cho `day-close` (thưởng mốc chuỗi) và `weekly-rollover` (thưởng tổ đội, 6 600 dòng).
+- **Không giá trị cá nhân nào trong log.** Giá trị cài sẵn: email, mật khẩu, token, bản băm token (hex và base64url), mã đặt lại mật khẩu, chiều cao, cân nặng, năm sinh, calo của bữa ăn, mục tiêu calo, tên bữa ăn, câu nhật ký; chúng còn nằm trong đường dẫn, query và thông báo lỗi của các request thất bại (một route thử ném `Error` chứa mọi bí mật). Kiểm tra **có đối chứng**: với mỗi giá trị, (1) chứng minh nó có trong fixture (trong cơ sở dữ liệu, hoặc trong câu trả lời của server), (2) chứng minh bộ quét thấy nó trong một dòng log cố tình làm rò, (3) mới quét log thật và đòi không dòng nào có nó. Số được tìm như giá trị của một trường (trừ `ts`, `ms`, `status`), không như chuỗi con: "1987" là một mẩu của nhiều uuid.
+- **`job_late`.** Với `day-close` thất bại ở mọi lần: không có cảnh báo ở phút 90, có đúng một dòng `{level:'alert', evt:'job_late', job:'day-close'}` ở phút 91; với `day-close` thành công ở mọi lần trong 25 giờ: không bao giờ. Lỗi của job được ghi không kèm thông báo của nó.
+- Test được kiểm bằng đột biến (bỏ dòng ledger của đồng xu, ghi hai lần, đưa URL / header `Authorization` / thông báo lỗi / calo / câu nhật ký vào log, đổi ngưỡng 90 phút thành 80 hoặc 100, tính trễ từ lần chạy cuối thay vì lần thành công cuối): mọi đột biến đều làm test đỏ.
+
+## Chỉ số sản phẩm (`scripts/metrics.sql`, `test/metrics.test.ts`)
+
+Các tiêu chí thành công của đặc tả §12, tính từ cơ sở dữ liệu. Chạy **bằng chủ sở hữu cơ sở dữ liệu**, không qua ứng dụng (không vai trò nào của ứng dụng được đọc mọi người dùng):
+
+```sh
+psql "postgres://postgres:<mật khẩu superuser>@127.0.0.1:54330/hoimau" -f server/scripts/metrics.sql
+```
+
+Mỗi chỉ số là một câu lệnh, một dòng kết quả gồm `value` và `n` (tính trên bao nhiêu người). Không câu nào xuất một giá trị cá nhân: chỉ tỉ lệ (0–1), với M-04 là số trung vị, và số đếm.
+
+| Mã | Đo | Mục tiêu (§12) |
+|---|---|---|
+| M-01 | người đã đăng ký và hoàn tất onboarding / người đã đăng ký | > 70 % |
+| M-02 | D1: trong số người đã onboarding mà ngày thứ hai đã qua hẳn, tỉ lệ có dòng `daily_logs` đúng ngày sau `onboard_date` | > 40 % |
+| M-03 | D7: như M-02, cho ngày thứ tám | > 20 % |
+| M-04 | trung vị chuỗi hiện tại của người có `daily_logs` trong 7 ngày logic gần nhất | ≥ 4 |
+| M-05 | người đã onboarding đang ở trong một tổ đội / người đã onboarding | > 35 % |
+| M-07 | người đã onboarding có đơn kê hiện hành bị `safety_clamped` / người đã onboarding | theo dõi; > 15 % là có vấn đề |
+
+- **M-06 (thời gian ghi nhận xong một ngày) không đo được từ server** và không có câu lệnh: nó cần thời gian giữa lúc mở app và lần ghi cuối trên điện thoại, tức là phân tích phía máy khách, thứ chưa được xây (R-P.4: công cụ phân tích chỉ nhận sự kiện ẩn danh, và chưa có công cụ nào được duyệt). Server thấy các lượt ghi, không thấy thời gian trên màn hình giữa chúng; đừng suy ra nó từ dấu thời gian.
+- **Ai được tính**: tài khoản thật, còn sống. Tài khoản mồi nhử (`@decoy.invalid`) và tài khoản đã yêu cầu xóa (`deleted_at`) bị loại khỏi mọi câu.
+- **Ngày là ngày logic của chính người đó** (`app.logical_date(app.now(), users.timezone)`, cùng hàm mà app dùng). Ngày chưa qua hẳn không bị tính là "không quay lại": D1 chỉ xét người có ngày thứ hai đã kết thúc, D7 người có ngày thứ tám đã kết thúc.
+- **Không ai để đếm thì `value` là `NULL`, `n` là 0**, không phải 0: "chưa có ai" không phải "không ai quay lại".
+- M-04 là một số trung vị: với một nhúm người dùng nó chính là chuỗi của một người. Đọc nó cùng `n`.
+- Test: một cơ sở dữ liệu có sẵn người dùng cho từng loại trừ (hai mồi nhử có sẵn của lược đồ; một tài khoản đã xóa có số đẹp nhất ở mọi chỉ số; người quay lại ngày thứ ba thay vì thứ hai; người có ngày thứ hai là hôm nay; người có log ngày liền trước và liền sau ngày D7), đồng hồ đóng băng ở 10/03/2027, mỗi câu phải ra đúng con số của fixture (0,8; 0,6667; 0,4; 4; 0,375; 0,25) và đúng hai cột `value`, `n`; cơ sở dữ liệu rỗng cho `NULL` và 0; kết quả không chứa id, email hay tên. Mười đột biến của các câu SQL (bỏ loại mồi nhử / tài khoản xóa, `<=` thay cho `<`, ngày thứ 7 thành thứ 6, đổi mẫu số, đổi cột, cửa sổ 8 ngày, trả 0 thay NULL, thêm cột email) đều làm test đỏ.
