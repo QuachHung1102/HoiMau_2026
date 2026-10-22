@@ -21,6 +21,7 @@
     "test:e2e": "jest -c jest.e2e.config.js --runInBand",
     "domain:test": "node --test --experimental-test-coverage --test-coverage-include=domain/**/*.ts --test-coverage-exclude=domain/**/*.test.ts --test-coverage-exclude=domain/contract/** --test-coverage-lines=90 --test-coverage-branches=90 --test-coverage-functions=90 \"domain/**/*.test.ts\"",
     "domain:bundle-check": "react-native bundle --platform android --dev false --entry-file scripts/domain-bundle-entry.js --bundle-output node_modules/.cache/hoi-mau/domain.bundle",
+    "demo:reverse": "node scripts/demo-reverse.mjs",
     "server:install": "npm --prefix server ci",
     "server:typecheck": "npm --prefix server run typecheck",
     "server:test": "npm --prefix server test",
