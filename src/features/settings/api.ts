@@ -1,16 +1,20 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { useCallback } from 'react';
-import type { ArchetypeRequest, BiometricsRequest, Me, MePatch, PrescriptionResponse, Settings, SettingsPatch } from '../../../domain/contract/core.ts';
+import { useCallback, useRef, useState } from 'react';
+import type { ArchetypeRequest, BiometricsRequest, DeleteAccountRequest, Me, MePatch, PrescriptionResponse, Settings, SettingsPatch } from '../../../domain/contract/core.ts';
+import type { ExportDocument } from '../../../domain/contract/social.ts';
+import { localParts } from '../../../domain/logicalDate.ts';
+import { normalizePassword } from '../../../domain/validation.ts';
 import { api, ApiError, boundUserId } from '../../shared/api/client';
 import { useSession } from '../../shared/api/session';
 import { newActionId } from '../../shared/api/uuid';
 import * as vi from '../../shared/i18n/vi/settings';
 import { failureText } from '../../shared/i18n/vi/sync';
+import { ShareUnavailableError, shareTextFile } from '../../shared/native/hoiMauNative';
 import { writeCache } from '../../shared/storage/cache';
 import { useSnackbar } from '../../shared/ui/Snackbar';
-import { meKey } from '../auth/api';
+import { meKey, useMe } from '../auth/api';
 import { guildKey, leaderboardKey } from '../guild/api';
-import { answered, mealPlanKey } from '../nutrition/api';
+import { answered, mealPlanKey, useAttemptKey } from '../nutrition/api';
 import { prescriptionKey } from '../onboarding/api';
 import { dayKey, settingsKey } from '../quests/api';
 import { useServerWrite } from '../shop/api';
@@ -152,4 +156,85 @@ export function useChangeArchetype() {
       refreshTargets(queryClient);
     },
   );
+}
+
+// ---- privacy: a copy of the data, and the deletion of the account (S44, S52) ----
+
+export type PrivacyOutcome = { state: 'done' } | { state: 'failed'; code: string };
+/** What a failure is called when it did not come from the server: the file was too big to share, or the share box could not be opened. */
+export const SHARE_TOO_LARGE = 'SHARE_TOO_LARGE';
+export const SHARE_FAILED = 'SHARE_FAILED';
+
+/**
+ * `GET /me/export`, then the document goes to the system's share box as one JSON file. The document exists only inside `run`:
+ * it is no query, no state and no log, and it is gone when the share call returns. One run at a time (each share replaces the
+ * file of the one before, and the server answers 5 an hour), and nothing is shared for a person who has signed out meanwhile.
+ * `run` answers undefined when one is already on its way.
+ */
+export function useExportData() {
+  const { userId } = useSession();
+  const timeZone = useMe().data?.user.timezone;
+  const sending = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const run = useCallback(async (): Promise<PrivacyOutcome | undefined> => {
+    if (sending.current || !userId) return undefined;
+    sending.current = true;
+    setBusy(true);
+    try {
+      const document = await api.get<ExportDocument>('/me/export');
+      if (boundUserId() !== userId) return undefined;
+      const day = timeZone ? localParts(Date.parse(document.exportedAt), timeZone).date : document.exportedAt.slice(0, 10);
+      await shareTextFile(vi.exportFileName(day), 'application/json', JSON.stringify(document, null, 2));
+      return { state: 'done' };
+    } catch (error) {
+      if (error instanceof ApiError) return { state: 'failed', code: error.code };
+      return { state: 'failed', code: error instanceof ShareUnavailableError ? SHARE_TOO_LARGE : SHARE_FAILED };
+    } finally {
+      sending.current = false;
+      setBusy(false);
+    }
+  }, [userId, timeZone]);
+  return [run, busy] as const;
+}
+
+/**
+ * `POST /me/delete` with the password (needs the network, one request at a time). `204` ends the session as a closed account.
+ * A request whose answer was lost may have deleted the account: the same request again carries the same key, and a
+ * `401 SESSION_INVALID` to it means the account is gone (every session was revoked), so that too ends as closed. Any other
+ * answer leaves everything as it was; `401 INVALID_CREDENTIALS` is also the answer to the sixth try within 15 minutes, so
+ * it is never read as "the password is wrong" by this layer.
+ */
+export function useDeleteAccount() {
+  const { userId, closeAccount } = useSession();
+  const key = useAttemptKey();
+  const sending = useRef(false);
+  const unanswered = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const run = useCallback(
+    async (password: string): Promise<PrivacyOutcome | undefined> => {
+      if (sending.current || !userId) return undefined;
+      sending.current = true;
+      setBusy(true);
+      const secret = normalizePassword(password);
+      try {
+        await api.write('POST', '/me/delete', { password: secret } satisfies DeleteAccountRequest, { idempotencyKey: key.of(secret) });
+        await closeAccount();
+        return { state: 'done' };
+      } catch (error) {
+        const code = error instanceof ApiError ? error.code : 'INTERNAL';
+        if (code === 'SESSION_INVALID' && unanswered.current) {
+          await closeAccount();
+          return { state: 'done' };
+        }
+        unanswered.current = !answered(error);
+        if (!unanswered.current) key.clear();
+        return { state: 'failed', code };
+      } finally {
+        sending.current = false;
+        setBusy(false);
+      }
+    },
+    [userId, key, closeAccount],
+  );
+  return [run, busy] as const;
 }

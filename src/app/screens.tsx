@@ -43,10 +43,12 @@ import { LevelsScreen } from '../features/progression/LevelsScreen';
 import { ProfileScreen } from '../features/progression/ProfileScreen';
 import { EndOfDayScreen } from '../features/quests/EndOfDayScreen';
 import { QuestBoardScreen } from '../features/quests/QuestBoardScreen';
+import { DeleteAccountScreen } from '../features/settings/DeleteAccountScreen';
 import { DisplayScreen } from '../features/settings/DisplayScreen';
 import { EditProfileScreen } from '../features/settings/EditProfileScreen';
 import { HelpScreen } from '../features/settings/HelpScreen';
 import { NotificationSettingsScreen } from '../features/settings/NotificationSettingsScreen';
+import { PrivacyScreen } from '../features/settings/PrivacyScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { FocusSessionScreen } from '../features/workout/FocusSessionScreen';
 import { MoveDemoScreen } from '../features/workout/MoveDemoScreen';
@@ -121,6 +123,8 @@ export const detailScreens: ScreenEntry[] = [
   { name: 'EditProfile', component: EditProfileScreen },
   { name: 'Display', component: DisplayScreen },
   { name: 'Help', component: HelpScreen },
+  { name: 'Privacy', component: PrivacyScreen },
+  { name: 'DeleteAccount', component: DeleteAccountScreen },
 ];
 
 /** Full-screen modal flow above the tabs; the tab bar cannot interrupt it. */

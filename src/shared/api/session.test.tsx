@@ -24,7 +24,7 @@ const bearers = () => fetchMock.mock.calls.map(([url, init]) => [url.replace(/^.
 let session: Session;
 function Probe() {
   session = useSession();
-  return <Text>{`${session.status}|${session.userId ?? '-'}|${session.expired ? 'expired' : 'ok'}`}</Text>;
+  return <Text>{`${session.status}|${session.userId ?? '-'}|${session.expired ? 'expired' : session.closed ? 'closed' : 'ok'}`}</Text>;
 }
 let client: QueryClient;
 const mount = () =>
@@ -615,5 +615,72 @@ describe('the pet stage last celebrated (celebratedStage:v1:<userId>, an index o
     await act(() => api.get('/me').catch(() => undefined));
     expect(await screen.findByText('signedOut|-|expired')).toBeTruthy();
     expect(await AsyncStorage.getItem(key(USER))).toBeNull();
+  });
+});
+
+describe('closeAccount: the server deleted the account (S52)', () => {
+  const QUEUE = `pending:v1:${USER}`;
+  const paths = () => bearers().map(([path]) => path);
+  const record = (id: string) => ({ id, userId: USER, method: 'POST' as const, path: '/day/quests/WATER/progress', body: { amount: 1 }, createdAt: new Date().toISOString() });
+
+  async function signedInWithRecord() {
+    mount();
+    await screen.findByText('signedOut|-|ok');
+    await act(() => session.signIn(TOKEN, USER));
+    fetchMock.mockImplementation(() => Promise.reject(new TypeError('Network request failed')));
+    await enqueueAction(record('a1'));
+    await writeCache(USER, 'me', { user: { id: USER } });
+    await AsyncStorage.setItem('pending:v1:someone-else', '[]');
+    fetchMock.mockClear();
+  }
+
+  test('forgets the token, the caches and the queue of that user only, asks nothing, sends no sign-out request, and ends as closed', async () => {
+    await signedInWithRecord();
+    await act(() => session.closeAccount());
+    expect(screen.getByText('signedOut|-|closed')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ở lại' })).toBeNull();
+    expect(paths()).toEqual([]);
+    expect(await Keychain.getGenericPassword()).toBe(false);
+    expect(await readCache(USER, 'me')).toBeUndefined();
+    expect(await AsyncStorage.getAllKeys()).toEqual(['pending:v1:someone-else']);
+    expect(await AsyncStorage.getItem(QUEUE)).toBeNull();
+  });
+
+  test('the next sign-in is not "closed" any more', async () => {
+    await signedInWithRecord();
+    await act(() => session.closeAccount());
+    await act(() => session.signIn(TOKEN, USER));
+    expect(screen.getByText(`signedIn|${USER}|ok`)).toBeTruthy();
+    await act(() => session.signOut());
+    expect(screen.getByText('signedOut|-|ok')).toBeTruthy();
+  });
+
+  test('a session the server ended an instant before (the 401 of a retry) still ends as closed, with the queue gone', async () => {
+    await signedInWithRecord();
+    fetchMock.mockResolvedValue(sessionInvalid());
+    await act(async () => {
+      const failed = api.get('/me').catch(() => undefined);
+      await failed;
+      await session.closeAccount();
+    });
+    expect(screen.getByText('signedOut|-|closed')).toBeTruthy();
+    expect(await AsyncStorage.getAllKeys()).toEqual(['pending:v1:someone-else']);
+  });
+
+  test('without a session it changes nothing: a queue kept for a user whose session expired stays', async () => {
+    await signedInWithRecord();
+    fetchMock.mockResolvedValue(sessionInvalid());
+    await act(() => api.get('/me').catch(() => undefined));
+    expect(await screen.findByText('signedOut|-|expired')).toBeTruthy();
+    await act(() => session.closeAccount());
+    expect(await AsyncStorage.getItem(QUEUE)).not.toBeNull();
+  });
+
+  test('a plain sign-out is not "closed"', async () => {
+    mount();
+    await screen.findByText('signedOut|-|ok');
+    await act(() => session.signIn(TOKEN, USER));
+    await act(() => session.signOut());
+    expect(screen.getByText('signedOut|-|ok')).toBeTruthy();
   });
 });

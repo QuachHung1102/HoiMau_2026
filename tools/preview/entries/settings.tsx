@@ -43,7 +43,7 @@ const waiting = (): Me => {
 };
 
 /** shot.mjs cannot type: this writes into the field with this label, as a person would. */
-function Type({ label, text }: { label: string; text: string }) {
+export function Type({ label, text }: { label: string; text: string }) {
   useEffect(() => {
     const timer = setInterval(() => {
       const input = document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);
@@ -57,7 +57,7 @@ function Type({ label, text }: { label: string; text: string }) {
   return null;
 }
 /** The form is taller than the screen: keep every scroller at its end so that the shot shows the bottom of it. */
-function ScrollToEnd() {
+export function ScrollToEnd() {
   useEffect(() => {
     const timer = setInterval(() => document.querySelectorAll<HTMLElement>('*').forEach(node => node.scrollHeight > node.clientHeight + 40 && getComputedStyle(node).overflowY !== 'visible' && (node.scrollTop = node.scrollHeight)), 100);
     return () => clearInterval(timer);

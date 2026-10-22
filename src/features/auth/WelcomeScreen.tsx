@@ -1,19 +1,25 @@
 import { useIsFocused } from '@react-navigation/native';
 import { StyleSheet, View } from 'react-native';
 import type { ScreenProps } from '../../app/routes';
+import { useAccountClosed } from '../../shared/api/session';
 import * as vi from '../../shared/i18n/vi/auth';
+import { accountClosed } from '../../shared/i18n/vi/settings';
 import { spacing } from '../../shared/theme/tokens';
 import { AppText } from '../../shared/ui/AppText';
 import { Button } from '../../shared/ui/Button';
 import { Card } from '../../shared/ui/Card';
 import { Mam } from '../../shared/ui/mam/Mam';
 import { Screen } from '../../shared/ui/Screen';
+import { Notice } from './Notice';
 
 /** S01: what Hồi Máu is, and the two ways in. */
 export function WelcomeScreen({ navigation }: ScreenProps<'Welcome'>) {
   const focused = useIsFocused();
+  // S52: the account was just deleted on this device; nothing else tells the person it worked.
+  const closed = useAccountClosed();
   return (
     <Screen title={vi.productName} subtitle={vi.tagline}>
+      {closed ? <Notice icon="CircleCheck" message={accountClosed} /> : null}
       <Card tone="soft" style={styles.hero}>
         <Mam
           // motion: mam-idle (the only movement here; it stops while another screen covers this one)

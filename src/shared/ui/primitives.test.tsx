@@ -65,6 +65,16 @@ test('ListRow is one touchable with one combined label', () => {
   view.unmount();
 });
 
+test('ListRow busy: disabled and busy for screen readers, and a press does nothing', () => {
+  const onPress = jest.fn();
+  const view = render(<ListRow title="Tải dữ liệu" onPress={onPress} busy />);
+  const button = view.getByRole('button');
+  expect(button.props.accessibilityState).toMatchObject({ busy: true, disabled: true });
+  fireEvent.press(button);
+  expect(onPress).not.toHaveBeenCalled();
+  view.unmount();
+});
+
 test('ListRow without onPress is plain and shows its trailing node', () => {
   const view = render(<ListRow title="Âm thanh" trailing={<Text>Đang tắt</Text>} />);
   expect(view.queryByRole('button')).toBeNull();

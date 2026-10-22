@@ -37,6 +37,8 @@ test('S01 shows the product name, the habit loop and the two ways in', () => {
   expect(screen.getByText('Ghi lại việc bạn đã làm, nuôi dưỡng Mầm và cùng bạn bè giữ nhịp mỗi ngày.')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Bắt đầu hành trình' })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Tôi đã có tài khoản' })).toBeTruthy();
+  // the notice of a deleted account is for the one run that follows the deletion (DeleteAccountScreen.test.tsx)
+  expect(screen.queryByText('Tài khoản đã được đóng.')).toBeNull();
 });
 
 test('"Bắt đầu hành trình" opens SignUp', async () => {

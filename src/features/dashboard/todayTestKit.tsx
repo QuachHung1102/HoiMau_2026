@@ -7,7 +7,7 @@ import { configure, screen } from '@testing-library/react-native';
 import type { ActionResult, GameEvent } from '../../../domain/contract/common.ts';
 import type { Inventory, Meal, MealPlanState, PurchaseResult, Shop, ShopItem, SwapCandidates } from '../../../domain/contract/content.ts';
 import type { Biometrics, DayDetail, DaySummary, DayState, Inbox, InboxItem, InboxReadResult, Me, PerkCode, Perks, PrescriptionResponse, QuestState, Settings } from '../../../domain/contract/core.ts';
-import type { GuildRole, GuildState, JournalCreateResult, JournalEntry, JournalList, Leaderboard, NudgeBlockReason, NudgeResult, NudgeTemplates, Quote, Tickets } from '../../../domain/contract/social.ts';
+import type { ExportDocument, GuildRole, GuildState, JournalCreateResult, JournalEntry, JournalList, Leaderboard, NudgeBlockReason, NudgeResult, NudgeTemplates, Quote, Tickets } from '../../../domain/contract/social.ts';
 import { JOURNAL_XP, PERKS } from '../../../domain/economy.ts';
 import { ARCHETYPE_FACTOR, calculatePrescription, calorieWindow, type Prescription } from '../../../domain/energy.ts';
 import { GUILD_INACTIVE_DAYS, GUILD_MAX_MEMBERS } from '../../../domain/guild.ts';
@@ -18,7 +18,7 @@ import { cumulativeXpForLevel, levelForXp, perkPointsEarned, titleKeyForLevel, x
 import { mapStats } from '../../../domain/stats.ts';
 import { closeDays, ticketPreview, type DayInput, type StreakState } from '../../../domain/streak.ts';
 import { INGREDIENT_TAGS, type Archetype, type IngredientTag, type MealSlot } from '../../../domain/types.ts';
-import { ageFrom, allowedArchetypes, isDisplayName, LIMITS, stripUnseen, validateBiometrics, type BiometricsInput } from '../../../domain/validation.ts';
+import { ageFrom, allowedArchetypes, isDisplayName, LIMITS, normalizePassword, stripUnseen, validateBiometrics, type BiometricsInput } from '../../../domain/validation.ts';
 import { tabLabel } from '../../shared/i18n/vi/nav';
 import { NUDGE_TEMPLATES } from '../../../server/content/nudgeTemplates.ts';
 import { QUOTES } from '../../../server/content/quotes.ts';
@@ -164,6 +164,8 @@ export const world = {} as {
   tickets: ReturnType<typeof freshTickets>;
   /** The caller's latest measurements and the targets stored with them (GET /me/prescription); the name, the zone and the direction are in `me`. */
   profile: ReturnType<typeof freshProfile>;
+  /** The account's password, what `GET /me/export` answers, and what the privacy limits have counted; `deleted` once `POST /me/delete` answered 204 (every session is revoked). */
+  privacy: ReturnType<typeof freshPrivacy>;
   answer?: (request: string, init: Init) => unknown;
 };
 
@@ -318,6 +320,12 @@ export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 /** What the stand-in server answers by itself; a test that takes a request over can still let it happen. */
 export function serverAnswer(request: string, init: Init): unknown {
   if (world.down) throw new TypeError('Network request failed');
+  // account_delete revoked every session: any route that needs one answers 401 from then on (only the timezone list is anonymous)
+  // (the key of a write is read before the session is looked up)
+  if (world.privacy.deleted && request !== 'GET /meta/timezones') return guard(() => {
+    if (init.method !== 'GET') checkKey(init);
+    return refuse(401, 'SESSION_INVALID');
+  });
   if (request === 'GET /me') return respond(200, world.me);
   if (request === 'GET /day') return respond(200, world.day);
   if (request === 'GET /settings') return guard(() => {
@@ -339,6 +347,8 @@ export function serverAnswer(request: string, init: Init): unknown {
     onboarded();
     return keyed(request, init, swapMeal);
   });
+  if (request === 'GET /me/export') return guard(exportData);
+  if (request === 'POST /me/delete') return guard(() => deleteAccount(request, init));
   if (request === 'PATCH /settings') return userWrite(request, init, patchSettings);
   const [, boughtCode] = /^POST \/shop\/([^/]+)\/purchase$/.exec(request) ?? [];
   if (boughtCode) return guard(() => {
@@ -713,6 +723,63 @@ function patchSettings(_id: string, body: Record<string, unknown>) {
   return respond(200, world.settings);
 }
 
+
+// ---- privacy (server Task 46: routes/privacy.ts, readModels/export.ts, sql/61-privacy.sql) ----
+// `GET /me/export`: the 5th an hour of one account is the last (every request counts, a refused one too), then 409 ONBOARDING_REQUIRED,
+// then the document. `POST /me/delete` (a session, not an onboarded user): the Idempotency-Key (400 / 422), the account's 10 a minute
+// (429), the password (422 required / format / max, NFC like a login), then account_delete: a key that is not the account's is 401
+// INVALID_CREDENTIALS, and so is the 6th attempt within 15 minutes, right password or not; the right one is 204. Not modelled: the
+// 120 writes a minute, the throttle shared with the login of the same email, and a window that is fixed rather than sliding.
+
+/** The export of the fixture's account: a few tables, the journal text in the clear, as `buildExport` gives them. */
+export const exportOf = (more: Partial<ExportDocument> = {}): ExportDocument => ({
+  formatVersion: 1,
+  exportedAt: '2026-10-14T12:30:00.000Z',
+  data: {
+    users: [{ id: USER, email: 'an@example.vn', display_name: 'An' }],
+    biometric_snapshots: [{ user_id: USER, height_cm: 170, weight_kg: 65, birth_year: 1999 }],
+    journal_entries: [{ user_id: USER, id: 'e1', text: 'MARKER-NHAT-KY: hôm nay mình đi bộ sau bữa tối.' }],
+  },
+  ...more,
+});
+export function freshPrivacy() {
+  return { password: 'mat-khau-dung-1', deleted: false, document: exportOf(), exportCalls: [] as number[], deleteCalls: [] as number[], attempts: [] as number[] };
+}
+/** Counts this request on its window, the over-limit one included; the one past `max` is 429 RATE_LIMITED. */
+function limitCalls(calls: number[], max: number, windowMs: number) {
+  const now = Date.now();
+  const recent = calls.filter(at => at > now - windowMs);
+  calls.splice(0, calls.length, ...recent, now);
+  if (recent.length >= max) stop(429, 'RATE_LIMITED');
+}
+function exportData() {
+  limitCalls(world.privacy.exportCalls, 5, HOUR);
+  onboarded();
+  return respond(200, world.privacy.document);
+}
+function deleteAccount(request: string, init: Init) {
+  checkKey(init);
+  limitCalls(world.privacy.deleteCalls, 10, 60_000);
+  const { password } = membersOf(init);
+  if (typeof password !== 'string' || password === '') stop(422, 'VALIDATION_FAILED', [{ field: 'password', rule: 'required' }]);
+  if (password.includes(String.fromCharCode(0))) stop(422, 'VALIDATION_FAILED', [{ field: 'password', rule: 'format' }]);
+  const given = normalizePassword(password);
+  if ([...given].length > LIMITS.password.max) stop(422, 'VALIDATION_FAILED', [{ field: 'password', rule: 'max' }]);
+  return keyed(
+    request,
+    init,
+    () => {
+      const now = Date.now();
+      const attempts = (world.privacy.attempts = world.privacy.attempts.filter(at => at > now - 15 * 60_000));
+      attempts.push(now);
+      // returned, not thrown: the attempt stays counted
+      if (given !== normalizePassword(world.privacy.password) || attempts.length > 5) return refuse(401, 'INVALID_CREDENTIALS');
+      world.privacy.deleted = true;
+      return respond(204);
+    },
+    true,
+  );
+}
 
 // ---- the profile and settings writes (server Task 14: routes/me.ts, readModels/me.ts, sql/21-profile.sql; routes/settings.ts) ----
 // Every route here is for an onboarded user and every write is idempotent. The order of the refusals is the server's: the
@@ -1451,7 +1518,7 @@ export function installTodayTestEnv() {
   beforeEach(() => {
     replies.clear();
     ledger.clear();
-    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, hour: 19, closedDate: undefined, skew: 0, highWater: undefined, minutes: { resistance: 60, cardio: 45 }, history: {}, plan: freshPlan(), shop: freshShop(), guild: freshGuild(), inbox: [], journal: freshJournal(), tickets: freshTickets(), profile: freshProfile(), answer: undefined });
+    Object.assign(world, { day: dayOf(), me: meOf(), settings: settingsOf(), down: false, hour: 19, closedDate: undefined, skew: 0, highWater: undefined, minutes: { resistance: 60, cardio: 45 }, history: {}, plan: freshPlan(), shop: freshShop(), guild: freshGuild(), inbox: [], journal: freshJournal(), tickets: freshTickets(), profile: freshProfile(), privacy: freshPrivacy(), answer: undefined });
     fetchMock.mockImplementation(async (url, init) => {
       const request = `${init.method} ${url.replace(BASE, '')}`;
       const taken = await world.answer?.(request, init);
