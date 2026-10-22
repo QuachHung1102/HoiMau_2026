@@ -14,6 +14,7 @@ import { readFile } from 'node:fs/promises';
 import os from 'node:os';
 import { after, before, test } from 'node:test';
 import type { PoolClient } from 'pg';
+import { weekInputs } from '../src/leaderboardCache.ts';
 import { createLogger } from '../src/log.ts';
 import { runJob } from '../src/jobs/scheduler.ts';
 import { startTestApp } from '../test/http.ts';
@@ -276,7 +277,21 @@ test('endpoints: 200 sequential calls each', async () => {
   await measure('GET /me', LIMIT_MS, get('/me'));
   await measure('GET /nutrition/plan', LIMIT_MS, get('/nutrition/plan'));
   await measure('GET /guilds/me', LIMIT_MS, get('/guilds/me'));
-  await measure('GET /leaderboard?week=current', LEADERBOARD_LIMIT_MS, get('/leaderboard?week=current'));
+  // The leaderboard is served from the in-process cache (AR-17): the warm-up computes the board
+  // once and the 200 requests after it read it from memory. The limit alone would not show it:
+  // computing the board takes a fraction of 500 ms at this size.
+  let reads = 0;
+  const read = weekInputs.read;
+  weekInputs.read = (...args) => {
+    reads++;
+    return read.apply(weekInputs, args);
+  };
+  try {
+    await measure('GET /leaderboard?week=current', LEADERBOARD_LIMIT_MS, get('/leaderboard?week=current'));
+  } finally {
+    weekInputs.read = read;
+  }
+  assert.equal(reads, 1, 'the board was computed once (the warm-up); the 200 requests came from the cache');
 });
 
 test('jobs: one day-close over every user, one weekly-rollover', async () => {
