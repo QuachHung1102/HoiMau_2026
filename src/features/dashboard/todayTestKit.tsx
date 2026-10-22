@@ -738,7 +738,7 @@ export const exportOf = (more: Partial<ExportDocument> = {}): ExportDocument => 
   data: {
     users: [{ id: USER, email: 'an@example.vn', display_name: 'An' }],
     biometric_snapshots: [{ user_id: USER, height_cm: 170, weight_kg: 65, birth_year: 1999 }],
-    journal_entries: [{ user_id: USER, id: 'e1', text: 'MARKER-NHAT-KY: hôm nay mình đi bộ sau bữa tối.' }],
+    journal_entries: [{ user_id: USER, id: 'e1', text: 'MARKER-NHAT-KY: a short walk after dinner.' }],
   },
   ...more,
 });
