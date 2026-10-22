@@ -1900,7 +1900,7 @@ Sửa `61-privacy.sql` thì chạy `npm run server:test` và `npm run db:api-che
 
 ## Hiệu năng (`checks/perf.test.ts`, `npm run server:perf`)
 
-NFR-01 (p95 của API < 300 ms; bảng xếp hạng < 500 ms, có cache) được **đo**, không giả định. Lệnh nằm ngoài `server:test` (mất khoảng 80 giây, nạp hơn hai triệu dòng) và chạy trên cụm test như các cổng khác, nên cũng chỉ chạy được một lệnh một lúc.
+NFR-01 (p95 của API < 300 ms; bảng xếp hạng < 500 ms, có cache) được **đo**, không giả định. Lệnh nằm ngoài `server:test` (mất khoảng 80 giây, nạp hơn hai triệu dòng) và chạy trên cụm test như các cổng khác, nên cũng chỉ chạy được một lệnh một lúc. Cả lượt chạy diễn ra ở **một thời điểm đóng băng** (`setTestClock`, thứ Tư 10/03/2027 10:00 UTC = 17:00 Hồ Chí Minh, 11:00 Paris, 05:00 New York) như mọi test server khác, nên không đồng hồ nào qua 03:00 hay thứ Hai 00:00 giữa lúc nạp và lúc đo; số dòng của `quest_completions`, `quest_ticks` và sổ cái lệch nhau vài trăm giữa các lần chạy (giá trị băm của uuid ngẫu nhiên), các số khác cố định.
 
 - **Bộ dữ liệu**, nạp bằng `admin` vào một bản sao của template (không đi qua hàm SQL: đây là dữ liệu, không phải luồng; luồng có test riêng) rồi `ANALYZE` (cơ sở dữ liệu đã dùng một thời gian có thống kê, autovacuum sẽ tạo chúng rất lâu trước người dùng thật đầu tiên): 2 000 người dùng đã onboarding cách đây 30 ngày (một phần mười ở New York, một phần mười ở Paris, còn lại ở Hồ Chí Minh; ba nguyên mẫu xen kẽ), 300 tổ đội 3–8 thành viên (1 650 người trong tổ đội, 350 người không), và 30 ngày `daily_logs` mỗi người (ngày hôm nay chưa có dòng nào), cùng tiến độ nhiệm vụ, tick, nhật ký ăn, buổi tập, sổ cái, hộp thư. Số dòng đã đo ở lần chạy cuối (nạp thêm / tổng trong bảng; phần chênh là các dòng mồi nhử của lược đồ):
 
@@ -1908,10 +1908,10 @@ NFR-01 (p95 của API < 300 ms; bảng xếp hạng < 500 ms, có cache) đượ
 |---|---:|---:|
 | `users` | 2 000 | 2 002 |
 | `daily_logs` | 60 000 | 60 001 |
-| `quest_completions` | 220 927 | 220 928 |
-| `quest_ticks` | 648 334 | 648 335 |
-| `xp_ledger` | 179 888 | 179 889 |
-| `coin_ledger` | 179 888 | 179 889 |
+| `quest_completions` | 220 901 | 220 902 |
+| `quest_ticks` | 647 974 | 647 975 |
+| `xp_ledger` | 179 869 | 179 870 |
+| `coin_ledger` | 179 869 | 179 870 |
 | `nutrition_logs` | 180 003 | 180 004 |
 | `workout_sessions` | 60 000 | 60 001 |
 | `notifications` | 10 000 | 10 001 |
@@ -1920,20 +1920,20 @@ NFR-01 (p95 của API < 300 ms; bảng xếp hạng < 500 ms, có cache) đượ
 
 - **Phép đo**: qua HTTP thật (app thật, pool `app_conn`), 200 lần gọi tuần tự mỗi endpoint sau một lần khởi động. Các lệnh `GET` xoay vòng qua 200 thành viên tổ đội khác nhau (chặt hơn một người dùng duy nhất: mỗi request gặp dòng mà request trước không chạm); `POST /day/quests/WATER_8/progress` dùng 200 người dùng khác nhau chưa có dòng hôm nay (nên không bao giờ hoàn thành, nhiệm vụ cần 8 lần). Bảng xếp hạng được tính một lần ở lần khởi động và 200 request sau đó đọc từ cache: test đếm số lần đọc `job_guild_week_inputs` và đòi đúng một (giới hạn 500 ms một mình không chứng minh cache, vì tính bảng chỉ mất khoảng 200 ms).
 - **Ngưỡng**: p95 `< 300 ms` (`< 500 ms` cho bảng xếp hạng). Vượt ngưỡng thì sửa nguyên nhân (chỉ mục, câu truy vấn) trong file SQL sở hữu nó, không bao giờ sửa ngưỡng. Lần đo đầu tiên đã dưới ngưỡng hàng chục lần nên **Task 51 không thêm chỉ mục nào**.
-- **Hai job** được đo một lần, không có ngưỡng: `day-close` trên 2 000 người (mỗi người một ngày để đóng) và `weekly-rollover` (bốn tuần đã đóng, 300 tổ đội mỗi tuần, 6 600 lần trả thưởng). Số dòng sổ cái hai job tạo ra bằng số dòng log `evt:'ledger'` của chúng.
+- **Hai job** được đo một lần, không có ngưỡng: `day-close` trên 2 000 người (mỗi người một ngày để đóng) và `weekly-rollover` (đồng hồ đóng băng ở thứ Tư 10/03/2027 10:00 UTC nên các tuần là cố định: bốn tuần đã đóng bắt đầu 08/02, 15/02, 22/02 và 01/03/2027, 300 tổ đội mỗi tuần, 6 600 lần trả thưởng = 4 × 1 650 thành viên; test đòi đúng danh sách tuần và số đó). Số dòng sổ cái hai job tạo ra bằng số dòng log `evt:'ledger'` của chúng.
 
 Lần chạy cuối (Windows, ngày 23/10/2026). Máy: AMD Ryzen 5 5600X 6 nhân (12 luồng), 31,9 GiB RAM, Windows 11 (10.0.26300), Node v24.8.0, PostgreSQL 18.4 (`embedded-postgres` 18.4.0-beta.17), server và cơ sở dữ liệu cùng một máy:
 
 | Endpoint | p50 ms | p95 ms | max ms | lần đầu ms | giới hạn p95 |
 |---|---:|---:|---:|---:|---|
-| `GET /day` | 4,1 | 6,1 | 16,8 | 91,7 | < 300 ms |
-| `POST /day/quests/WATER_8/progress` | 7,1 | 9,5 | 12,4 | 34,8 | < 300 ms |
-| `GET /me` | 3,4 | 4,9 | 14,8 | 16,7 | < 300 ms |
-| `GET /nutrition/plan` | 5,0 | 6,7 | 12,9 | 14,0 | < 300 ms |
-| `GET /guilds/me` | 6,0 | 10,1 | 20,5 | 35,3 | < 300 ms |
-| `GET /leaderboard?week=current` | 2,0 | 2,4 | 21,7 | 201,1 | < 500 ms |
+| `GET /day` | 5,3 | 8,0 | 11,8 | 108,9 | < 300 ms |
+| `POST /day/quests/WATER_8/progress` | 8,6 | 12,4 | 74,9 | 72,6 | < 300 ms |
+| `GET /me` | 4,2 | 7,0 | 18,9 | 18,7 | < 300 ms |
+| `GET /nutrition/plan` | 6,1 | 8,1 | 17,1 | 18,2 | < 300 ms |
+| `GET /guilds/me` | 7,6 | 9,5 | 24,9 | 43,8 | < 300 ms |
+| `GET /leaderboard?week=current` | 2,2 | 3,1 | 26,5 | 167,2 | < 500 ms |
 
-`day-close` trên 2 000 người: 2,94 giây. `weekly-rollover`: 9,50 giây. Cột "lần đầu" là request đầu tiên của endpoint trong tiến trình (kế hoạch truy vấn, bộ nhớ đệm; với bảng xếp hạng là lần tính bảng). Đây là số của **một máy phát triển, không có mạng giữa máy khách và server**: thời gian trên điện thoại thêm thời gian mạng và của chính điện thoại (xem danh sách kiểm tra thiết bị).
+`day-close` trên 2 000 người: 3,40 giây. `weekly-rollover`: 10,32 giây. Cột "lần đầu" là request đầu tiên của endpoint trong tiến trình (kế hoạch truy vấn, bộ nhớ đệm; với bảng xếp hạng là lần tính bảng). Đây là số của **một máy phát triển, không có mạng giữa máy khách và server**: thời gian trên điện thoại thêm thời gian mạng và của chính điện thoại (xem danh sách kiểm tra thiết bị).
 
 Đổi một câu truy vấn của sáu endpoint trên, hay thêm bảng vào `buildDay`, thì chạy lại `npm run server:perf`.
 
