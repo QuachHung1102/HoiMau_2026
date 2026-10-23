@@ -28,8 +28,15 @@ after(async () => {
   await db.drop();
 });
 
-test('every route of src/routes is an operation of the contract, with its auth and idempotency', () => {
+test('the loaded routes are exactly the operations of the contract, with their auth and idempotency', () => {
   assert.ok(routes.length >= 2);
+  // equality, not a subset: an operation nobody serves is a hole in the document
+  assert.equal(routes.length, OPERATIONS.length);
+  const served = new Set(routes.map(route => `${route.method} ${route.path}`));
+  assert.deepEqual(
+    OPERATIONS.filter(({ method, path }) => !served.has(`${method} ${path}`)),
+    [],
+  );
   for (const route of routes) {
     const operation = OPERATIONS.find(
       ({ method, path }) => method === route.method && path === route.path,

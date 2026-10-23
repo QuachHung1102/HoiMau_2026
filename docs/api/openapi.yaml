@@ -448,7 +448,7 @@ paths:
       operationId: exportMyData
       tags: [profile]
       summary: Export my data
-      description: 'Everything the user owns, journal text included, as one JSON document (S44). Never contains another user or any credential.'
+      description: 'Everything the user owns, journal text included, as one JSON document (S44). Never contains another user or any credential. At most 5 per hour per user.'
       x-auth: user
       responses:
         '200':
@@ -473,7 +473,7 @@ paths:
       operationId: deleteAccount
       tags: [profile]
       summary: Delete my account
-      description: 'Soft-deletes the account after checking the password, revokes every session and leaves the guild (S52). The data is erased for good 30 days later.'
+      description: 'Soft-deletes the account after checking the password, revokes every session and leaves the guild (S52). The data is erased for good 30 days later. At most 10 per minute per account; a wrong password counts on the sign-in throttle, so the sixth failure in 15 minutes is answered `INVALID_CREDENTIALS` too and locks sign-in. A repeated request after a success is `SESSION_INVALID` (the session is gone).'
       x-auth: session
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -2882,4 +2882,8 @@ components:
         data:
           type: object
           additionalProperties: true
-          description: Everything the user owns, keyed by data set.
+          description: >-
+            Everything the user owns, keyed by table name: every own-data table with its rows as stored (snake_case columns, oldest first),
+            and `nudge_events` = `[{direction: 'SENT' | 'RECEIVED', templateCode, sentAt}]` without the other person. `inventory` and `perk_unlocks`
+            rows also carry `itemCode` and `itemName`, `guild_memberships` rows `guildName`; `journal_entries` rows carry the decrypted `text`
+            (null when unreadable) instead of the cipher text; a NUDGE notification has no `senderName` in its payload.
