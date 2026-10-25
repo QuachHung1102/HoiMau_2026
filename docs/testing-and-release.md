@@ -174,6 +174,39 @@ Mọi lệnh dưới đây đã chạy thật và thoát 0:
 - `assembleDebug` ra `android/app/build/outputs/apk/debug/app-debug.apk`; APK có đủ năm tệp font của `src/assets/fonts`. Bundle phát hành dựng được, không có chuỗi `react-native-web`, không có từ `vite` đứng riêng (chuỗi con "vite" chỉ nằm trong tên `companionInvite`).
 - `node tools/preview/shot.mjs` cho cả 87 mục xem trước đã đăng ký.
 
+## Kết quả kiểm chứng
+
+Cổng cuối của Task 53, chạy ngày 26/10/2026 trên commit `2051016` (mã cuối; commit tài liệu sau đó chỉ thêm mục này). Máy: Ryzen 5 5600X, 31,9 GiB, Windows 11 Pro, Node 24.8.0, PostgreSQL 18.4 nhúng. Mọi lệnh dưới đây đã chạy thật và thoát 0:
+
+| Cổng | Kết quả |
+|---|---|
+| `npm run lint` | 0 lỗi, 0 cảnh báo |
+| `npx tsc --noEmit` | 0 lỗi |
+| `npx tsc -p tools/preview` | 0 lỗi |
+| `npm test -- --runInBand` | 138/138 bộ, 2956/2956 test (965 s) |
+| `npm run domain:test` | 173/173 test; độ phủ dòng 100 %, nhánh 99,54 %, hàm 100 % (thấp nhất: nhánh của `mealPlan.ts` 96,43 %) |
+| `npm run server:typecheck` | 0 lỗi |
+| `npm run server:test` | 614/614 test, gồm `server/test/e2e/full.test.ts` và test của kịch bản `e2e-full` |
+| `npm run db:verify` | 169/169 |
+| `npm run db:api-check` | 91/91 |
+| `npm run db:mutation-check` | 5/5 test; 3295 đột biến đều bị cổng 1 bắt, không đột biến nào lọt |
+| `npm run server:perf` | 4/4; p95 `GET /day` 5,3 ms, `POST /day/quests/WATER_8/progress` 8,6 ms, `GET /me` 4,1 ms, `GET /nutrition/plan` 4,8 ms, `GET /guilds/me` 7,0 ms, `GET /leaderboard?week=current` 1,8 ms; `day-close` 2 000 người 2,32 s, `weekly-rollover` 7,42 s (cách đo: bảng NFR ở trên) |
+| `npm run content:count` | 5 nhiệm vụ, 11 món cửa hàng, 5 mẫu lời nhắc, 61 món ăn (sáng 15, trưa 17, tối 17, phụ 12), 41 động tác, 36 bài tập, 45 câu trích; tất cả trên mức tối thiểu |
+| `npm run test:e2e` (server dev, kịch bản `fresh` và `e2e-full`) | 2/2 bộ, 2/2 test |
+| `node design/check.mjs` | 82 màn hình, 89 chuyển động, 5 giai đoạn Mầm, 44 cặp tương phản; viền ô nhập ≥ 3:1 trên mọi nền |
+| `git diff --check` | sạch |
+| Bản xem trước | `node tools/preview/shot.mjs <tên>` cho từng mục: 167 mục đăng ký, 167 lần thoát 0, 167 ảnh PNG |
+
+Sau cùng: dừng `server:dev`, `npm run db:cleanup` báo "nothing running", cổng 8787 và 54330 không còn nghe.
+
+**Bộ đầu-cuối HTTP 15 ngày** (`server/test/e2e/full.test.ts`): bốn người A–D (ba lớp nhân vật, D ở `America/New_York`) đăng ký và onboarding thứ Hai 04/01/2027; A lập tổ đội, ba người còn lại vào. Mỗi ngày: thực đơn được sinh; A đổi món trưa và ghi các món trong thực đơn; B ghi calo tay; buổi tập đủ và một buổi dở (chỉ XP); tick nước, một lần hoàn tác; "khép lại hôm nay" trước và sau 23:00; một lượt ghi muộn có `occurredAt` được nhận vào ngày còn mở, một lượt bị từ chối `DAY_CLOSED`. A viết nhật ký tuần 1 và tuần 2 (mỗi tuần một vé); C bỏ một ngày, A nhắc C trong khung giờ, lần nhắc thứ hai bị từ chối; B tắt lời nhắc và lần nhắc sau nhận `NUDGE_RECEIVER_MUTED`. A bỏ một ngày, dùng vé lúc 09:00 sáng hôm sau, chuỗi giữ nguyên rồi chạm mốc 7 ngày (xu, huy hiệu, thư). Hai lần chốt tuần thứ Hai 03:30 trả thưởng hạng một lần cho mỗi thành viên hoạt động, `GET /leaderboard?week=previous` là bản cuối. A mua và dùng một giao diện, mở một đặc quyền bằng điểm; một món quá số xu bị từ chối. D xuất dữ liệu (có nhật ký của D, không có gì của người khác) rồi xóa tài khoản; tổ còn ba người; 30 ngày sau job dọn dẹp xóa hẳn D. Sau mỗi bước có thưởng, tổng sổ cái bằng tổng thưởng mà test tính từ nội dung (`server/content/quests.ts`, cửa hàng, thư viện bài tập) và hằng số của `domain/economy.ts`, không có tổng viết cứng. Cuối cùng: gửi lại mọi lượt ghi với khóa cũ, rồi chạy mọi job thêm hai lần, không bảng nào đổi; sau khi xóa hẳn, không cột uuid nào của bảng nào còn mã của D.
+
+**Bộ đầu-cuối qua app** (`__tests__/e2e/full.e2e.test.tsx`, kịch bản `e2e-full`): đăng nhập; qua bốn tab; viết nhật ký và thấy phản hồi; mở vé và màn xem trước; tick nước, mở thực đơn và đổi món, ghi calo, một buổi tập; Mầm → cửa hàng, mua và dùng giao diện "Rừng xanh" (màu nền của bảng màu đổi); tổ đội, gửi lời nhắc; đổi một cài đặt; xuất dữ liệu (bản giả của hộp chia sẻ nhận một chuỗi JSON đọc được); đăng xuất; người nhận đăng nhập, thấy lời nhắc trong hộp thư, đăng xuất. Mỗi màn hình đi qua đều không có trạng thái lỗi. Nhật ký và vé đi trước phần ghi ngày: khi hai việc chính đã xong thì hôm nay không cần vé và nút xem trước bị khóa.
+
+**Lỗi còn mở:** không có. Task 53 không tìm thấy lỗi nào trong `src/`, `domain/` hay `server/`. Thay đổi ngoài tệp của task: `server/scripts/scenario.ts` nhận tên kịch bản có dấu gạch nối (`e2e-full`), và `server/scripts/scenario.test.ts` có thêm kịch bản đó. Không đổi `src/` hay `android/`, nên APK ở "Bản debug đã dựng" vẫn là bản của commit `5d54c70`.
+
+**Chưa kiểm chứng trên thiết bị nào**, thật hay giả lập. Mọi kết quả trên đến từ Jest, Node, PostgreSQL và trình duyệt trên máy phát triển (xem Task 54 và `.superpowers/sdd/device-checks.md`).
+
 ## Ma trận kiểm chứng
 
 Cột cuối nói cổng nào hiện đang phủ hàng đó và kết quả gần nhất chạy trong Task 52 (26/10/2026, commit `5d54c70`, Windows 11): `npm run lint` thoát 0, `npx tsc --noEmit` thoát 0, `npx tsc -p tools/preview` thoát 0, `npm run server:test` 612/612 test, `domain/contract/operations.test.ts` 7/7. Bộ Jest đầy đủ, ba cổng lược đồ, hiệu năng, `test:e2e` và bản xem trước cho mọi mục chạy lại ở Task 53 trên commit cuối; bảng "Kết quả kiểm chứng" ở đó là nguồn cho các con số. Hàng nào còn ghi "chỉ thiết bị" thì chưa có kết quả nào.
