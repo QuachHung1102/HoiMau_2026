@@ -4,21 +4,26 @@
 
 Repo dùng React Native. [Đặc tả gốc](SPEC-QUEST-001-dac-ta-he-thong.md) định vị sản phẩm web và loại native khỏi phạm vi; phần chuyển sang mobile được chốt tại [Sổ quyết định](#sổ-quyết-định) bên dưới.
 
-Giữ các nhóm tính năng trong đặc tả. Bản nội bộ đầu tiên tập trung onboarding → mục tiêu → ghi nhận → XP → chuỗi. Dinh dưỡng và tập luyện tối thiểu cần có ngay để hoàn thành nhiệm vụ STORY; thư viện phong phú và Focus Mode hoàn thiện sau.
+Các nhóm tính năng của đặc tả đều đã được dựng: onboarding → mục tiêu → ghi nhận → XP → chuỗi (giai đoạn 1 của đặc tả §11), rồi dinh dưỡng và buổi tập (chế độ tập trung, động tác mẫu), Mầm, cửa hàng và kho đồ, tổ đội, bảng xếp hạng và lời nhắc, nhật ký và vé giữ nhịp, cài đặt, xuất và xóa dữ liệu. Bảng triển khai từng màn hình và cách kiểm chứng ở [Kiến trúc](../architecture.md#trạng-thái-triển-khai). Chưa phần nào được chạy trên thiết bị: [quyết định 0002](../decisions/0002-kiem-chung-khong-co-thiet-bi.md).
 
 ## Điều chỉnh nền tảng
 
-| Đặc tả web | Hướng mobile | Nghiệm thu |
-|---|---|---|
-| Next.js client, CSS | React Native và StyleSheet hiện có | Chạy trên nền tảng được cam kết |
-| IndexedDB | Kho bền vững tương thích React Native, chọn khi xây offline | Không mất thao tác khi restart |
-| Web Push/VAPID | Chỉ hộp thư trong app, không push từ xa (D-03) | Từ chối quyền vẫn có thông báo trong app |
-| Tab visibility | Vòng đời foreground/background | Hẹn giờ không tăng sai khi quay lại |
-| Wake Lock, Escape, ARIA | Giữ màn hình nếu hỗ trợ, Back/Thoát và accessibility native | Thoát có xác nhận, trình đọc màn hình dùng được |
-| prefers-reduced-motion | Tùy chọn giảm chuyển động của hệ điều hành | Tắt hiệu ứng không mất nội dung |
-| Session web/Auth.js | Phiên mobile: token ngẫu nhiên lưu băm phía server, token trên máy giữ trong keychain; không OAuth (D-02) | Kiểm chứng hết hạn, thu hồi, đăng xuất |
+Từ web sang mobile, cái được chọn thật sự (không còn là đề xuất):
 
-Đây là yêu cầu chuyển đổi, chưa phải lựa chọn thư viện (ngoại trừ phần xác thực đã chốt ở D-02 và D-03: email + mật khẩu, không OAuth, không push từ xa). Kiểm tra tài liệu chính thức và tương thích dependency khi thực hiện từng tích hợp.
+| Đặc tả web | Đã chọn cho mobile | Nghiệm thu hiện có |
+|---|---|---|
+| Next.js client, CSS | React Native 0.87 với `StyleSheet`; React Navigation (native-stack + bottom-tabs, bốn tab), TanStack Query, `react-native-svg` và `lucide-react-native`, chỉ `Animated` của React Native (không Reanimated). Phiên bản `0.1.0`. | `assembleDebug` ra APK, bundle Metro bản phát hành dựng được; bố cục kiểm bằng Jest và bản xem trước trình duyệt; chưa chạy trên thiết bị |
+| IndexedDB | `AsyncStorage`, tách theo tài khoản: bộ nhớ đệm `Me` và trạng thái ngày gần nhất (`cache:v1:<userId>:…`), hàng đợi thao tác chờ gửi (`pending:v1:<userId>`, tối đa 500, giữ thứ tự, không bao giờ gửi dưới phiên tài khoản khác), vài tùy chọn nhỏ. Số đo cơ thể, nhật ký và token không bao giờ vào đây. | Jest với `AsyncStorage` giả: không mất thao tác khi khởi động lại, đổi tài khoản không lẫn; `AsyncStorage` thật chưa kiểm |
+| Web Push/VAPID | Không push từ xa, không thông báo hệ điều hành, không âm thanh (D-03; công tắc "Âm thanh" bị khóa và nói lý do). Hộp thư trong app (S30) là kênh bảo đảm: lời nhắc của bạn trong tổ đội, mốc chuỗi, kết quả tuần của tổ đội, nhắc nhiệm vụ do server tạo. Quyền thông báo của hệ điều hành không bao giờ được hỏi. | Jest và `server:test` (job nhắc nhở, hộp thư); từ chối quyền không xảy ra vì không có quyền nào |
+| Tab visibility | Vòng đời của app: `AppState` qua `useForeground` / `useLoopGate`. Vòng lặp hoạt ảnh và bộ hẹn giờ pha thở dừng khi app xuống nền; đồng hồ buổi tập tính theo giờ thật nên không tăng sai khi quay lại; màn Hôm nay đọc lại khi app trở lại. | Bộ quét chuyển động (`motion-sweep`) kiểm vòng đời; nền thật chưa kiểm |
+| Wake Lock, Escape, ARIA | Giữ màn hình sáng trong buổi tập bằng module native của repo (`FLAG_KEEP_SCREEN_ON`, bỏ qua im lặng nếu không có); nút Back của hệ thống do native-stack xử lý và thoát khi buổi tập đang chạy thì có hộp xác nhận; trợ năng native: `accessibilityRole` / nhãn / trạng thái cho mọi phần tử bấm được, vùng bấm ≥ 48 dp, giữ nguyên cỡ chữ hệ thống. | Bộ quét trợ năng chạy trên mọi mục xem trước, `design/check.mjs` cho tương phản; TalkBack và cử chỉ thật chưa kiểm |
+| prefers-reduced-motion | Tùy chọn trong app "Hiển thị & chuyển động" với ba giá trị: Theo hệ thống (đọc công tắc "giảm chuyển động" của hệ điều hành), Giảm, Đầy đủ. Giảm thì không hoạt ảnh nào chạy, mọi chữ vẫn hiện, các chuyển cảnh của ngăn xếp native cũng tắt (`animation: 'none'`). | Bộ quét chuyển động render mọi mục xem trước hai lần (đầy đủ rồi giảm); công tắc hệ thống đổi lúc app đang mở chưa kiểm |
+| Session web/Auth.js | Phiên di động: email + mật khẩu (không OAuth, D-02), token ngẫu nhiên lưu băm phía server, token trên máy chỉ nằm trong keychain; khôi phục mật khẩu bằng mã 8 chữ số gửi qua email (S55). Hết hạn phiên đưa về đăng nhập kèm thông báo; đăng xuất thu hồi phiên, xóa bộ nhớ đệm của tài khoản và tệp xuất dữ liệu cuối (`clearExports`). | Jest (thứ tự đăng xuất, một lần 401 chỉ kết thúc phiên một lần) và `server:test`; keychain thật chưa kiểm |
+| Xuất dữ liệu (R-P.3) | `GET /me/export`, rồi chia sẻ một tệp JSON qua bảng chia sẻ của Android (module native, `FileProvider`, không thêm quyền); không có module thì chia sẻ dạng chữ. Tệp chỉ nằm ở bộ nhớ đệm của app và bị xóa khi rời phiên. | Jest và build native; bảng chia sẻ thật chưa kiểm |
+| API là Route Handlers của Next.js | Server Node riêng trong `server/` (D-02), cùng đường dẫn `/api/v1`. App có một `API_BASE_URL` duy nhất trong `src/shared/api/config.ts`, hiện là `http://localhost:8787/api/v1` cho `adb reverse`. Bản debug cho phép HTTP thường; bản phát hành thì không (xem quy trình phát hành). | Hướng dẫn demo; chưa chạy trên thiết bị |
+| Font và ảnh | Đóng gói trong `src/assets/`: font Be Vietnam Pro và Inter (OFL), ảnh món ăn và nhật ký, ảnh tư thế động tác mẫu. Ba bảng màu (`default`, `forest`, `sky`) cùng token `fieldLine` cho viền ô nhập. | Jest, bản xem trước, font có trong APK; hiển thị dấu tiếng Việt trên máy thật chưa kiểm |
+
+Không có thư viện nào ngoài danh sách trên được thêm. Phần xác thực đã chốt ở D-02 và D-03: email + mật khẩu, không OAuth, không push từ xa.
 
 ## Sổ quyết định
 

@@ -176,23 +176,125 @@ Mọi lệnh dưới đây đã chạy thật và thoát 0:
 
 ## Ma trận kiểm chứng
 
-| Phạm vi | Kiểm tra cần có | Cổng nghiệm thu |
-|---|---|---|
-| Nền ứng dụng | Render, lint, typecheck, khởi động native | Mở app trên từng nền tảng cam kết |
-| Auth/hồ sơ | Hết hạn phiên, sai chủ sở hữu, biên dữ liệu, snapshot | Không đọc/ghi hồ sơ người khác |
-| F-02/F-03 | Công thức, clamp, dữ liệu biên, chỉ số dẫn xuất | Kết quả từ test thực thi, không tính nhẩm |
-| F-06/F-07 | Retry, tick khác nhau, undo, race, lên cấp | Không cộng trùng hoặc mất thao tác hợp lệ |
-| F-08 | Ranh giới ngày, DST, đổi timezone, ngày không log, job lặp | Chuỗi/kỷ lục đúng chính sách đã chốt |
-| Offline | Mất mạng, restart, đổi tài khoản, qua ngày đóng | Không mất queue hoặc gửi sang tài khoản khác |
-| F-04/F-05 | Hết ứng viên, giới hạn đổi món, tập dở, background | Nhật ký và thời gian tập đúng |
-| F-09/F-10 | Tiến hóa, mood, mua đồng thời, không đủ xu | Xu/kho đồ nhất quán trong transaction |
-| F-11/F-12 | Thiếu thành viên, vào/rời nhóm, chốt lặp, mute, hạn mức | Không lộ số đo hoặc nhắc ngoài chính sách |
-| F-13 | Nhật ký riêng tư, mã hóa, retry, giới hạn vé, cứu chuỗi | Không log nội dung hoặc cấp/thưởng trùng |
-| Quyền riêng tư | Xuất JSON, xóa tài khoản/cache, job xóa cứng | Chủ sở hữu kiểm soát dữ liệu |
-| Accessibility | TalkBack/VoiceOver, chữ lớn, nhãn, tương phản, giảm chuyển động | Dùng được các luồng chính |
-| Hiệu năng | Đo khởi động/dashboard/API, ghi rõ môi trường | Đối chiếu NFR; chốt phép đo mobile thay LCP web |
+Cột cuối nói cổng nào hiện đang phủ hàng đó và kết quả gần nhất chạy trong Task 52 (26/10/2026, commit `5d54c70`, Windows 11): `npm run lint` thoát 0, `npx tsc --noEmit` thoát 0, `npx tsc -p tools/preview` thoát 0, `npm run server:test` 612/612 test, `domain/contract/operations.test.ts` 7/7. Bộ Jest đầy đủ, ba cổng lược đồ, hiệu năng, `test:e2e` và bản xem trước cho mọi mục chạy lại ở Task 53 trên commit cuối; bảng "Kết quả kiểm chứng" ở đó là nguồn cho các con số. Hàng nào còn ghi "chỉ thiết bị" thì chưa có kết quả nào.
+
+| Phạm vi | Kiểm tra cần có | Cổng nghiệm thu | Cổng đang phủ · kết quả |
+|---|---|---|---|
+| Nền ứng dụng | Render, lint, typecheck, khởi động native | Mở app trên từng nền tảng cam kết | lint, `tsc`, Jest, `assembleDebug` và bundle Metro: xanh. Mở app trên máy: chỉ thiết bị, chưa chạy. iOS: chưa build |
+| Auth/hồ sơ | Hết hạn phiên, sai chủ sở hữu, biên dữ liệu, snapshot | Không đọc/ghi hồ sơ người khác | `server:test` (route, hàm SQL), `db:api-check` · `server:test` xanh. Keychain thật: chỉ thiết bị |
+| F-02/F-03 | Công thức, clamp, dữ liệu biên, chỉ số dẫn xuất | Kết quả từ test thực thi, không tính nhẩm | `domain:test` (ngưỡng phủ 90 %) và `server:test` · `server:test` xanh; `domain:test` chạy lại ở Task 53 |
+| F-06/F-07 | Retry, tick khác nhau, undo, race, lên cấp | Không cộng trùng hoặc mất thao tác hợp lệ | `server:test` (khóa idempotency, sổ cái, khóa dòng), đầu-cuối HTTP · `server:test` xanh |
+| F-08 | Ranh giới ngày, DST, đổi timezone, ngày không log, job lặp | Chuỗi/kỷ lục đúng chính sách đã chốt | `domain:test`, `server:test` (đồng hồ test, job chạy hai lần) · `server:test` xanh |
+| Offline | Mất mạng, restart, đổi tài khoản, qua ngày đóng | Không mất queue hoặc gửi sang tài khoản khác | Jest (hàng đợi `pendingActions`, `applyPending`) · chạy lại ở Task 53. Mất mạng thật, restart tiến trình: chỉ thiết bị |
+| F-04/F-05 | Hết ứng viên, giới hạn đổi món, tập dở, background | Nhật ký và thời gian tập đúng | `server:test`, Jest · `server:test` xanh. Tập khi app xuống nền: chỉ thiết bị |
+| F-09/F-10 | Tiến hóa, mood, mua đồng thời, không đủ xu | Xu/kho đồ nhất quán trong transaction | `domain:test`, `server:test` · `server:test` xanh |
+| F-11/F-12 | Thiếu thành viên, vào/rời nhóm, chốt lặp, mute, hạn mức | Không lộ số đo hoặc nhắc ngoài chính sách | `server:test`, `db:api-check` · `server:test` xanh |
+| F-13 | Nhật ký riêng tư, mã hóa, retry, giới hạn vé, cứu chuỗi | Không log nội dung hoặc cấp/thưởng trùng | `server:test`, `observability.test.ts` · `server:test` xanh |
+| Quyền riêng tư | Xuất JSON, xóa tài khoản/cache, job xóa cứng | Chủ sở hữu kiểm soát dữ liệu | `server:test` (xuất, xóa, purge) · `server:test` xanh. Bảng chia sẻ tệp native: chỉ thiết bị |
+| Accessibility | TalkBack/VoiceOver, chữ lớn, nhãn, tương phản, giảm chuyển động | Dùng được các luồng chính | Bộ quét trợ năng và chuyển động trong Jest, `node design/check.mjs` · chạy lại ở Task 53. TalkBack, chữ lớn thật: chỉ thiết bị |
+| Hiệu năng | Đo khởi động/dashboard/API, ghi rõ môi trường | Đối chiếu NFR; chốt phép đo mobile thay LCP web | `server:perf` (Task 51, bảng trên). Khởi động nguội, cuộn, bộ nhớ: chỉ thiết bị |
 
 Áp dụng ngưỡng coverage NFR-09 cho các hàm nghiệp vụ được đặc tả nêu tên ở nơi chúng thực sự chạy, kể cả backend riêng. Coverage client template không đại diện cho nghiệp vụ.
+
+## Danh sách kiểm tra phát hành
+
+Ký hiệu: **xong** = đã làm và có bằng chứng; **chưa** = chưa làm, cần người làm; **không làm được ở đây** = máy phát triển không làm được (không thiết bị, không macOS, không tài khoản bên ngoài). Chưa có mục nào về nội dung, pháp lý hay thiết bị được đánh dấu xong, vì chưa ai duyệt hay chạy.
+
+### Nội dung và pháp lý
+
+- [ ] **chưa** Nội dung sức khỏe và khủng hoảng **chưa được chuyên gia duyệt**. Các module cần người có chuyên môn đọc trước khi phát hành: `src/shared/i18n/vi/health.ts` (lời khuyên, cảnh báo, khối khủng hoảng S56 với 115 và 111), `server/content/meals.ts` (thực đơn, kcal, đại lượng), `server/content/exercises.ts` (bài tập, mức độ, lưu ý an toàn), `server/content/quotes.ts` (câu trích sau nhật ký). Căn cứ: ruling R-D10, đặc tả §9.
+- [ ] **chưa** Điều khoản sử dụng và chính sách riêng tư (`src/shared/i18n/vi/legal.ts`) **chưa được pháp lý duyệt**; văn bản hiện chỉ là bản nháp theo các cam kết của đặc tả.
+- [ ] **chưa** Giấy phép ảnh. Mọi ảnh đang đóng gói trong `src/assets/` mà `design/assets/sources.json` ghi `kind` là `stock-unsplash` hoặc `ai-generated`:
+
+| Tệp trong `src/assets/` | Mã nguồn | `kind` | Còn thiếu gì cho giấy phép |
+|---|---|---|---|
+| `meals/Fr7yg.png` | `Fr7yg` | `stock-unsplash` | Tên tác giả ảnh, liên kết trang ảnh Unsplash và xác nhận điều khoản Unsplash hiện hành cho ứng dụng thương mại; `sources.json` chỉ lưu URL tải xuống |
+| `meals/e1ZpZ.png` | `e1ZpZ` | `stock-unsplash` | như trên |
+| `meals/xZxDr.png` | `xZxDr` | `stock-unsplash` | như trên |
+| `meals/b4IYqX.png` | `b4IYqX` | `ai-generated` | Tên công cụ, phiên bản và điều khoản sử dụng thương mại của công cụ sinh ảnh, câu lệnh đã dùng; `sources.json` chỉ lưu tên tệp nội bộ |
+| `journal/pXS2P.png` | `pXS2P` | `ai-generated` | như trên |
+
+Các tệp `design/assets/` khác (`yDIOq`, `fyyAz`, `cKgNX`, `uWHhz`) có trong `sources.json` nhưng không được đóng gói trong `src/assets/`. Ảnh tư thế bài tập (`src/assets/motion/poses/`) được sao ra từ `design/motion/exercises/` bằng `scripts/extract-exercise-motion.mjs`; chúng không có dòng nào trong `sources.json`, nên nguồn và giấy phép của chúng cũng cần người chủ thiết kế xác nhận.
+
+- [x] **xong** Phông chữ: `src/assets/fonts/` có `OFL-Inter.txt` và `OFL-BeVietnamPro.txt` cạnh năm tệp phông (Inter bốn độ đậm, Be Vietnam Pro 700). Giấy phép SIL OFL cho phép đóng gói kèm ứng dụng; giữ hai tệp văn bản đó trong mọi bản phát hành.
+
+### Thiết bị và nền tảng
+
+- [ ] **không làm được ở đây** Chưa có kiểm chứng trên thiết bị: xem [quyết định 0002](decisions/0002-kiem-chung-khong-co-thiet-bi.md) và danh sách kiểm tra trên thiết bị (`docs/kiem-thu-tren-thiet-bi.md`, sẽ có, do Task 54 tạo; chưa có tệp).
+- [ ] **không làm được ở đây** iOS chưa build, chưa kiểm chứng (không có macOS).
+
+### Kênh bên ngoài
+
+- [ ] **không làm được ở đây** Không có push từ xa (FCM/APNs) và không có thông báo hệ điều hành; hộp thư trong app là kênh duy nhất. Không có âm thanh (mặc định tắt, chưa có tệp âm).
+- [ ] **không làm được ở đây** SMTP chưa kiểm chứng. Server chỉ có mailer ghi tệp (`MAIL_MODE=outbox`, chỉ chạy khi `NODE_ENV` là `development` hoặc `test`); khởi động với giá trị khác sẽ dừng ngay. Muốn gửi mã đặt lại mật khẩu thật phải viết và kiểm chứng một `Mailer` SMTP trước.
+- [ ] **chưa** Chưa có địa chỉ phản hồi, hỗ trợ hay liên hệ về dữ liệu cá nhân; chính sách riêng tư và màn Cài đặt chưa thể trỏ tới đâu.
+
+### Quy trình phát hành (chưa chạy)
+
+1. Tạo khóa tải lên: `keytool -genkeypair -v -storetype PKCS12 -keystore upload.keystore -alias upload -keyalg RSA -keysize 2048 -validity 10000`. Giữ tệp và mật khẩu ngoài Git. Mất khóa là mất khả năng cập nhật ứng dụng đã đăng.
+2. Trong `android/app/build.gradle`, thêm `signingConfigs.release` đọc `storeFile`, mật khẩu và alias từ `~/.gradle/gradle.properties` (không ghi vào repo), rồi đổi `buildTypes.release.signingConfig` từ `signingConfigs.debug` sang `signingConfigs.release`. Hiện bản release vẫn ký bằng khóa debug.
+3. Trong `src/shared/api/config.ts`, đổi `API_BASE_URL` từ `http://localhost:8787/api/v1` sang địa chỉ **HTTPS** của server. Xác nhận lưu lượng không mã hóa bị tắt cho bản release: `android:usesCleartextTraffic` trong `AndroidManifest.xml` là `${usesCleartextTraffic}` do plugin Gradle của React Native điền (bật ở debug, tắt ở release); sau khi dựng, mở manifest đã gộp của bản release và kiểm tra giá trị là `false`. Điều này chưa được kiểm trong dự án này.
+4. `cd android; .\gradlew.bat bundleRelease --console=plain` ra tệp `.aab` trong `android/app/build/outputs/bundle/release/`.
+5. Kiểm tra bản đã ký trên một thiết bị thật (danh sách kiểm tra thiết bị) trước khi tải lên.
+6. Người được phép đăng: chỉ chủ dự án (hoặc người chủ dự án cấp quyền bằng văn bản) trên tài khoản cửa hàng của chủ dự án.
+
+### Ghi chú triển khai server
+
+- Chưa chạy, chỉ ghi lại. **Cụm PostgreSQL.** `initdb` với `--encoding=UTF8 --locale-provider=icu --icu-locale=vi` (thiếu thì chữ Việt hỏng). Thư mục dữ liệu nằm ở đường dẫn chỉ gồm ASCII.
+- **Vai trò và mật khẩu.** Áp các tệp `server/sql/NN-*.sql` theo thứ tự số, bằng chủ sở hữu cơ sở dữ liệu. `00-roles.sql` tạo `app_conn` (đăng nhập, `NOINHERIT`), `app_anon`, `app_auth`, `app_job` **không có mật khẩu**: đặt mật khẩu của `app_conn` ngoài luồng, bằng `ALTER ROLE app_conn PASSWORD '...'` do quản trị viên chạy, giá trị sinh ngẫu nhiên và không nằm trong repo hay lịch sử shell. Mật khẩu `app_conn_dev` và `pg_super_dev` trong `server/scripts/cluster.ts` chỉ dành cho máy phát triển. Các tệp `80-*` đến `89-*` là dữ liệu mồi nhử của cổng kiểm tra, không dành cho cơ sở dữ liệu thật.
+- **Chuỗi kết nối.** Môi trường của tiến trình server chỉ có `DATABASE_URL` của `app_conn`. Chuỗi kết nối của chủ sở hữu hoặc superuser không bao giờ nằm trong môi trường của server.
+- **`JOURNAL_KEY`.** 32 byte ngẫu nhiên mã hóa base64, sinh bằng `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`. Server từ chối khóa trùng với khóa viết trong repo ngoài `NODE_ENV` là `development` hoặc `test`. **Sao lưu khóa này ở nơi tách khỏi bản sao lưu cơ sở dữ liệu: mất khóa là mất toàn bộ nội dung nhật ký, không có cách khôi phục.**
+- **Sau mỗi migration**, chạy ba cổng trên bản sao: `npm run db:verify`, `npm run db:api-check`, `npm run db:mutation-check`; cả ba phải xanh trước khi áp vào cơ sở dữ liệu thật.
+- **Sao lưu.** `pg_dump --format=custom --file=hoimau.dump <cơ sở dữ liệu>` theo lịch, cất ở nơi lưu bản sao lưu mã hóa. Khôi phục vào cơ sở dữ liệu trống đã có các vai trò: `pg_restore --dbname=<cơ sở dữ liệu mới> --no-owner hoimau.dump`, rồi chạy `npm run db:verify` trên đó và một smoke test (đăng nhập, đọc `GET /day`). Cả hai lệnh được ghi lại, **chưa từng chạy** trong dự án này.
+- **Job định kỳ** (`npm --prefix server run jobs`): đóng ngày, chốt tuần của tổ đội, dọn phiên, khóa idempotency và tài khoản quá hạn xóa; chạy lại không đổi kết quả.
+
+### Mức trần đã biết
+
+Mỗi dòng `ponytail:` trong repo là một giản lược có chủ ý, kèm giới hạn của nó. Danh sách sinh bằng `git grep -n "ponytail:" -- . ':!docs' ':!*.md'` ngày 26/10/2026 (tệp và dòng theo commit `5d54c70`; chú thích nhiều dòng chỉ chép dòng chứa `ponytail:`):
+
+| Tệp:dòng | Chú thích |
+|---|---|
+| `domain/language.ts:37` | ponytail: matching ignores diacritics, so a harmless phrase that differs from a banned one |
+| `domain/progression.ts:26` | ponytail: linear walk, O(level) and not capped at MAX_SEEDED_LEVEL (~22.5 M XP); |
+| `server/checks/api-check.test.ts:553` | ponytail: one value for every row of A; a user with several rows in a table |
+| `server/checks/mutation-check.test.ts:565` | ponytail: matches the bare column name, so a column whose name needs quotes makes a statement |
+| `server/scripts/scenarioKit.ts:81` | ponytail: fixed offsets only; the demo users live in Asia/Ho_Chi_Minh (no daylight saving). |
+| `server/sql/20-progression.sql:223` | ponytail: level_thresholds is seeded up to MAX_SEEDED_LEVEL (200, about 22.5 M XP), so this |
+| `server/sql/30-day.sql:134` | ponytail: up to 1500 steps for a whole day ahead (about half a millisecond, measured); it |
+| `server/sql/60-journal.sql:201` | ponytail: the LATERAL max() reads the caller's entries once per quote (no (user_id, |
+| `server/sql/61-privacy.sql:161` | ponytail: 50 accounts per statement, each with its cascade, under the 10 s statement timeout |
+| `server/src/app.ts:417` | ponytail: one round trip per step (role, session, key, clock): up to eleven for an |
+| `server/src/jobs/scheduler.ts:191` | ponytail: no clock, no alert either while the database is out of reach; /healthz says db false |
+| `server/src/jobs/weeklyRollover.ts:61` | ponytail: scores each of the 4 weeks again on every run (an applied week answers |
+| `server/src/leaderboardCache.ts:93` | ponytail: in-process cache, one server process |
+| `server/src/rateLimit.ts:1` | ponytail: in-process limiter, single server process; move to the DB if a second process is ever started |
+| `src/features/auth/api.ts:18` | ponytail: the cached value then counts as fresh until the next refetch (remount, invalidate, "Thử lại"); |
+| `src/features/dashboard/applyPending.ts:32` | ponytail: the logical day is taken as the 24 h before `closesAt`, an hour off on a daylight-saving change day; |
+| `src/features/dashboard/provisionalDay.ts:10` | ponytail: a logical day is taken as 24 h, as in `applyPending`. |
+| `src/features/nutrition/MealDetailScreen.tsx:35` | ponytail: the outgoing track (the old meal sliding out) is |
+| `src/features/quests/api.ts:124` | ponytail: a clock more than 5 minutes ahead gets the new day with the next return to the app or the next |
+| `src/features/shop/ShopItemScreen.tsx:72` | ponytail: the sheen and the turning stamp of the catalog entry are left out (the chip below appears at once). |
+| `src/shared/api/uuid.ts:6` | ponytail: an idempotency key, not a secret. Hermes does not reliably expose crypto.getRandomValues, so the |
+| `src/shared/native/hoiMauNative.ts:36` | ponytail: text fallback capped at 100 000 chars (Android binder limit); the native path has no cap |
+| `src/shared/storage/pendingActions.ts:137` | ponytail: one copy per user, a second corruption overwrites the first; keep a list if support ever reads these. |
+| `src/shared/storage/pendingActions.ts:292` | ponytail: a head action that always fails with 5xx blocks the queue; cap by attempts + surface to the |
+| `src/shared/ui/Icon.tsx:21` | ponytail: the whole lucide set stays in the bundle (Metro does not tree-shake the barrel); |
+| `src/shared/ui/OverlayCelebration.tsx:56` | ponytail: one halo replaces the catalog tracks `.rays` (level-up) and `.d-flame` (streak-milestone); it is `.glow` of mam-evolve. |
+| `src/shared/ui/Screen.tsx:48` | ponytail: Android resizes the window itself (adjustResize); confirm on a device. |
+| `src/shared/ui/mam/Mam.tsx:27` | ponytail: whole-body motion only; per-part tracks from catalog.json if the mascot needs more life |
+
+### Bản debug đã dựng
+
+| Mục | Giá trị |
+|---|---|
+| Lệnh | `cd android; .\gradlew.bat assembleDebug --console=plain` (thoát 0, `BUILD SUCCESSFUL`) |
+| Commit | `5d54c707c5491eb0efd007118195d9b8bcd87bab` (cây làm việc chỉ khác commit này ở các tệp tài liệu; không có thay đổi trong `src/`, `domain/`, `server/` hay `android/`) |
+| Tệp APK | `android/app/build/outputs/apk/debug/app-debug.apk` (không nằm trong Git) |
+| Kích thước | 173259124 byte |
+| SHA-256 | `8bad41b324c360abfe7b9a22d1b52a43dc5ce8637fe4b95a75e9763c35f007dc` |
+| Bundle Metro bản phát hành | `npx react-native bundle --platform android --dev false --entry-file index.js --bundle-output node_modules/.cache/hoi-mau/release.bundle`: thoát 0, 4241131 byte |
+
+Task 53 dựng lại APK nếu `src/` hoặc `android/` đổi, và ghi lại mã băm mới trong "Kết quả kiểm chứng". APK này **chưa từng chạy** trên thiết bị.
 
 ## Quy trình phát hành dự kiến
 

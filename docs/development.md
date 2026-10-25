@@ -1,5 +1,7 @@
 # Hướng dẫn phát triển
 
+Muốn xem ứng dụng chạy trên điện thoại: đi thẳng tới [Chạy demo trên Android với server trên máy](#chạy-demo-trên-android-với-server-trên-máy).
+
 ## Môi trường
 
 `package.json` yêu cầu Node `>= 24.8` (backend chạy TypeScript trực tiếp bằng Node). Dùng npm với `package-lock.json`; `npm ci` cài theo lockfile. Phiên bản React/React Native lấy từ `package.json`; không nâng cấp trong thay đổi thư mục.
@@ -16,7 +18,9 @@ sdkmanager "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.1.12297006" "cm
 
 - Chấp nhận license: chạy `yes | sdkmanager --licenses` trong Git Bash. PowerShell/cmd không đẩy được "y" vào lệnh này.
 - Tạo `android/local.properties` (đã git-ignore): `sdk.dir=C\:\\Users\\<tên>\\AppData\\Local\\Android\\Sdk`. Gradle chỉ cần file này; `ANDROID_HOME` chỉ cần khi gọi `adb`/`sdkmanager` bằng tên, hoặc thêm `platform-tools` vào PATH.
-- Build debug: `cd android; .\gradlew.bat assembleDebug` (APK ở `android/app/build/outputs/apk/debug/app-debug.apk`). Lần đầu ~6 phút (tải dependency, biên dịch C++ cho 4 ABI); thêm `-PreactNativeArchitectures=x86_64` để build một ABI cho emulator.
+- Build debug: `cd android; .\gradlew.bat assembleDebug --console=plain` (APK ở `android/app/build/outputs/apk/debug/app-debug.apk`). Lần đầu ~6 phút (tải dependency, biên dịch C++ cho 4 ABI); thêm `-PreactNativeArchitectures=x86_64` để build một ABI cho emulator. Phiên bản ứng dụng là `0.1.0` (`package.json` và `versionName` trong `android/app/build.gradle`; một test giữ hai nơi bằng nhau). Bản debug đã dựng từ commit cuối, kèm kích thước và SHA-256, ghi ở [Kiểm thử và phát hành](testing-and-release.md#bản-debug-đã-dựng).
+- Sau khi sửa phần native, xóa `android/app/.cxx` trước khi build (xem "Sau khi sửa phần native" trong mục demo bên dưới).
+- Bundle JavaScript bản phát hành (kiểm tra Metro dựng được; chưa phải phát hành): `npx react-native bundle --platform android --dev false --entry-file index.js --bundle-output <tệp>`.
 - Emulator x86_64 cần ảo hóa phần cứng: bật SVM (AMD) / VT-x (Intel) trong BIOS, rồi cài driver (`extras\google\Android_Emulator_Hypervisor_Driver\silent_install.bat` với quyền admin) hoặc bật Windows Hypervisor Platform. Kiểm tra: `emulator -accel-check`. Không có ảo hóa thì emulator báo "x86_64 emulation currently requires hardware acceleration" và không chạy được; ảnh arm64 cũng bị từ chối trên máy x86 ("does not support arm64 CPU architecture"). Khi đó dùng thiết bị thật bật USB debugging.
 - Chạy emulator: `& "$env:LOCALAPPDATA\Android\Sdk\emulator\emulator.exe" -avd Medium_Phone_API_36.1`.
 
@@ -34,11 +38,20 @@ Repo có ba code base dùng chung một cây thư mục; mỗi code base có cô
 
 Jest bỏ qua `server/`, `domain/`, `tools/`, `design/`, `android/`, `ios/` và `__tests__/e2e/` (bộ đầu-cuối chạy bằng `npm run test:e2e`); `tsc` gốc bỏ qua `server/`, `tools/`, `design/` và các tệp `domain/**/*.test.ts`. `npm run lint` kiểm tra `src/`, `domain/`, `server/`, `__tests__/`, `tools/` và các tệp cấu hình `*.js` ở gốc repo.
 
-Lệnh gốc của repo:
+Mọi lệnh gốc của repo (`package.json`):
 
 ```sh
-npm run domain:test          # test và ngưỡng phủ của domain/
-npm run domain:bundle-check  # bundle domain/ bằng Metro (cần scripts/domain-bundle-entry.js)
+npm start                    # Metro
+npm run android              # build, cài và mở app debug trên thiết bị (cần Metro đang chạy)
+npm run ios                  # chỉ trên macOS; chưa từng được build
+npm test                     # Jest của app (cổng nghiệm thu dùng npm test -- --runInBand)
+npm run test:e2e             # cây <App /> thật với server dev; cần E2E_BASE_URL (xem "Bộ đầu-cuối qua app" bên dưới)
+npm run lint                 # ESLint: src, domain, server, __tests__, tools, *.js ở gốc
+npm run preview              # bản xem trước trên trình duyệt (xem mục dưới)
+npm run preview:shot -- <tên> [out.png]   # chụp một mục xem trước
+npm run domain:test          # test và ngưỡng phủ 90 % của domain/
+npm run domain:bundle-check  # bundle domain/ bằng Metro (scripts/domain-bundle-entry.js)
+npm run demo:reverse         # adb reverse tcp:8787 và tcp:8081 cho demo trên điện thoại
 npm run server:install       # cài dependency của server/ (npm ci)
 npm run server:typecheck     # tsc của server/
 npm run server:test          # test của server/ trên PostgreSQL thật
@@ -51,18 +64,18 @@ npm run db:cleanup           # dọn tiến trình PostgreSQL mồ côi của d�
 npm run content:count        # đếm nội dung seed
 ```
 
-Các lệnh `server:*`, `db:*`, `content:count` và `domain:*` chỉ chạy được khi `server/`, `domain/` và `scripts/domain-bundle-entry.js` đã có trong repo.
+Lệnh của riêng `server/` (chạy bằng `npm --prefix server run <tên>`): `scenario` (kịch bản dev và đồng hồ test, xem [backend](backend.md#kịch-bản-phát-triển-và-dịch-chuyển-thời-gian-scriptsscenariots-scriptsscenariosts)) và `jobs` (chạy một job một lần trên cơ sở dữ liệu dev, ví dụ `npm --prefix server run jobs -- day-close`). Các lệnh `typecheck`, `test`, `db:*`, `perf` và `dev` của `server/` chính là những lệnh gốc cùng tên ở trên.
 
 ### PostgreSQL và cổng mạng
 
 - **Không bao giờ kết nối dịch vụ PostgreSQL hệ thống / cổng 5432.** Máy phát triển có dịch vụ `postgresql-x64-18` riêng; dự án không có thông tin đăng nhập của nó và không được dừng, cấu hình lại hay chạm vào nó.
-- Cơ sở dữ liệu dự án là PostgreSQL thật chạy qua gói `embedded-postgres`: cổng **54329** cho test, cổng **54330** cho dev. API dev dùng cổng 8787.
+- Cơ sở dữ liệu dự án là PostgreSQL thật chạy qua gói `embedded-postgres`: cổng **54329** cho test, cổng **54330** cho dev. API dev dùng cổng 8787 (chỉ nghe `127.0.0.1`), Metro dùng 8081. Test và các lệnh `db:*` dùng chung một cụm test nên mỗi lúc chỉ chạy một lệnh (xem [backend](backend.md#một-cụm-test-mỗi-lúc-một-lượt-chạy)).
 - Thư mục dữ liệu (`server/.pgdata/`, `server/.pgdata-dev/`) phải có đường dẫn chỉ gồm ký tự ASCII và đã được Git bỏ qua, cùng `server/.outbox/` và `server/.env`.
-- Nếu một lần chạy bị buộc dừng, tiến trình PostgreSQL có thể bị bỏ lại và lần khởi động sau lỗi: chạy `npm run db:cleanup`.
+- Nếu một lần chạy bị buộc dừng, tiến trình PostgreSQL có thể bị bỏ lại và lần khởi động sau lỗi: chạy `npm run db:cleanup`. Chỉ chạy lệnh này khi không còn lượt test hay `server:dev` nào đang diễn ra (nó không phân biệt cụm bị bỏ lại với cụm đang dùng). Dừng `server:dev` bình thường bằng Ctrl+C.
 
 ### Không có thiết bị Android
 
-Máy phát triển không có thiết bị thật và emulator không chạy được (chưa bật ảo hóa phần cứng trong BIOS). Vì vậy giao diện được kiểm bằng Jest (render và tương tác), `tsc`, ESLint và ảnh chụp từ bộ xem trước trình duyệt; build native (`gradlew.bat assembleDebug`) và bundle Metro chỉ chạy ở các mốc kiểm tra. Không tuyên bố hành vi trên thiết bị khi chưa chạy trên thiết bị; các mục cần kiểm tra trên máy thật được gom thành một danh sách để chạy khi có thiết bị.
+Máy phát triển không có thiết bị thật và emulator không chạy được (chưa bật ảo hóa phần cứng trong BIOS). Vì vậy giao diện được kiểm bằng Jest (render và tương tác), `tsc`, ESLint và ảnh chụp từ bộ xem trước trình duyệt; build native (`gradlew.bat assembleDebug`) và bundle Metro chỉ chạy ở các mốc kiểm tra. Không tuyên bố hành vi trên thiết bị khi chưa chạy trên thiết bị; các mục cần kiểm tra trên máy thật được gom thành một danh sách để chạy khi có thiết bị (`docs/kiem-thu-tren-thiet-bi.md`, sẽ có). Lý do và phạm vi: [quyết định 0002](decisions/0002-kiem-chung-khong-co-thiet-bi.md).
 
 ## Cài đặt và chạy
 
@@ -93,16 +106,7 @@ Thêm màn hình bằng cách đăng ký trong `src/app/screens.tsx` (xem [kiế
 
 ### Chạy app với API dev
 
-App chỉ có một địa chỉ API: `API_BASE_URL = 'http://localhost:8787/api/v1'` trong `src/shared/api/config.ts`. Trên thiết bị hoặc emulator Android, `localhost` là chính thiết bị đó, nên phải chuyển cổng về máy phát triển:
-
-```sh
-npm run server:dev                # terminal 1: PostgreSQL dev (cổng 54330) và API ở cổng 8787 (từ Task 8)
-adb reverse tcp:8787 tcp:8787     # làm lại sau mỗi lần cắm lại thiết bị hoặc khởi động lại emulator
-npm start                         # terminal 2: Metro
-npm run android                   # terminal 3
-```
-
-Nếu `adb` chưa có trong PATH, dùng `adb.exe` trong thư mục `platform-tools` của Android SDK. Nếu app báo "Không kết nối được mạng" ngay khi mở, kiểm tra `adb reverse --list` và mở `http://localhost:8787/api/v1/healthz` trên máy phát triển. Quy trình này chưa được chạy trên máy hiện tại vì không có thiết bị (xem mục "Không có thiết bị Android").
+App chỉ có một địa chỉ API: `API_BASE_URL = 'http://localhost:8787/api/v1'` trong `src/shared/api/config.ts` (HTTP thường: bản debug cho phép, bản phát hành thì không, xem [Kiểm thử và phát hành](testing-and-release.md#quy-trình-phát-hành-chưa-chạy)). Trên thiết bị hoặc emulator Android, `localhost` là chính thiết bị đó, nên phải chuyển cổng về máy phát triển bằng `adb reverse`. Các bước đầy đủ, theo thứ tự, ở mục tiếp theo. Quy trình này chưa được chạy trên máy hiện tại vì không có thiết bị (xem mục "Không có thiết bị Android").
 
 ### Chạy demo trên Android với server trên máy
 
@@ -138,12 +142,29 @@ App luôn nói chuyện với server thật ở `localhost:8787` (không có ch�
 **Dừng**: Ctrl+C ở terminal của `server:dev` và của Metro, `npm --prefix server run scenario -- clock off`, `adb reverse --remove-all`.
 
 Các bước 1 và 2 đã được chạy thật trên máy phát triển ngày 22/10/2026 (server lên, `healthz` 200, kịch bản `streak6` rồi đăng nhập và `GET /day` trả đúng ngày hôm nay). Các bước 3 đến 5 chưa được chạy vì máy không có thiết bị.
+
+### Bộ đầu-cuối qua app
+
+Cây `<App />` thật chạy trong Jest và nói chuyện với server dev thật (không `fetch` giả); không cần thiết bị. Ba lệnh, hai đầu tiên ở terminal riêng:
+
+```sh
+npm run server:dev                                   # terminal 1: API dev
+npm --prefix server run scenario -- fresh            # terminal 2: dựng tài khoản `fresh`
+E2E_BASE_URL=http://127.0.0.1:8787/api/v1 npm run test:e2e
+```
+
+PowerShell: `$env:E2E_BASE_URL='http://127.0.0.1:8787/api/v1'; npm run test:e2e`. Không đặt `E2E_BASE_URL` thì bộ test tự bỏ qua; `npm test` không bao giờ chạy nó. Bộ test dời đồng hồ test của cơ sở dữ liệu dev rồi trả về giờ thật, nên chạy xong thì dừng `server:dev`. Mô tả đầy đủ ở [Kiểm thử và phát hành](testing-and-release.md#chạy-bộ-đầu-cuối-qua-app).
+
 ## Kiểm tra thay đổi
 
 ```sh
 npm run lint
 npx tsc --noEmit
+npx tsc --noEmit -p tools/preview     # bản xem trước (tsc gốc bỏ qua tools/)
+npm run server:typecheck
 npm test -- --runInBand
+npm run domain:test
+npm run server:test                   # khi đổi server/, domain/ hoặc hợp đồng API
 git diff --check
 ```
 

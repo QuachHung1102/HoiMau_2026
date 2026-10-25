@@ -4,7 +4,15 @@ Backend nằm trong `server/`: Node 24 chạy TypeScript trực tiếp (không b
 
 `server/` là một gói npm riêng (`package.json`, lockfile và `node_modules` riêng) để `pg` và PostgreSQL nhúng không lẫn vào bản cài của app React Native. Logic nghiệp vụ thuần dùng chung với app nằm ở `domain/` và được import bằng đường dẫn tương đối có đuôi `.ts`.
 
-Tài liệu này mô tả phần đã có trong repo. Mỗi nhiệm vụ thêm SQL sẽ bổ sung mục của mình ở cuối.
+Tài liệu này mô tả phần đã có trong repo; hợp đồng giữa app và server là [`docs/api/openapi.yaml`](api/openapi.yaml) (53 thao tác), được test đối chiếu từng dòng với `domain/contract/` và với các route server nạp. Triển khai server ra ngoài máy phát triển: xem "Ghi chú triển khai server" trong [Kiểm thử và phát hành](testing-and-release.md#ghi-chú-triển-khai-server).
+
+**Mục lục**
+
+- Nền: [Cài đặt và lệnh](#cài-đặt-và-lệnh), [Hai cụm PostgreSQL](#hai-cụm-postgresql-của-dự-án), [Mô hình vai trò](#mô-hình-vai-trò), [Lược đồ là các file SQL](#lược-đồ-là-các-file-sql).
+- Ba cổng kiểm: [Cổng 1](#ba-cổng-kiểm), [Cổng 2: API check và dòng mồi nhử](#cổng-2-api-check-và-dòng-mồi-nhử), [Cổng 3: mutation check](#cổng-3-mutation-check), [đăng ký bảng, policy, hàm](#cách-đăng-ký-bảng-policy-hàm), [thêm một file SQL](#thêm-một-file-sql), [viết test cho server](#viết-test-cho-server), [PostgreSQL nhúng](#điều-cần-biết-về-postgresql-nhúng).
+- Tầng HTTP: [Xác thực (SQL)](#xác-thực-10-authsql), [Tầng HTTP](#tầng-http-serversrc-11-idempotencysql), [Route xác thực và thư](#route-xác-thực-và-thư-routesauthts-passwordts-mailerts).
+- Từng mảng nghiệp vụ (SQL, route, read model, test): [Hồ sơ và tiến trình](#hồ-sơ-và-tiến-trình-20-progressionsql-21-profilesql-routesmets-routessettingsts-routesprogressionts), [Ngày và nhiệm vụ](#ngày-và-nhiệm-vụ-30-daysql-routesdayts-readmodelsdayts-readmodelsdeltats), [Hai nhiệm vụ cốt truyện](#hai-nhiệm-vụ-cốt-truyện-31-storysql-routesnutritionts-routesworkoutts-seedexercisests), [Đóng ngày, bộ lập lịch và hộp thư](#đóng-ngày-bộ-lập-lịch-và-hộp-thư-32-dayclosesql-33-inboxsql-jobsts-routesinboxts), [Thực đơn ngày](#thực-đơn-ngày-40-nutritionsql-routesnutritionplants-readmodelsmealplants-seedmealsts), [Cửa hàng, kho đồ và đặc quyền](#cửa-hàng-kho-đồ-và-đặc-quyền-41-shopsql-routesshopts-routesperksts-readmodelsshopts), [Tổ đội](#tổ-đội-50-guildsql-routesguildts-readmodelsguildts), [Bảng xếp hạng và thưởng tuần](#bảng-xếp-hạng-và-thưởng-tuần-51-guild-weeksql-leaderboardcachets-jobsleaderboardrefreshts-jobsweeklyrolloverts-routesleaderboardts), [Nhắc nhở](#nhắc-nhở-nudge-và-nhắc-nhiệm-vụ-52-nudgesql-routesnudgets-jobsreminderdispatchts-seednudgetemplatests), [Nhật ký và vé đóng băng](#nhật-ký-và-vé-đóng-băng-60-journalsql-journalcryptots-routesjournalts-routesticketsts-readmodelsticketsts-jobsticketgrantts-seedquotests), [Quyền riêng tư](#quyền-riêng-tư-xuất-dữ-liệu-xóa-tài-khoản-dọn-dẹp-61-privacysql-routesprivacyts-readmodelsexportts-jobshousekeepingts).
+- Vận hành và đo: [Kịch bản phát triển và dịch chuyển thời gian](#kịch-bản-phát-triển-và-dịch-chuyển-thời-gian-scriptsscenariots-scriptsscenariosts), [Hiệu năng](#hiệu-năng-checksperftestts-npm-run-serverperf), [Quan trắc](#quan-trắc-testobservabilitytestts), [Chỉ số sản phẩm](#chỉ-số-sản-phẩm-scriptsmetricssql-testmetricstestts).
 
 ## Cài đặt và lệnh
 
@@ -24,7 +32,7 @@ npm run db:cleanup         # dọn PostgreSQL của dự án bị bỏ lại (đ
 
 Không cần cài PostgreSQL, không cần Docker. Lần chạy test đầu tiên tạo cụm cơ sở dữ liệu (`initdb`) trong `server/.pgdata/`; các lần sau dùng lại thư mục đó.
 
-Lệnh `server:perf` đã khai báo trong `server/package.json` nhưng **chưa tồn tại**: tệp của nó đến ở một nhiệm vụ sau, trước lúc ấy lệnh báo lỗi không tìm thấy tệp.
+Ngoài ra: `npm run server:perf` (hiệu năng, xem "Hiệu năng"), `npm --prefix server run jobs -- <tên>` (chạy một job một lần trên cơ sở dữ liệu dev) và `npm run content:count`. Danh sách đầy đủ các lệnh gốc ở [phát triển](development.md#ba-code-base).
 
 ## Hai cụm PostgreSQL của dự án
 
@@ -118,7 +126,7 @@ Lược đồ nằm ở `server/sql/NN-*.sql`. Không có migration của ORM, k
 | `00-roles.sql` | Bốn vai trò, quan hệ thành viên, quyền trên schema `public`, mặc định `EXECUTE`. |
 | `01-app-context.sql` | Schema `app`: các hàm dùng trong policy, giá trị mặc định và hàm nghiệp vụ. |
 | `02-meta.sql` | Schema `meta`: đồng hồ test và sổ đăng ký kiểm chứng. |
-| `10`–`79` | Bảng và hàm theo từng mảng nghiệp vụ (các nhiệm vụ sau). |
+| `10`–`79` | Bảng và hàm theo từng mảng nghiệp vụ: `10` xác thực, `11` idempotency, `20` tiến trình, `21` hồ sơ, `30` ngày, `31` nhiệm vụ cốt truyện, `32` đóng ngày, `33` hộp thư, `40` thực đơn, `41` cửa hàng, `50`–`52` tổ đội, bảng xếp hạng và lời nhắc, `60` nhật ký, `61` quyền riêng tư (mỗi mảng có mục riêng bên dưới). |
 | `80`–`89` | Dòng mồi nhử (xem "Thêm một file SQL"). |
 | `90-verify.sql` | Lược đồ tự kiểm. |
 
