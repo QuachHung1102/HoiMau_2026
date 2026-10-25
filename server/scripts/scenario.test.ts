@@ -64,10 +64,10 @@ const decoys = async () =>
       ) AS snapshot`)
   ).rows[0].snapshot;
 
-test('every file of scripts/scenarios is found: the six of Task 23, rich of Task 37, guild4 of Task 39 and ticket of Task 44', async () => {
+test('every file of scripts/scenarios is found: the six of Task 23, rich of Task 37, guild4 of Task 39, ticket of Task 44 and e2e-full of Task 53', async () => {
   assert.deepEqual(
     (await loadScenarios()).map(scenario => scenario.name),
-    ['broken', 'day1', 'fresh', 'guild4', 'missed3', 'rich', 'streak2', 'streak6', 'ticket'],
+    ['broken', 'day1', 'e2e-full', 'fresh', 'guild4', 'missed3', 'rich', 'streak2', 'streak6', 'ticket'],
   );
 });
 
@@ -234,6 +234,27 @@ test('guild4 recovers the guild a hard-deleted leader left, leaderless or empty,
     await ctx.removeGuild('Tổ Bốn Mùa');
   }
   assert.equal(await guilds(), 0);
+});
+
+test('e2e-full: streak 3, 120 coins, leader of a guild whose member Bình takes nudges and has today open; 13:00 local; twice in a row', async () => {
+  const scenario = (await loadScenarios()).find(found => found.name === 'e2e-full')!;
+  const login = async (email: string) =>
+    (await app.call('POST', '/auth/login', { body: { email, password: PASSWORD } })).body.token as string;
+  for (const round of [1, 2]) {
+    const done = await scenario.run(ctx);
+    assert.equal(done.email, 'demo-e2efull@hoimau.test');
+    const token = await login(done.email);
+    const progression = await get(token, '/progression');
+    assert.deepEqual([progression.streakCurrent, progression.coin], [3, 120], `run ${round}`);
+    const { guild } = await get(token, '/guilds/me');
+    assert.deepEqual(
+      guild.members.map((m: any) => [m.displayName, m.role, m.storyDoneToday]),
+      [['An', 'LEADER', false], ['Bình', 'MEMBER', false]],
+      `run ${round}`,
+    );
+    assert.equal((await get(await login('demo-e2efullb@hoimau.test'), '/settings')).nudgesEnabled, true);
+    assert.equal(await clock(), '2027-03-04T06:00:00.000Z');
+  }
 });
 
 test('a scenario twice in a row gives the same outcome, for one account', async () => {

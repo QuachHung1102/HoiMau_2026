@@ -45,12 +45,12 @@ export async function loadScenarios(
       (await import(pathToFileURL(join(dir, file)).href)) as { default?: Scenario }
     ).default;
     if (
-      !/^[a-z0-9]+$/.test(scenario?.name ?? '') ||
+      !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(scenario?.name ?? '') ||
       NOT_NAMES.has(scenario?.name ?? '') ||
       typeof scenario?.describe !== 'string' ||
       typeof scenario.run !== 'function'
     ) {
-      throw new Error(`scenarios/${file} must default-export a Scenario with a name of a-z and 0-9`);
+      throw new Error(`scenarios/${file} must default-export a Scenario with a name of a-z and 0-9 (words joined by "-")`);
     }
     if (found.some(other => other.name === scenario.name)) {
       throw new Error(`two scenarios are named ${scenario.name}`);
