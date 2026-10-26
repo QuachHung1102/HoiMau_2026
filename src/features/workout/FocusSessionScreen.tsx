@@ -364,7 +364,7 @@ function Session({ detail, navigation }: { detail: WorkoutDetail; navigation: Sc
         </View>
       ) : null}
 
-      {/* AR-22: this build is silent. The switch is off, cannot be turned on, and its name says why. */}
+      {/* This build is silent. The switch is off, cannot be turned on, and its name says why. */}
       <Switch label={`${vi.sound}. ${vi.soundUnavailable}`} value={false} onChange={() => undefined} disabled />
 
       <AppText variant="secondary">{vi.breathe}</AppText>

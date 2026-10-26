@@ -1,5 +1,4 @@
-// The stand-in server of todayTestKit against what the real routes answer for the settings and the profile (server Task 14:
-// routes/settings.ts, routes/me.ts, readModels/me.ts, sql/21-profile.sql; routes/meta.ts). Every mobile test that reads one of these
+// The stand-in server of todayTestKit against what the real routes answer for the settings and the profile (server routes/settings.ts, routes/me.ts, readModels/me.ts, sql/21-profile.sql; routes/meta.ts). Every mobile test that reads one of these
 // answers is only as true as these. No app is mounted: the requests go straight to the stubbed fetch.
 import { calculatePrescription } from '../../../domain/energy.ts';
 import { ageFrom } from '../../../domain/validation.ts';

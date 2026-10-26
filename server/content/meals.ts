@@ -1,6 +1,6 @@
 import type { MealSeed } from './types.ts';
 
-// Meal library for the daily plan (spec F-04). NOT reviewed by a nutrition professional (R-D10):
+// Meal library for the daily plan (spec F-04). NOT reviewed by a nutrition professional (D-10):
 // kcal and macros are plausible estimates for the stated household portion, consistent by
 // 4 x protein + 4 x carbs + 9 x fat, and must not be shown as exact values.
 // Ingredient tags drive the user's exclusion filter (S15), so they are honest: a dish carries a tag

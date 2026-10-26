@@ -1,4 +1,4 @@
-// Shape of every seed content table (PLAN P1.4), column for column in camelCase.
+// Shape of every seed content table (the seed tables), column for column in camelCase.
 import type { ShopItem, WorkoutDetail } from '../../domain/contract/content.ts';
 import type {
   Archetype,

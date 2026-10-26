@@ -1,4 +1,4 @@
-// Privacy (spec 10, AR-30): the data export and the deletion of the account (61-privacy.sql).
+// Privacy (spec 10): the data export and the deletion of the account (61-privacy.sql).
 import { normalizePassword, LIMITS } from '../../../domain/validation.ts';
 import type { Route } from '../app.ts';
 import { withRole } from '../db.ts';

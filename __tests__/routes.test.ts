@@ -9,7 +9,7 @@ test('the route list declares 54 distinct names', () => {
   expect(routeNames).toHaveLength(54);
 });
 
-test('the registered screens are exactly the declared routes, each registered once (AR-25)', () => {
+test('the registered screens are exactly the declared routes, each registered once', () => {
   expect([...registered].sort()).toEqual([...routeNames].sort());
   expect(registered.filter((name, i) => registered.indexOf(name) !== i)).toEqual([]);
 });

@@ -1,4 +1,4 @@
-// The profile tab, the journey, the history of a day, levels and the celebrations (Task 28, S31 S21 S67 S51 S46 S65 S66).
+// The profile tab, the journey, the history of a day, levels and the celebrations (S31 S21 S67 S51 S46 S65 S66).
 import type { DayOutcome, MealSlot } from '../../../../domain/types.ts';
 import { SWAPS_PER_SLOT, TICKET_CAP } from '../../../../domain/economy.ts';
 import { formatNumber, milestoneRibbon } from './pet';

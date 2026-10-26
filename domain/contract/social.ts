@@ -22,7 +22,7 @@ export type GuildMember = {
   level: number;
   role: GuildRole;
   isMe: boolean;
-  /** Both week counts use the Monday-based `Asia/Ho_Chi_Minh` week (AR-17), through today there. */
+  /** Both week counts use the Monday-based `Asia/Ho_Chi_Minh` week, through today there. */
   daysCompletedThisWeek: number;
   daysCountedThisWeek: number;
   /** The member has completed every STORY quest of their own current logical day. */

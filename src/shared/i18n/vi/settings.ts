@@ -1,4 +1,4 @@
-// Settings, notifications, profile editing, display and help (Task 47: S35, S36 / S80, S37 / S81, S79, S53).
+// Settings, notifications, profile editing, display and help (S35, S36 / S80, S37 / S81, S79, S53).
 // Wording rules (spec 9.3, 9.4): no judgement of weight or body, no shaming of a broken streak, numbers are estimates.
 // Every number in a sentence is passed in by the caller from the constant it belongs to (the help text: `helpContent.ts`).
 import { grouped } from './onboarding';
@@ -19,7 +19,7 @@ export const rows = {
 export const sound = 'Âm thanh';
 export const motionWords = { SYSTEM: 'Theo cài đặt hệ thống', REDUCED: 'Giảm chuyển động', FULL: 'Chuyển động đầy đủ' } as const;
 
-// S36 / S80 (AR-23: nothing is sent outside the app, no permission is asked)
+// S36 / S80 (nothing is sent outside the app, no permission is asked)
 export const notificationsTitle = 'Thông báo';
 export const notificationsSubtitle = 'Nhắc vừa đủ, vào lúc bạn muốn.';
 export const noticeBody = 'Bản này chưa gửi thông báo ra ngoài ứng dụng. Lời nhắc vẫn nằm trong Hộp thư.';
@@ -113,7 +113,7 @@ export const rhythm = {
   ticketsWindow: (deadline: string) => `Vé dùng được cho hôm nay, hoặc cho hôm qua cho đến ${deadline}.`,
 } as const;
 
-// S44: privacy, the copy of the data and the way to the deletion (Task 48)
+// S44: privacy, the copy of the data and the way to the deletion
 export const privacyTitle = 'Dữ liệu & quyền riêng tư';
 export const privacySubtitle = 'Bạn kiểm soát những gì mình chia sẻ.';
 export const ownDataRow = { title: 'Dữ liệu riêng của bạn', description: 'Số đo, mục tiêu và nhật ký' } as const;

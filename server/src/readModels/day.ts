@@ -153,7 +153,7 @@ type SummaryRow = {
 // One row per date from $1 to $2. A date before the user's first day is NONE; one the day-close
 // job has not processed is OPEN; a closed one is COMPLETED when its log says the story was
 // done, else FROZEN when a ticket was used for it, else MISSED (a missed day needs no log): the
-// order closeDays decides in (AR-10). workout_minutes: the seconds of the date's sessions / 60.
+// order closeDays decides in. workout_minutes: the seconds of the date's sessions / 60.
 // With $3 the row also carries the recorded actions of its date, newest first, read in this
 // same statement: the summary and the list are one snapshot. TICK: every tick, the undone ones
 // marked. NUTRITION: every log, its kcal and slot (null for a manual entry). WORKOUT: every

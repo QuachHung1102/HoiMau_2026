@@ -2,7 +2,7 @@
 // re-created by 52-nudge.sql with the nudge reason of each member) hands over the raw facts of
 // the caller's guild only, and nothing a member may not see (R-P.1); the
 // numbers are made here with the domain, so the app and the weekly job count alike. The week is
-// the Monday-based Asia/Ho_Chi_Minh one, through today's date there (AR-17, R-D08); only
+// the Monday-based Asia/Ho_Chi_Minh one, through today's date there (D-08); only
 // storyDoneToday is about each member's own logical day.
 import type { GuildMember, GuildRole, GuildState, NudgeBlockReason } from '../../../domain/contract/social.ts';
 import { GUILD_INACTIVE_DAYS, memberWeek, scoreGuildWeek } from '../../../domain/guild.ts';
@@ -86,7 +86,7 @@ export async function buildGuild({ db, userId }: Pick<Ctx, 'db' | 'userId'>): Pr
           level: levelForXp(member.xp).level,
           role: member.role,
           isMe: member.userId === userId,
-          // the days memberWeek counts on which every STORY quest is done (a frozen one too, AR-10)
+          // the days memberWeek counts on which every STORY quest is done (a frozen one too)
           daysCompletedThisWeek: member.days.filter(day => day.date >= from && day.date <= today && allDone(day))
             .length,
           daysCountedThisWeek: memberWeek(weeks[i], weekStart, today).countedDays,

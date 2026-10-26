@@ -1,4 +1,4 @@
--- Nudges (F-12, AR-19) and the reminder-dispatch job (AR-23). Re-runnable.
+-- Nudges (F-12) and the reminder-dispatch job. Re-runnable.
 --
 -- A guild member sends one of the fixed templates (nudge_templates, seeded from
 -- server/content/nudgeTemplates.ts) to a teammate: the receiver gets one NUDGE inbox item
@@ -17,7 +17,7 @@
 --   * the block reason is evaluated AFTER the locks, in a statement of its own (READ COMMITTED:
 --     it reads what a leave, a transfer or another nudge committed while this one waited);
 --   * the daily limits use each party's own logical date; the window is [12:00, 20:00) on the
---     receiver's wall clock (AR-19);
+--     receiver's wall clock;
 --   * a refusal is raised with SQLSTATE HM000; time is app.now() only (the job: p_now).
 
 CREATE TABLE IF NOT EXISTS nudge_templates (
@@ -226,7 +226,7 @@ $$;
 -- The job's function (app_job).
 
 -- One QUEST_REMINDER (payload {}, dedupe key = the user's logical date) for every onboarded,
--- live user with reminder_enabled whose wall clock at p_now lies in the chosen window (AR-23:
+-- live user with reminder_enabled whose wall clock at p_now lies in the chosen window (
 -- MORNING [07:00, 09:00), NOON [11:30, 13:30), EVENING [18:00, 20:00)) and whose current logical
 -- day is not story_completed. One statement: the users rows it notifies are locked by id
 -- (app._notify needs them held; users rows first, the one lock order). Returns how many it created.

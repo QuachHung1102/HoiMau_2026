@@ -101,7 +101,7 @@ const ictToday = async () => {
   return localParts(rows[0].now.getTime(), ICT).date;
 };
 
-test('create: the caller is the one LEADER, the code is AR-18, the name and motto trimmed; GET /guilds/me answers the same', async () => {
+test('create: the caller is the one LEADER, the code is 8 characters of the invite alphabet, the name and motto trimmed; GET /guilds/me answers the same', async () => {
   const user = await newOnboardedUser(db);
   const name = freshName();
   const body = ok(await create(user, `  ${name} `, '  Cùng nhau khỏe  '));
@@ -562,7 +562,7 @@ test('week numbers equal memberWeek and scoreGuildWeek on the same inputs: joine
         joined: day(3),
         logs: [
           { date: day(2), done: total }, // before joining: not counted
-          { date: day(3), done: total, ticketWeek: day(0) }, // a ticket on a completed day: not frozen (AR-10)
+          { date: day(3), done: total, ticketWeek: day(0) }, // a ticket on a completed day: not frozen
           { date: day(4), done: half },
           { date: day(5), done: 0, ticketWeek: day(-7) }, // frozen
         ],

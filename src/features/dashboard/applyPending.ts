@@ -48,7 +48,7 @@ export function applyPending(day: DayState, pending: readonly PendingAction[]): 
     if (!added) return quest;
     ticks[quest.code] = added;
     const progress = quest.progress + added;
-    // AR-12: the server's own rule for water in ml.
+    // The server's own rule for water in ml.
     if (quest.code === WATER) waterMl = Math.round((day.waterTargetMl * progress) / quest.targetCount);
     return { ...quest, progress };
   });

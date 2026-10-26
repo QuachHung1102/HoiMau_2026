@@ -149,7 +149,7 @@ export type DayState = {
   celebrations: InboxItemStreakMilestone[];
 };
 
-/** `occurredAt`: only when the write leaves the device more than 60 s after the action (AR-08). */
+/** `occurredAt`: only when the write leaves the device more than 60 s after the action. */
 export type ProgressRequest = { occurredAt?: IsoDateTime };
 export type UndoRequest = { tickId: string };
 export type BedtimeRequest = { occurredAt?: IsoDateTime };

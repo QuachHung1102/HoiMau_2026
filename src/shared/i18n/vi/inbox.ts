@@ -1,4 +1,4 @@
-// The inbox: S30 with items, S75 empty (Task 43). Notification kinds are the server's; one that this app does not know
+// The inbox: S30 with items, S75 empty. Notification kinds are the server's; one that this app does not know
 // gets the generic words, never a blank row.
 export const title = 'Hộp thư';
 export const subtitle = 'Lời nhắc và những cột mốc của bạn.';

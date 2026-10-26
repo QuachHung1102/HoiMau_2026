@@ -1,6 +1,6 @@
 # Hồi Máu — Bản đồ màn hình
 
-Tài liệu bàn giao UX/UI cho [bản thiết kế hoiMau.pen](../../design/hoiMau.pen), đối chiếu [đặc tả sản phẩm](../product/SPEC-QUEST-001-dac-ta-he-thong.md) và [phạm vi mobile](../product/mobile-scope.md). Mã S dùng để tìm frame thiết kế; mã F dẫn về tính năng trong đặc tả.
+Tài liệu bàn giao UX/UI cho bản thiết kế màn hình của dự án, đối chiếu [đặc tả sản phẩm](../product/SPEC-QUEST-001-dac-ta-he-thong.md) và [phạm vi mobile](../product/mobile-scope.md). Mã S dùng để tìm frame thiết kế; mã F dẫn về tính năng trong đặc tả.
 
 Đây là thiết kế tĩnh và quy ước điều hướng để triển khai. Nút, số liệu minh họa, trạng thái lưu, đồng bộ, mua vật phẩm và hẹn giờ trên canvas không chứng minh ứng dụng đã thực hiện chức năng đó. Tài liệu không thay thế các quyết định còn mở trong phạm vi mobile.
 

@@ -1,6 +1,6 @@
 # Animation và phản hồi tương tác
 
-Tài liệu bàn giao cho thiết kế trong [hoiMau.pen](../../design/hoiMau.pen). Animation giúp hiểu điều vừa xảy ra và giữ ngữ cảnh; không dùng để che thời gian chờ hoặc biến ghi nhận thói quen thành một trò chơi gây áp lực.
+Tài liệu bàn giao cho thiết kế màn hình của dự án (mã S theo [phân tích màn hình](screen-map.md)). Animation giúp hiểu điều vừa xảy ra và giữ ngữ cảnh; không dùng để che thời gian chờ hoặc biến ghi nhận thói quen thành một trò chơi gây áp lực.
 
 Các giá trị dưới đây là thông số thiết kế đề xuất. GIF đã được tạo và kiểm tra metadata; animation native chưa được tích hợp vào React Native.
 
@@ -16,7 +16,7 @@ Bản xem trực tiếp: [playground](../../design/motion/playground.html). Mọ
 
 GIF dùng khung vuông để review chuyển động, không mô phỏng cả màn điện thoại. Vòng lặp có khoảng giữ để dễ xem; không lấy toàn bộ thời gian GIF làm thời gian khóa giao diện. [Manifest](../../design/motion/manifest.json) ghi kích thước, số frame, thời lượng và dung lượng thực tế. SVG gốc của Mầm: [mam.svg](../../design/assets/mam.svg).
 
-Mở [trang xem trước](../../design/index.html) để xem ảnh tĩnh trước, chủ động mở GIF khi muốn. GIF không đọc được tùy chọn Reduce Motion; không nhúng GIF tự chạy vào màn ứng dụng thật.
+Mở [trình xem chuyển động](../../design/motion/playground.html) để xem ảnh tĩnh trước, chủ động mở GIF khi muốn. GIF không đọc được tùy chọn Reduce Motion; không nhúng GIF tự chạy vào màn ứng dụng thật.
 
 ## Token chuyển động
 

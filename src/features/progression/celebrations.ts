@@ -4,7 +4,7 @@ import type { GameEvent } from '../../../domain/contract/common.ts';
 /** The events of a server answer that get a full-screen celebration: level up (S65) and Mầm's evolution (S69). */
 export type Celebration = Extract<GameEvent, { type: 'LEVEL_UP' | 'PET_STAGE_UP' }>;
 
-// A small store outside React: any screen that gets a `Delta` pushes its events, one host (Task 28) shows them.
+// A small store outside React: any screen that gets a `Delta` pushes its events, one host shows them.
 let queue: readonly Celebration[] = [];
 const listeners = new Set<() => void>();
 function set(next: readonly Celebration[]) {

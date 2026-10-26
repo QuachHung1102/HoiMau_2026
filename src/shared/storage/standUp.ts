@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// The stand-up countdown of one user (Task 26): timing only, never anything about health. Not in `cache.ts` on
+// The stand-up countdown of one user: timing only, never anything about health. Not in `cache.ts` on
 // purpose: that file is the list of what a person's data may keep on disk.
 export const standUpKey = (userId: string) => `standup:v1:${userId}`;
 

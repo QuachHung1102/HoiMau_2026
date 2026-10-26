@@ -2,8 +2,8 @@
 -- workout session. Re-runnable.
 --
 -- NUTRITION_TARGET completes the first time the day's calories lie inside the band the user is
--- shown (AR-12) and never un-completes; a log is never taken back (there is no undo and no
--- negative amount). WORKOUT_MAIN pays at most its xp_reward per logical day (AR-11): a session
+-- shown and never un-completes; a log is never taken back (there is no undo and no
+-- negative amount). WORKOUT_MAIN pays at most its xp_reward per logical day: a session
 -- under half of the workout's duration earns its share, the first one of at least half earns
 -- the rest and the coins and completes the quest, a session after that earns nothing.
 --
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS exercise_item_steps (
 );
 
 -- id = the action id (the Idempotency-Key of the request). A manual entry has neither slot nor
--- meal; the log of a planned meal (Task 33) has both, and that task adds the foreign key of
+-- meal; the log of a planned meal has both, and that task adds the foreign key of
 -- meal_id once its table exists.
 CREATE TABLE IF NOT EXISTS nutrition_logs (
   id uuid PRIMARY KEY,
@@ -127,7 +127,7 @@ SELECT meta.expect_policy('workout_sessions', 'own_select', 'SELECT', '(app.curr
 -- ---------------------------------------------------------------------------------------------
 -- Internal helpers: EXECUTE for no role, and none is SECURITY DEFINER.
 
--- The calories that complete NUTRITION_TARGET for a calorie target (AR-12), ends included:
+-- The calories that complete NUTRITION_TARGET for a calorie target, ends included:
 -- 0.9 and 1.1 of the target, each rounded half up, in exact numeric arithmetic. For an integer
 -- target that is Math.round(0.9 * t) and Math.round(1.1 * t), the band of calorieWindow.
 CREATE OR REPLACE FUNCTION app._calorie_band(p_target numeric) RETURNS numrange
@@ -263,7 +263,7 @@ END $$;
 -- p_occurred_at falls on. The session keeps the workout's modality and duration.
 --   + {completed, questCompleted, storyAllDone, xpAwarded, coinAwarded, elapsedSec, durationSec}
 -- completed: the session reached half of the duration. questCompleted: this call completed
--- WORKOUT_MAIN. xpAwarded, coinAwarded: what the session earned (AR-11). With given = the XP the
+-- WORKOUT_MAIN. xpAwarded, coinAwarded: what the session earned. With given = the XP the
 -- quest has paid on that day (the WORKOUT_PARTIAL rows of the day's sessions and the
 -- QUEST_COMPLETE row), while the quest is open:
 --   * at least half: xp_reward - given and coin_reward, reason QUEST_COMPLETE, ref

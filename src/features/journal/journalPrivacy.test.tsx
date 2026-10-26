@@ -2,7 +2,7 @@ import { Linking } from 'react-native';
 import { matchesCrisis } from '../../shared/i18n/vi/crisisMatch';
 import { everythingOnDisk, fetchMock, fireEvent, installTodayTestEnv, landed, openWrite, saveButton, saves, saveText, screen, type, world } from './journalTestKit';
 
-// AR-20 and ruling R-D10: the device's crisis check lives in memory. Its result is never a request, a log or a store, and neither is the text.
+// Decision D-10: the device's crisis check lives in memory. Its result is never a request, a log or a store, and neither is the text.
 installTodayTestEnv();
 
 const CRISIS = 'Mình không thiết sống nữa, riêng tư và kín đáo.';

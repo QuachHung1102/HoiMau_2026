@@ -1,4 +1,4 @@
-// Hôm nay (S09, S57, S58) and the stat explainer (S47) — Task 25.
+// Hôm nay (S09, S57, S58) and the stat explainer (S47).
 import type { TitleKey } from '../../../../domain/contract/common.ts';
 import { formatNumber, statValue } from './pet';
 

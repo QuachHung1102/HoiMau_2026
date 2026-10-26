@@ -3,7 +3,7 @@ import type { QuestSeed } from './types.ts';
 
 const ALL: Archetype[] = ['TANKER', 'ASSASSIN', 'SUPPORTER'];
 
-// Rewards are those of spec F-06 / R-D07: target / XP / coins.
+// Rewards are those of spec F-06 / D-07: target / XP / coins.
 export const QUESTS: QuestSeed[] = [
   {
     code: 'WORKOUT_MAIN',

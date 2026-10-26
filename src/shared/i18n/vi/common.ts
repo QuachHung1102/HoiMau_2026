@@ -19,7 +19,7 @@ export const errorText = {
   INTERNAL: 'Hệ thống đang gặp sự cố. Bạn thử lại sau ít phút nhé.',
 } as const;
 
-// Form controls and feedback surfaces (Task 11).
+// Form controls and feedback surfaces.
 export const loading = 'Đang tải';
 export const loadFailedTitle = 'Chưa tải được dữ liệu';
 export const fieldInvalid = (label: string, error: string) =>

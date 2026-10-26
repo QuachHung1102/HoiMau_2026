@@ -26,7 +26,7 @@ const AFTER_SOUND: readonly Entry[] = [
 ];
 
 /**
- * Leaves through `session.signOut`, which asks first when records are still waiting to be sent (Task 24): the button works
+ * Leaves through `session.signOut`, which asks first when records are still waiting to be sent: the button works
  * again when the person chose to stay.
  */
 function SignOut() {
@@ -68,7 +68,7 @@ export function SettingsScreen({ navigation }: ScreenProps<'Settings'>) {
     <Screen title={vi.title} subtitle={vi.subtitle} onBack={navigation.canGoBack() ? navigation.goBack : undefined}>
       <View style={styles.list}>
         {BEFORE_SOUND.map(row)}
-        {/* AR-22: this build is silent. The switch is off, cannot be turned on, and its name says why. */}
+        {/* This build is silent. The switch is off, cannot be turned on, and its name says why. */}
         <View style={styles.sound}>
           <Icon name="VolumeX" />
           <View style={styles.fill}>

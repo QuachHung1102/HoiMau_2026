@@ -4,7 +4,7 @@ import type { ImageSourcePropType } from 'react-native';
 
 // Static requires (Metro needs literal paths). The keys are the `imageKey` values of server/content/meals.ts and the
 // files are copies of design/assets/<key>.png; a meal whose key is null, or not here, is drawn with an icon instead.
-// Sources and kinds: design/assets/sources.json (the three meal pictures are `stock-unsplash`: licence review, Task 52).
+// Sources and kinds: design/assets/sources.json (the three meal pictures are `stock-unsplash`: licence review).
 const images = new Map<string, ImageSourcePropType>([
   ['e1ZpZ', require('../../assets/meals/e1ZpZ.png')],
   ['Fr7yg', require('../../assets/meals/Fr7yg.png')],

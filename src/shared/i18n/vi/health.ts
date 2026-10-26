@@ -1,13 +1,13 @@
 // Health and crisis-support copy: the one module to review before release.
 //
-// NOT REVIEWED BY A PROFESSIONAL (ruling R-D10, "chưa được chuyên gia duyệt"). It is written from the
+// NOT REVIEWED BY A PROFESSIONAL (decision D-10, "chưa được chuyên gia duyệt"). It is written from the
 // spec's formulas (sections 9.1 to 9.4) and general, conservative guidance only: no diagnosis, no
 // promise of results, no calorie or weight target beyond what the spec defines. The phone numbers in
 // CRISIS_LINES are Vietnam's public numbers and are flagged for review as well.
 //
 // CRISIS_KEYWORDS and CRISIS_PHRASES_EXACT exist only so the journal screen can show the support block
 // (S56), through matchesCrisis in crisisMatch.ts. Matching runs on the device against the text the user
-// just wrote; the text and the match result are never logged, stored or sent anywhere (AR-20).
+// just wrote; the text and the match result are never logged, stored or sent anywhere.
 // The lists trade false positives for recall: a false positive only shows a gentle support block, a miss
 // shows nothing to someone who needed it. crisisMatch.test.ts holds the examples a reviewer should read:
 // what must match, what must not, the accepted false positives and the known misses.
@@ -52,7 +52,7 @@ export const healthVi = {
       )} kcal mỗi ngày. Đây là ước tính, không phải chỉ định y tế.`,
   },
 
-  // When macroAdjusted: the energy target is unchanged, only the protein/fat/carb split was redone (R-D06).
+  // When macroAdjusted: the energy target is unchanged, only the protein/fat/carb split was redone (D-06).
   macroAdjusted: {
     title: 'Vì sao phân bổ này?',
     body: 'Mục tiêu năng lượng của bạn vẫn giữ nguyên; mình chỉ chia lại đạm, béo và carb để chất béo chiếm ít nhất 20% năng lượng và carb được giữ ở mức cao nhất có thể. Đây là ước tính, không phải chỉ định y tế. Nếu bạn cần tư vấn dinh dưỡng cá nhân, hãy trao đổi với chuyên gia.',

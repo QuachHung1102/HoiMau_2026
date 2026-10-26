@@ -1,5 +1,5 @@
 // Crisis matcher for the journal screen (S56). Pure: no I/O, no logging, no storage; the text and the
-// result never leave the device (AR-20). The lists and the false-positive policy live in health.ts.
+// result never leave the device. The lists and the false-positive policy live in health.ts.
 //
 // The text is split into clauses on . , ; : ! ? … and line breaks, and each clause is matched on its own.
 // A phrase split by punctuation ("tự... tử") therefore never matches. An entry matches on word boundaries

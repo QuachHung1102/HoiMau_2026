@@ -4,7 +4,7 @@ import path from 'node:path';
 import { routeNames } from '../src/app/routes';
 import { authScreens, detailScreens, focusScreens, onboardingScreens, tabRoots } from '../src/app/screens';
 
-// Task 49: every designed frame has a preview entry, every declared route is registered (and the reverse), and every
+// every designed frame has a preview entry, every declared route is registered (and the reverse), and every
 // registered route can be reached: it is a navigator root or the target of a navigate(...) somewhere in the app.
 const root = path.join(__dirname, '..');
 const walk = (dir: string): string[] =>

@@ -1,4 +1,4 @@
-// The housekeeping job (spec R-P.2, AR-08, AR-30): once a day from 04:00 Asia/Ho_Chi_Minh,
+// The housekeeping job (spec R-P.2): once a day from 04:00 Asia/Ho_Chi_Minh,
 // hard-deletes the accounts whose 30 days are over (job_account_purge), the idempotency keys of
 // 7 days or more (job_purge_idempotency) and the sessions, reset codes and throttle rows nobody
 // reads any more (job_purge_auth), all in 61-privacy.sql, one transaction each. Never a decoy.

@@ -1,7 +1,7 @@
 // What a user reads back about the shop, the inventory and the perks. Everything is derived at
-// read time (AR-04): coins are the ledger sum, the level comes from the XP sum, perk points from
+// read time: coins are the ledger sum, the level comes from the XP sum, perk points from
 // xp_high_water, ownership and equips from the inventory rows; a default item is owned by
-// everyone and equipped when no row of its kind is (AR-31). Read as app_auth inside the request
+// everyone and equipped when no row of its kind is. Read as app_auth inside the request
 // transaction.
 import type { Inventory, Shop, ShopItem } from '../../../domain/contract/content.ts';
 import type { PerkCode, Perks } from '../../../domain/contract/core.ts';

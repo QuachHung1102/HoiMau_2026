@@ -1,4 +1,4 @@
--- The journal (F-13, spec 10.1), the freeze tickets' functions (F-08, R-D04, AR-10) and the
+-- The journal (F-13, spec 10.1), the freeze tickets' functions (F-08, D-04) and the
 -- ticket-grant job. The ticket tables are those of 32-dayclose.sql. Re-runnable.
 --
 -- An entry reaches this file already encrypted (AES-256-GCM in Node, server/src/journalCrypto.ts):
@@ -15,9 +15,9 @@
 --     and app._ticket_needed of whether it is needed: ticket_use raises what the first answers,
 --     and ticket_overview (GET /freeze-tickets) shows the second, so the screen and the
 --     function cannot disagree;
---   * the week of a ticket is app.week_start of the entry's logical-date label (AR-10); the
+--   * the week of a ticket is app.week_start of the entry's logical-date label; the
 --     decision of a week is its ticket_grant_weeks row, and its primary key is the last fence;
---   * the XP of an entry is app._grant(..., 'JOURNAL', '<logical date>') (AR-34): only the first
+--   * the XP of an entry is app._grant(..., 'JOURNAL', '<logical date>'): only the first
 --     entry of a logical day pays;
 --   * a refusal is raised with SQLSTATE HM000; time is app.now() only (the job: p_now).
 
@@ -66,7 +66,7 @@ AS $$
               THEN 3 ELSE 2 END
 $$;
 
--- The weekly ticket of p_week_start (AR-10). The week has a decision already: ALREADY_DECIDED.
+-- The weekly ticket of p_week_start. The week has a decision already: ALREADY_DECIDED.
 -- Else the decision is written: unused tickets at the cap -> granted false, AT_CAP (the week is
 -- forfeited, whatever happens later in it); else a ticket of that week -> GRANTED. The caller
 -- holds the user's lock; the primary key of ticket_grant_weeks decides two callers anyway.
@@ -243,7 +243,7 @@ END $$;
 -- unique key of the date is the last fence: TICKET_ALREADY_USED_FOR_DATE); for a date already
 -- closed, the rescue (rescueWithTicket of domain/streak.ts): the streak before the break back,
 -- the break fields cleared, missed_run one lower, last_outcome FROZEN, streak_best untouched.
--- An open date is left to the day-close, which reads the ticket (AR-10).
+-- An open date is left to the day-close, which reads the ticket.
 -- p_action_id names no row: a replay is the idempotency layer's.
 CREATE OR REPLACE FUNCTION ticket_use(p_date date, p_action_id uuid) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
@@ -318,7 +318,7 @@ SELECT meta.expect_function('ticket_overview()', 'definer', '{app_auth}');
 -- ---------------------------------------------------------------------------------------------
 -- The job's function (app_job).
 
--- The safety net of the weekly ticket (AR-10): for every onboarded, live user with a journal
+-- The safety net of the weekly ticket: for every onboarded, live user with a journal
 -- entry in the week of their logical date at p_now and no decision for that week, in id order:
 -- the users row FOR NO KEY UPDATE and progression_state FOR UPDATE (the lock order of
 -- journal_create), then app._ticket_grant_check. Returns how many weeks it decided.

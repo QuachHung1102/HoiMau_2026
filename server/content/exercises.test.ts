@@ -37,7 +37,7 @@ const PREFERRED: Record<Modality, Archetype> = {
   MOBILITY: 'SUPPORTER',
   BREATHING: 'SUPPORTER',
 };
-// Demonstrations live in the design motion catalog (Task 8A, Task 31A).
+// Demonstrations live in the design motion catalog.
 const CATALOG: { id: string; kind: string }[] = JSON.parse(
   readFileSync(
     new URL('../../design/motion/catalog.json', import.meta.url),
@@ -213,7 +213,7 @@ test('distribution: durations, modalities, spaces, archetypes, no-equipment', ()
       );
 });
 
-test('the starter workouts are those of the plan (Task 21), with the frame S18 steps', () => {
+test('the starter workouts are those of the plan, with the frame S18 steps', () => {
   const by = (code: string) => WORKOUTS.find(w => w.code === code);
   const full = by('FULL_BODY_EASY');
   assert.ok(full);
@@ -382,9 +382,9 @@ test('workout names: no digit or duration word, no outcome word, at most 28 char
   assert.ok(unique(WORKOUTS.map(w => w.name)));
 });
 
-test('the header states the content is not reviewed by a professional (R-D10)', () => {
+test('the header states the content is not reviewed by a professional (D-10)', () => {
   const source = readFileSync(new URL('./exercises.ts', import.meta.url), 'utf8');
-  assert.match(source, /NOT reviewed by a fitness or medical professional \(R-D10\)/);
+  assert.match(source, /NOT reviewed by a fitness or medical professional \(D-10\)/);
 });
 
 test('the forbidden-phrase list catches pushing through pain', () => {

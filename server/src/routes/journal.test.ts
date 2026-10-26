@@ -367,7 +367,7 @@ const keysOf = (value: unknown): string[] =>
     ? Object.entries(value).flatMap(([key, inner]) => [...(Array.isArray(value) ? [] : [key]), ...keysOf(inner)])
     : [];
 
-test("privacy: a teammate's GET /guilds/me holds neither the journal sentinel nor any biometric or calorie key or sentinel value (Task 39's scan, repeated)", async () => {
+test("privacy: a teammate's GET /guilds/me holds neither the journal sentinel nor any biometric or calorie key or sentinel value (the guild privacy scan, repeated)", async () => {
   await clock('2027-03-10', '12:00');
   const leader = await newOnboardedUser(db);
   const member = await newOnboardedUser(db, { heightCm: 177.7, weightKg: 77.7, birthYear: 1979 });

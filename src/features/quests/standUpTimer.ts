@@ -1,9 +1,9 @@
-// The stand-up reminder's clock (Task 26). Pure: time comes in only through `nowMs`, nothing here reads a clock,
+// The stand-up reminder's clock. Pure: time comes in only through `nowMs`, nothing here reads a clock,
 // a timer or the app state. `useStandUp` owns those and feeds the reducer.
 //
 // The countdown is 60 minutes of foreground time. A short stay in the background (up to 10 minutes) is a glance at
 // another app: the time keeps counting. A longer one means the person left: the countdown is frozen where it was
-// and the time away is not counted. Nothing runs while the app is away (no notification, AR-23).
+// and the time away is not counted. Nothing runs while the app is away (no notification).
 
 export const STAND_UP_INTERVAL_MS = 60 * 60 * 1000;
 export const STAND_UP_PAUSE_AFTER_MS = 10 * 60 * 1000;

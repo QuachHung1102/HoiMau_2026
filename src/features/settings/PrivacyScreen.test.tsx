@@ -6,7 +6,7 @@ import * as native from '../../shared/native/hoiMauNative';
 import { ACCOUNT_PURGE_DAYS } from './rules';
 import { act, app, fetchMock, fireEvent, hold, installTodayTestEnv, openPrivacy, queryClient, reads, screen, settle, waitFor, world } from './settingsTestKit';
 
-// The wrapper of Task 35 is the boundary: what it is given is asserted, the system's share box is not opened.
+// The native wrapper (hoiMauNative) is the boundary: what it is given is asserted, the system's share box is not opened.
 jest.mock('../../shared/native/hoiMauNative', () => ({ ...jest.requireActual('../../shared/native/hoiMauNative'), shareTextFile: jest.fn() }));
 const share = jest.mocked(native.shareTextFile);
 

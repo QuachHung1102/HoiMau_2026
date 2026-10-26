@@ -64,7 +64,7 @@ describe('S35', () => {
     view.unmount();
   });
 
-  test('the sound switch is off and cannot be turned on, and its name says why (AR-22); pressing it changes nothing and asks for nothing', async () => {
+  test('the sound switch is off and cannot be turned on, and its name says why; pressing it changes nothing and asks for nothing', async () => {
     const view = await openSettings();
     const sound = screen.getByRole('switch', { name: 'Âm thanh. Bản này chưa có âm thanh', disabled: true, checked: false });
     expect(screen.getByText('Đang tắt')).toBeTruthy();

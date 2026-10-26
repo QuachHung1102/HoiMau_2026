@@ -4,7 +4,7 @@ import { isIPv4 } from 'node:net';
 export const MINUTE_MS = 60_000;
 export const HOUR_MS = 60 * MINUTE_MS;
 
-/** AR-21: every write (a request that is not a GET), per account and per client address. */
+/** Every write (a request that is not a GET), per account and per client address. */
 export const WRITES_PER_MINUTE = { account: 120, ip: 300 };
 /**
  * 401 answers per client address per minute, on routes that need a session. Each of them cost a

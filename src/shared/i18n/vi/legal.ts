@@ -1,5 +1,5 @@
-// Summary of the terms and the privacy rules in plain language (S03 terms sheet; Task 47 reuses it in the settings).
-// NOT reviewed by a lawyer, and the health wording is NOT reviewed by a health professional (rulings R-D10).
+// Summary of the terms and the privacy rules in plain language (S03 terms sheet; the settings reuse it).
+// NOT reviewed by a lawyer, and the health wording is NOT reviewed by a health professional (decisions D-10).
 // Every sentence must be true of the product as specified (docs/product spec §9.2, §10 and the API contract):
 // do not add a promise (a certification, "absolute" security, a third party that does not exist) that is not written there.
 // Voice: formal text with "Hồi Máu" as the subject, never "chúng tôi".

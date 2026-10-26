@@ -1,4 +1,4 @@
--- Success metrics of spec section 12, computed from the database (plan Task 51).
+-- Success metrics of spec section 12, computed from the database.
 --
 -- Run as the database owner (the superuser), never through the application: no application role
 -- may read every user. For the development database, with npm run server:dev running:

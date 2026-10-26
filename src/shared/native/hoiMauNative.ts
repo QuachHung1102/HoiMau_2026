@@ -1,4 +1,4 @@
-// JS side of the in-repo Android module (AR-27). The module can only be compile-verified here, so every call is
+// JS side of the in-repo Android module. The module can only be compile-verified here, so every call is
 // guarded and has a non-native fallback; no other file may reach the module directly.
 import { Platform, Share } from 'react-native';
 import NativeHoiMauNative from './NativeHoiMauNative';

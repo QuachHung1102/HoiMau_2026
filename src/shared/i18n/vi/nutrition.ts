@@ -1,4 +1,4 @@
-// Manual calories (S16, Task 26). Neutral about food and amounts: no judgement, no "over" and no "under".
+// Manual calories (S16). Neutral about food and amounts: no judgement, no "over" and no "under".
 import { LIMITS } from '../../../../domain/validation.ts';
 import type { IngredientTag, MealSlot, STYLE_TAGS } from '../../../../domain/types.ts';
 import { formatNumber } from './pet';
@@ -11,7 +11,7 @@ export const labelLabel = 'Tên món';
 export const labelHelper = 'Không bắt buộc';
 export const labelPlaceholder = 'Ví dụ: bún gà';
 export const reassurance = 'Đây là ghi nhận để hiểu thói quen, không phải bài kiểm tra ăn uống.';
-/** Said before saving: a logged meal stays (AR-12). */
+/** Said before saving: a logged meal stays. */
 export const cannotRemove = 'Bữa đã ghi không xóa được, nên bạn xem lại số kcal trước khi lưu nhé.';
 export const saveAction = 'Ghi món đã ăn';
 
@@ -35,7 +35,7 @@ export const done = 'Xong';
 /** The day total could not be read; the form still works. */
 export const totalUnknown = 'Chưa tải được tổng hôm nay.';
 
-// ---- Meal plan (S13), meal detail (S14), swap (S15, S59) — Task 34. Neutral about food and amounts. ----
+// ---- Meal plan (S13), meal detail (S14), swap (S15, S59). Neutral about food and amounts. ----
 export const slotName: Record<MealSlot, string> = { BREAKFAST: 'Bữa sáng', LUNCH: 'Bữa trưa', DINNER: 'Bữa tối', SNACK: 'Bữa phụ' };
 // Tables, not string methods: the copy scan of recording.test.ts calls every function with plain numbers.
 const slotLower: Record<MealSlot, string> = { BREAKFAST: 'bữa sáng', LUNCH: 'bữa trưa', DINNER: 'bữa tối', SNACK: 'bữa phụ' };
@@ -67,7 +67,7 @@ export const ingredientsTitle = 'Thành phần & dị ứng';
 export const ingredientsHint = 'Kiểm tra nguyên liệu trước khi chọn';
 export const ingredientsCaveat = 'Nhãn chỉ giúp nhận biết nhanh. Nếu bạn dị ứng, hãy tự kiểm tra nguyên liệu.';
 export const logMeal = 'Ghi nhận món này';
-/** Said before saving: a logged meal stays (AR-12). */
+/** Said before saving: a logged meal stays. */
 export const mealCannotRemove = 'Bữa đã ghi không xóa được, nên bạn xem lại món trước khi ghi nhận nhé.';
 export const swapOther = 'Đổi món khác';
 export const loggedTitle = 'Đã ghi';

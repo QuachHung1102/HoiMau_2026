@@ -1,5 +1,5 @@
 // The workout routes over HTTP, on the real database: the catalog and its filters, one workout,
-// a recorded session and the XP rules of AR-11; with the calorie log, STORY_ALL_DONE and the
+// a recorded session and the XP rules of a workout session (at most the quest XP per day); with the calorie log, STORY_ALL_DONE and the
 // races of the two STORY writes against each other, a tick and bedtime. Time is the test clock.
 // Expected values come from the content file and the domain functions, never from the code
 // under test.
@@ -223,7 +223,7 @@ test('GET /workout/items/{id}: the workout with its sets and its steps joined to
   refusal(await get(user, `/workout/items/${quest}`), 404, 'NOT_FOUND');
 });
 
-// ---------------------------------------------------------------- a session (AR-11)
+// ---------------------------------------------------------------- a session
 
 test('a session of 449 s of 900 earns its share and no coins; 450 s completes the quest: 50 XP for the day and 20 coins', async () => {
   await clock(NOON);
@@ -249,7 +249,7 @@ test('a session of 449 s of 900 earns its share and no coins; 450 s completes th
   assert.deepEqual(await stored(full.userId), { xp: 50, coin: 20, coin_rows: 1, sessions: 2, high_water: 50 });
 });
 
-test('AR-11 for any sequence of sessions in a day: the quest never pays more than its XP, the coins once, nothing after completion', async () => {
+test('XP rule for any sequence of sessions in a day: the quest never pays more than its XP, the coins once, nothing after completion', async () => {
   await clock(NOON);
   // [workout, elapsed seconds] in the order they are recorded
   const sequences: [string, number][][] = [
@@ -267,7 +267,7 @@ test('AR-11 for any sequence of sessions in a day: the quest never pays more tha
   const duration = (code: string) => WORKOUTS.find(w => w.code === code)!.durationSec;
   for (const sequence of sequences) {
     const user = await newOnboardedUser(db);
-    // the rule of AR-11, applied here on its own
+    // the XP rule, applied here on its own
     let given = 0;
     let completed = false;
     let highWater = 0;

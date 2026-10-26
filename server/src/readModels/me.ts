@@ -1,4 +1,4 @@
-// What a user reads back about the own profile. Everything here is derived at read time (AR-04):
+// What a user reads back about the own profile. Everything here is derived at read time:
 // XP and coins are ledger sums, the level comes from the XP sum, perk points and the pet from
 // xp_high_water, theme, skin and badge from the equipped inventory rows. All of it is read as
 // app_auth inside the request transaction, so row level security is the second filter under

@@ -29,7 +29,7 @@ export type Prescription = {
 const MIN_CARBS_G = 50;
 
 /**
- * Macro split for a calorie target (F-02, R-D06), grams rounded to integers. Never rejects.
+ * Macro split for a calorie target (F-02, D-06), grams rounded to integers. Never rejects.
  * Exported for tests: the last two fallbacks cannot be reached through calculatePrescription
  * with inputs inside the valid ranges.
  */
@@ -81,7 +81,7 @@ export function calculatePrescription(input: {
     (sex === 'MALE' ? 5 : -161);
   const tdee = bmr * ACTIVITY_FACTOR[activityLevel];
   const raw = tdee * (1 + ARCHETYPE_FACTOR[archetype]);
-  // Deficit cap (at most 20 % under TDEE) first, then the absolute floor (AR-14).
+  // Deficit cap (at most 20 % under TDEE) first, then the absolute floor.
   const capped = Math.max(raw, 0.8 * tdee);
   const target = Math.max(capped, sex === 'FEMALE' ? 1200 : 1500, bmr);
   const waterMl =

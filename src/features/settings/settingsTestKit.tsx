@@ -1,6 +1,6 @@
 /* eslint-env jest */
 // Test kit for the settings screens (used by *.test.tsx files; never imported by app code). The whole app against the stand-in
-// server of the home-tab kit, which answers the settings and profile routes as server Task 14 does (`world.settings`, `world.me`,
+// server of the home-tab kit, which answers the settings and profile routes as the server does (`world.settings`, `world.me`,
 // `world.profile`), opened on the Profile tab and from there on the screen under test.
 import { fireEvent, screen } from '@testing-library/react-native';
 import { Text } from 'react-native';

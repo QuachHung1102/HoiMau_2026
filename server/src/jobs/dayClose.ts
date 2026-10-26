@@ -1,7 +1,7 @@
-// The day-close job (AR-09, F-08): closes every past logical day of every onboarded user, in every
+// The day-close job (F-08): closes every past logical day of every onboarded user, in every
 // time zone. SQL says which users and which dates (job_day_close_candidates: the user's stored
 // zone and app.logical_date, never a zone database of Node); the domain decides the streak, the
-// missed run and what was earned (closeDays, AR-03); job_apply_day_close writes it, one user per
+// missed run and what was earned (closeDays); job_apply_day_close writes it, one user per
 // transaction, as a compare-and-set behind the user's row lock (32-dayclose.sql). A user whose
 // apply fails is counted and logged and does not stop the others; a user whose days changed
 // since they were read (a late write) or whom another run closed first applies nothing, is read

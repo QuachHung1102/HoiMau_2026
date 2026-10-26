@@ -28,8 +28,7 @@ Mục lục đầy đủ, kèm quy tắc duy trì, ở [docs/README.md](docs/REA
 - [Quyết định kiến trúc](docs/decisions/0001-nen-tang-va-backend.md) và [vì sao nghiệm thu không cần thiết bị](docs/decisions/0002-kiem-chung-khong-co-thiet-bi.md)
 - [Phạm vi mobile và sổ quyết định](docs/product/mobile-scope.md)
 - [Đặc tả gốc](docs/product/SPEC-QUEST-001-dac-ta-he-thong.md)
-- [Thiết kế giao diện](design/hoiMau.pen)
-- Danh sách kiểm tra trên thiết bị: sẽ có (`docs/kiem-thu-tren-thiet-bi.md`, chạy khi có thiết bị)
+- [Danh sách kiểm tra trên thiết bị](docs/kiem-thu-tren-thiet-bi.md): chạy khi có điện thoại hoặc emulator
 
 ## Cấu trúc hiện tại
 

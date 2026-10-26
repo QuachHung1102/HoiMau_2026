@@ -2,8 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { prefsKey } from './prefs';
 
 /**
- * The only things kept on disk: the last `Me` and the last `DayState` of a user (AR-26). Neither contains
- * measurements, journal text or a token; do not widen this list without checking P1.0's "never cache" rule.
+ * The only things kept on disk: the last `Me` and the last `DayState` of a user. Neither contains
+ * measurements, journal text or a token; do not widen this list: measurements, journal text and tokens must never be cached.
  */
 export type CacheKey = 'me' | 'day';
 // `satisfies` makes tsc fail when a key is added to the union but not here, so sign-out cannot forget it.

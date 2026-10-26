@@ -6,7 +6,7 @@ import { useSession } from '../../shared/api/session';
 import { writeCache } from '../../shared/storage/cache';
 import { dayKey } from '../quests/api';
 
-/** The queue and an undo refresh this key (Task 25); the perk unlock of Task 38 sets or invalidates it too. */
+/** The queue and an undo refresh this key; the perk unlock sets or invalidates it too. */
 export const progressionKey = ['progression'] as const;
 export const historyKey = ['history'] as const;
 /** The query keys of the two history reads (a preview entry seeds them). */

@@ -1,4 +1,4 @@
-// Offline state and the pending-action queue (Task 24, S38).
+// Offline state and the pending-action queue (S38).
 import { errorText, unknownError } from './common';
 
 // The banner. "đã lưu trên máy" is never shortened to "đã lưu": only the server's answer makes a record saved.

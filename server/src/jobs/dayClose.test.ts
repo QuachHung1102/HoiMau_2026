@@ -248,12 +248,12 @@ test('a missed day after a streak of 5 keeps 5 for a rescue and names the date; 
   );
 });
 
-test('a ticket on the date: the streak stays and history shows FROZEN; a ticket and both quests done: COMPLETED, streak + 1 (AR-10)', async () => {
+test('a ticket on the date: the streak stays and history shows FROZEN; a ticket and both quests done: COMPLETED, streak + 1', async () => {
   const frozen = await onboarded();
   const both = await onboarded();
   for (const user of [frozen, both]) {
     await setStreak(user.userId, { streak_current: 4, streak_best: 4, last_outcome: 'COMPLETED' });
-    // Task 44 writes tickets; the owner stands in
+    // the ticket routes are not under test here; the owner stands in
     await db.admin.query(
       `INSERT INTO freeze_tickets (user_id, grant_week, used_at, used_for_date)
        VALUES ($1, '2027-03-08', '2027-03-10T06:00:00Z', '2027-03-10')`,

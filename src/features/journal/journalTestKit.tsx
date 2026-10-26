@@ -1,7 +1,7 @@
 /* eslint-env jest */
 // Test kit for the journal and ticket screens (used by *.test.tsx files; never imported by app code). The whole app against the
 // stand-in server of the home-tab kit, which holds the journal and the tickets (`world.journal`, `world.tickets`) and answers
-// their routes as server Task 44 does.
+// their routes as the server does.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fireEvent, screen } from '@testing-library/react-native';
 import * as vi from '../../shared/i18n/vi/journal';

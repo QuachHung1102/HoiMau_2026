@@ -9,7 +9,7 @@ import { wipeQueries } from '../../shared/api/session';
 import { app, dayOf, hold, installTodayTestEnv, meOf, openToday, queryClient, refuse, requested, respond, seedQueue, settle, settingsOf, stored, USER, world } from './todayTestKit';
 
 // The real registry; the home tab's `navigate` is recorded on its way to the navigator, so a link to a route that no
-// task has registered yet (inert, AR-25) can still be asserted by name.
+// task has registered yet (inert) can still be asserted by name.
 const mockNavigate = jest.fn();
 jest.mock('../../app/screens', () => {
   const actual = jest.requireActual('../../app/screens');
@@ -53,7 +53,7 @@ function finishedDay(closesIn: number): DayState {
 
 describe('S09: the day as the server gave it', () => {
   test('every block, top to bottom, with the numbers of the day and the profile', async () => {
-    world.day = dayOf({ unreadCount: 1 }); // the real day has none until Task 22 sends celebrations; the bell's dot is still drawn for one
+    world.day = dayOf({ unreadCount: 1 }); // the real day carries none until the server sends celebrations; the bell's dot is still drawn for one
     const view = await openToday();
     expect(screen.getByText('Chào An, mình bắt đầu từ việc nhỏ nhé.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Hộp thư, có thư mới' })).toBeTruthy();

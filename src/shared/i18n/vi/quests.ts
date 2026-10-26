@@ -1,4 +1,4 @@
-// Quests and the states of a recorded tick (Task 25: the water tracker on Hôm nay; Task 26 adds the board).
+// Quests and the states of a recorded tick (the water tracker on Hôm nay, then the quest board).
 
 /** Titles by `QuestState.titleKey`. Only the quests a screen shows by name so far. */
 export const questTitle: Partial<Record<string, string>> = {
@@ -37,7 +37,7 @@ export const undoOffline = 'Chưa hoàn tác được, ghi nhận vẫn được
 /** S58, next to the tracker; `reason` is `failureText(code)` of vi/sync.ts. */
 export const waterNotSaved = (reason: string) => `Chưa lưu được phần nước vừa ghi. ${reason}`;
 
-// Quest board (S10, Task 26). Titles are keyed by quest code; Hôm nay (above) names the two main tasks differently, as the frames do.
+// Quest board (S10). Titles are keyed by quest code; Hôm nay (above) names the two main tasks differently, as the frames do.
 export const boardTitle = 'Nhiệm vụ hôm nay';
 export const boardSubtitle = 'Ghi điều bạn đã làm, từng chút một.';
 export const storySection = 'Giữ nhịp hôm nay';

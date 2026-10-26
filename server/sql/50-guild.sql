@@ -23,7 +23,7 @@
 --     promotes, in two statements;
 --   * a refusal is raised with SQLSTATE HM000; time is app.now() only.
 
--- name: trimmed, 3 to 30 characters, unique ignoring case. invite_code: AR-18, 8 characters of
+-- name: trimmed, 3 to 30 characters, unique ignoring case. invite_code: 8 characters of
 -- ABCDEFGHJKLMNPQRSTUVWXYZ23456789 for every guild a user makes; the table takes any 8 of A-Z
 -- and 0-9 so that the decoy guild (86-decoy-guild.sql) can hold a code guild_join never matches.
 CREATE TABLE IF NOT EXISTS guilds (
@@ -40,7 +40,7 @@ ALTER TABLE guilds DROP CONSTRAINT IF EXISTS guilds_text_nfc_check;
 ALTER TABLE guilds ADD CONSTRAINT guilds_text_nfc_check CHECK (name IS NFC NORMALIZED AND motto IS NFC NORMALIZED);
 
 -- One row per current member: a user who leaves loses the row (a departed member is no one's
--- business any more). joined_at drives the mid-week average (R-D08).
+-- business any more). joined_at drives the mid-week average (D-08).
 CREATE TABLE IF NOT EXISTS guild_memberships (
   user_id uuid PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
   guild_id uuid NOT NULL REFERENCES guilds (id) ON DELETE CASCADE,
@@ -81,7 +81,7 @@ BEGIN
   END IF;
 END $$;
 
--- A new invite code (AR-18): 8 characters of the 32-character alphabet, one random byte each
+-- A new invite code: 8 characters of the 32-character alphabet, one random byte each
 -- (256 is a multiple of 32, so every character is equally likely).
 CREATE OR REPLACE FUNCTION app._invite_code() RETURNS text
 LANGUAGE sql VOLATILE SET search_path = public, pg_temp
@@ -93,7 +93,7 @@ $$;
 -- The days of p_from..p_through on which the user has a log, as memberWeek (domain/guild.ts)
 -- takes them: [{date, storyDone, storyTotal, frozen}] by date. STORY done / total for the
 -- user's archetype; frozen = a ticket was used for the date and the STORY quests are not all
--- done (AR-10: a ticket on a completed day leaves it completed). The one copy of this rule:
+-- done (a ticket on a completed day leaves it completed). The one copy of this rule:
 -- guild_overview and job_guild_week_inputs (51-guild-week.sql) both read it here.
 CREATE OR REPLACE FUNCTION app._member_days(p_user uuid, p_from date, p_through date) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path = public, pg_temp
@@ -172,7 +172,7 @@ BEGIN
 END $$;
 
 -- Joins the guild of the invite code, trimmed and upper-cased. In this order:
--- INVITE_CODE_INVALID (no guild has it, or it is not 8 characters of the AR-18 alphabet: the
+-- INVITE_CODE_INVALID (no guild has it, or it is not 8 characters of the invite alphabet: the
 -- decoy guild's code never matches), ALREADY_IN_GUILD (in any guild, this one included),
 -- GUILD_FULL (8 members, counted under the guild's lock, so parallel joins cannot pass 8).
 CREATE OR REPLACE FUNCTION guild_join(p_invite_code text) RETURNS uuid
@@ -199,7 +199,7 @@ BEGIN
   RETURN v_guild;
 END $$;
 
--- Leaves the guild (AR-18). NOT_IN_GUILD; LEADER_MUST_TRANSFER for a leader with other
+-- Leaves the guild. NOT_IN_GUILD; LEADER_MUST_TRANSFER for a leader with other
 -- members. A lone leader's guild is deleted with its row (its invite code with it); a member's
 -- row is deleted. The role is read after the guild's lock.
 CREATE OR REPLACE FUNCTION guild_leave() RETURNS void

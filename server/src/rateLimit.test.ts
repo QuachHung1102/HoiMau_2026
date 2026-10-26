@@ -1,4 +1,4 @@
-// The in-process limiter on its own, then through HTTP: AR-21 limits per account and per client
+// The in-process limiter on its own, then through HTTP: the limit is per account and per client
 // address, the limits of a route, and that the test app runs without them unless asked.
 import assert from 'node:assert/strict';
 import { request } from 'node:http';

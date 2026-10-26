@@ -1,7 +1,7 @@
 import type { ShopItemSeed } from './types.ts';
 
 // Cosmetic only (R-10.1): no field here can touch XP, streak or guild score.
-// Names and prices of S23, S24, S40, S66 win over the brief (R-D07); see the Task 13 report.
+// Names and prices of S23, S24, S40, S66 win over the brief (D-07).
 const item = (
   code: string,
   name: string,

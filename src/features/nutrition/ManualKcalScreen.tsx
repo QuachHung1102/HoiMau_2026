@@ -74,7 +74,7 @@ export function ManualKcalScreen({ navigation }: ScreenProps<'ManualKcal'>) {
     const outcome = await log(checked.kcal, checked.label);
     if (!outcome) return;
     if (outcome.state === 'confirmed') {
-      // The total and the reward are the server's. No Undo: a logged meal cannot be removed (AR-12).
+      // The total and the reward are the server's. No Undo: a logged meal cannot be removed.
       snackbar.show({
         message: [vi.logged(outcome.total), outcome.questDone ? vi.questReward(outcome.xp) : undefined].filter(Boolean).join('\n'),
         durationMs: CONFIRMATION_MS,

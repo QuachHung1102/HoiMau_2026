@@ -21,7 +21,7 @@ import {
 import type { PlanInputs } from '../readModels/mealPlan.ts';
 import { objectBody, refuse } from './day.ts';
 
-/** AR-15: the most candidates a swap offers. */
+/** The most candidates a swap offers. */
 const CANDIDATES_MAX = 3;
 
 const isSlot = (value: unknown): value is MealSlot =>

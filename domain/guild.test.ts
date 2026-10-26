@@ -91,7 +91,7 @@ for (const [name, input, through, expected] of MEMBER_CASES) {
   });
 }
 
-test('guild limits are the spec values (F-11, R-D08)', () => {
+test('guild limits are the spec values (F-11, D-08)', () => {
   assert.equal(GUILD_MIN_ACTIVE, 3);
   assert.equal(GUILD_MAX_MEMBERS, 8);
   assert.equal(GUILD_INACTIVE_DAYS, 14);

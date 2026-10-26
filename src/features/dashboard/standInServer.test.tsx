@@ -1,5 +1,4 @@
-// The stand-in servers of todayTestKit / workoutTestKit against what the real routes answer (server Task 20 report §6,
-// Task 21 report §8). Every mobile test that reads a stand-in's answer is only as true as these. No app is mounted:
+// The stand-in servers of todayTestKit / workoutTestKit against what the real routes answer (the day, workout and nutrition routes). Every mobile test that reads a stand-in's answer is only as true as these. No app is mounted:
 // the requests go straight to the stubbed fetch.
 import type { ActionResult } from '../../../domain/contract/common.ts';
 import type { DayState } from '../../../domain/contract/core.ts';
@@ -32,7 +31,7 @@ const quest = (day: DayState, name: string) => day.quests.find(item => item.code
 /** An instant that falls at `hh:mm` of the user's zone (UTC+7), within the last 24 to 48 hours. */
 const localInstant = (hh: number, mm: number) => new Date(Math.floor(Date.now() / (24 * HOUR)) * 24 * HOUR - 24 * HOUR + (hh - 7) * HOUR + mm * 60_000).toISOString();
 
-describe('undo (Task 20 §6 rows 1-5)', () => {
+describe('undo', () => {
   test('refuses as the route does: unknown, another quest\'s or undone tick 404; a later live tick 409; no tickId 422', async () => {
     const first = await post(WATER_TICK, {});
     const second = await post(WATER_TICK, {});
@@ -70,7 +69,7 @@ describe('undo (Task 20 §6 rows 1-5)', () => {
   });
 });
 
-describe('a tick (Task 20 §6 rows 8, 9, 13)', () => {
+describe('a tick', () => {
   test('a quest that cannot be ticked is 409 QUEST_NOT_TICKABLE, an unknown one 404 QUEST_NOT_FOUND, both with an error body', async () => {
     for (const [name, expected] of [
       ['WORKOUT_MAIN', '409 QUEST_NOT_TICKABLE'],
@@ -118,7 +117,7 @@ describe('a tick (Task 20 §6 rows 8, 9, 13)', () => {
   });
 });
 
-describe('what a key remembers (Task 20 §6 rows 6, 7; Task 21 §8 workout 7, nutrition 6)', () => {
+describe('what a key remembers', () => {
   test('only a 2xx: a refusal runs again under the same key', async () => {
     world.day = dayOf({}, { progress: 8, completed: true });
     const key = newActionId();
@@ -152,7 +151,7 @@ describe('what a key remembers (Task 20 §6 rows 6, 7; Task 21 §8 workout 7, nu
   });
 });
 
-describe('bedtime (Task 20 §6 rows 10-12)', () => {
+describe('bedtime', () => {
   test('03:00-17:59 is too early; from 23:00 the mark is made and the hidden quest is not completed', async () => {
     world.hour = 10;
     expect(code(await post(BEDTIME.slice(5), {}))).toBe('409 BEDTIME_TOO_EARLY');
@@ -178,7 +177,7 @@ describe('bedtime (Task 20 §6 rows 10-12)', () => {
   });
 });
 
-describe('POST /nutrition/log (Task 21 §8, nutrition 1-9)', () => {
+describe('POST /nutrition/log', () => {
   const log = (body: unknown) => post(NUTRITION.slice(5), body);
 
   test('kcal is any number from 1 to 5000, fractions included; the refusals name the rule', async () => {
@@ -215,7 +214,7 @@ describe('POST /nutrition/log (Task 21 §8, nutrition 1-9)', () => {
   });
 });
 
-describe('the workout routes (Task 21 §8, workout 1-11)', () => {
+describe('the workout routes', () => {
   const withGear = [catalog[0], { ...catalog[1], equipment: ['ta-tay'] }, { ...catalog[2], equipment: ['ta-tay', 'tham'] }];
   const ask = (query: string) => serverCatalog(new URLSearchParams(query), withGear).map(item => item.name);
 
@@ -286,13 +285,13 @@ describe('the day the stand-in holds', () => {
     jest.useRealTimers();
   });
 
-  test('unreadCount is 0 until Task 22', () => {
+  test('unreadCount is 0: the day read model carries no celebrations', () => {
     expect(dayOf().unreadCount).toBe(0);
   });
 });
 
-// Task 28's routes: server Task 20 (history), Task 22 (the inbox, `celebrations`) and Task 14 (`/progression`).
-describe('GET /progression and the history (Task 14, Task 20 §5)', () => {
+// The routes of the journey and the celebrations: the day history, the inbox (`celebrations`) and `/progression`.
+describe('GET /progression and the history', () => {
   test('/progression is the profile\'s progression; before onboarding it is 409 ONBOARDING_REQUIRED', async () => {
     expect((await get('/progression')).json).toEqual(world.me.progression);
     world.me = { ...world.me, progression: null };
@@ -332,7 +331,7 @@ describe('GET /progression and the history (Task 14, Task 20 §5)', () => {
   });
 });
 
-describe('POST /inbox/read (Task 22 §5)', () => {
+describe('POST /inbox/read', () => {
   const ITEM = '9d1c2f3a-4b5e-4f60-8a71-b2c3d4e5f601';
   const OTHER = '9d1c2f3a-4b5e-4f60-8a71-b2c3d4e5f602';
   const item = (id: string) => ({ id, kind: 'STREAK_MILESTONE' as const, createdAt: '2026-10-14T01:00:00.000Z', readAt: null, payload: { days: 7 as const, coins: 50, badgeCode: 'BADGE_STREAK_7' } });
@@ -366,7 +365,7 @@ describe('POST /inbox/read (Task 22 §5)', () => {
   });
 });
 
-describe('the meal plan routes (Task 33 report, "Notes for Task 34")', () => {
+describe('the meal plan routes', () => {
   const plan = async () => (await get('/nutrition/plan')).json as MealPlanState;
   const slotOf = async (slot: string) => (await plan()).slots.find(item => item.mealSlot === slot) as MealPlanState['slots'][number];
   const swap = (mealSlot: unknown, mealId: unknown, key?: string) => post('/nutrition/swap', { mealSlot, mealId }, key);
@@ -419,7 +418,7 @@ describe('the meal plan routes (Task 33 report, "Notes for Task 34")', () => {
     expect(code(await swap('LUNCH', mealByCode('COM_CA').id))).toBe('409 MEAL_ALREADY_LOGGED');
   });
 
-  test('excluded tags leave the candidates at once, the planned meals stay (PATCH /settings, AR-15)', async () => {
+  test('excluded tags leave the candidates at once, the planned meals stay (PATCH /settings)', async () => {
     const answer = await send('PATCH', '/settings', JSON.stringify({ excludedMealTags: ['co:hai-san', 'co:gia-cam'] }));
     // kept once each, in the order of the list of eight (as the route does)
     expect([answer.status, answer.json.excludedMealTags]).toEqual([200, ['co:gia-cam', 'co:hai-san']]);
@@ -492,9 +491,9 @@ describe('the meal plan routes (Task 33 report, "Notes for Task 34")', () => {
   });
 });
 
-// Task 37: the shop, the inventory, the perks and the pet, against server/src/routes/shop.ts, perks.ts and
-// server/sql/41-shop.sql (task-37-report.md "Notes for Task 38"). The error order is that of the SQL functions.
-describe('the shop, the inventory, the perks and the pet (Task 37)', () => {
+// the shop, the inventory, the perks and the pet, against server/src/routes/shop.ts, perks.ts and
+// server/sql/41-shop.sql. The error order is that of the SQL functions.
+describe('the shop, the inventory, the perks and the pet', () => {
   const FOREST = 'THEME_FOREST';
   const SKY = 'THEME_SKY';
   const buy = (item: string, key?: string) => send('POST', `/shop/${item}/purchase`, undefined, key);

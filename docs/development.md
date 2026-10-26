@@ -180,7 +180,7 @@ Máy không có emulator, nên có harness render component React Native trong C
 
 ```sh
 npm run preview                           # dev server; mở ?screen=<tên>, thiếu tên thì liệt kê các màn hình
-npm run preview:shot -- <tên> [out.png]   # PNG 390x844 @2x, mặc định .superpowers/preview/<tên>.png
+npm run preview:shot -- <tên> [out.png]   # PNG 390x844 @2x, mặc định node_modules/.cache/hoi-mau/preview/<tên>.png
 ```
 
 Thêm màn hình: mỗi tính năng có một tệp `tools/preview/entries/<tính năng>.tsx` xuất `entries` (`'tên': () => withApp(...)`); `registry.tsx` tự gom các tệp đó nên không cần sửa. `withApp(node, tùy chọn)` trong `tools/preview/harness.tsx` bọc các provider của app và nhận:

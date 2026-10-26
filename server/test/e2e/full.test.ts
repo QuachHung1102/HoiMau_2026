@@ -243,7 +243,7 @@ const people: Person[] = [];
 const alive = () => people.filter(p => !p.deleted);
 
 /**
- * What a day-close owes each person for the days it closed, by the domain rules (R-D04, R-D07):
+ * What a day-close owes each person for the days it closed, by the domain rules (D-04, D-07):
  * a completed day raises the streak, the seventh in a row pays the milestone once; a missed day
  * breaks it (the value before is kept for a rescue). Then streak and ledgers are compared.
  */
@@ -282,7 +282,7 @@ async function rollover(iso: string, weekStart: string) {
   await runJob('weekly-rollover', db.app, new Date(iso), log);
   const week = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const active = guildMembers.filter(p => !p.deleted && week.some(date => p.active.has(date)));
-  // the only guild with members in these weeks (the decoys live in 2026): rank 1 when ranked (>= 3 active, R-D08)
+  // the only guild with members in these weeks (the decoys live in 2026): rank 1 when ranked (>= 3 active, D-08)
   const ranked = active.length >= 3;
   if (ranked) {
     for (const p of active) {

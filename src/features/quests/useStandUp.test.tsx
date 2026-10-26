@@ -38,7 +38,7 @@ const prompt = () => screen.queryByText(PROMPT);
 const stored = async () => JSON.parse((await AsyncStorage.getItem(KEY)) ?? 'null');
 const standUps = () => writes().filter(request => request.path === `/day/quests/${STAND_UP}/progress`);
 
-// A stand-in for the focus flow: a screen that holds the reminder while it is mounted (the real ones are Task 27's).
+// A stand-in for the focus flow: a screen that holds the reminder while it is mounted (the real ones are the workout screens).
 let focusFlow: (shown: boolean | string) => void = () => undefined;
 function Holding() {
   useStandUpHold();

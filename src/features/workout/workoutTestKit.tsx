@@ -1,8 +1,8 @@
 /* eslint-env jest */
 // Test kit for the workout screens (used by *.test.tsx files; never imported by app code).
 // The whole app as App.tsx mounts it (todayTestKit), plus a stand-in for the three workout routes of the server,
-// (server Task 21). It answers as those routes do (the catalog's filter, AR-11, what a replay remembers); the workouts are the
-// real content, copied into workoutFixture.json by .superpowers/sdd/evidence/task-27/make-fixture.mjs.
+// (the server's workout routes). It answers as those routes do (the catalog's filter, what a replay remembers); the workouts are the
+// real content, taken from server/content/exercises.ts into workoutFixture.json (the catalog items and the starter workout as the routes answer them).
 import { act, fireEvent, screen } from '@testing-library/react-native';
 import { AppState } from 'react-native';
 import type { GameEvent } from '../../../domain/contract/common.ts';
@@ -52,7 +52,7 @@ export function serverCatalog(query: URLSearchParams, items: WorkoutSummary[] = 
   );
 }
 
-/** AR-11: the quest pays at most its XP per day; a session of at least half completes it, a shorter one earns its share. */
+/** The quest pays at most its XP per day; a session of at least half completes it, a shorter one earns its share. */
 function recordSession(id: string, body: Record<string, unknown>) {
   const { exerciseItemId, elapsedSec } = body;
   const fields: { field: string; rule: string }[] = [];

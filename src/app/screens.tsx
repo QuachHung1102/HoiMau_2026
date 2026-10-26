@@ -1,4 +1,4 @@
-// The screen registry (AR-25). A feature task adds one import line and one entry per screen, nothing else.
+// The screen registry. A feature task adds one import line and one entry per screen, nothing else.
 // A tab root looks like { name: 'Today', component: TodayScreen, label: tabLabel.Today, icon: 'Sun' };
 // the icons of the design are Sun (Today), Route (Plan), Users (Guild), User (Profile). The bar order is fixed
 // in navigation.tsx, so the order inside `tabRoots` does not matter.

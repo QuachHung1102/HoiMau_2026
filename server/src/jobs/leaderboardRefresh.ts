@@ -1,4 +1,4 @@
-// The leaderboard-refresh job (AR-17): every 5 minutes the live board of the running
+// The leaderboard-refresh job: every 5 minutes the live board of the running
 // Asia/Ho_Chi_Minh week, through today's date there, into the in-process cache that
 // GET /leaderboard?week=current serves (leaderboardCache.ts).
 import { withRole } from '../db.ts';

@@ -14,11 +14,9 @@ Muốn xem ứng dụng chạy thì đọc đầu tiên: [Chạy demo trên Andr
 | [Quyết định 0001: nền tảng và backend](decisions/0001-nen-tang-va-backend.md) | Android trước, backend trong repo, PostgreSQL với RLS, xác thực email + mật khẩu | Đổi nền tảng, backend hoặc cách xác thực |
 | [Quyết định 0002: kiểm chứng không có thiết bị](decisions/0002-kiem-chung-khong-co-thiet-bi.md) | Vì sao nghiệm thu dựa vào Jest, bản xem trước, đầu-cuối HTTP và build native; phần nào còn chờ thiết bị | Có thiết bị hoặc đổi cách nghiệm thu |
 | [Kiểm thử và phát hành](testing-and-release.md) | Ma trận kiểm chứng và kết quả mới nhất, danh mục kiểm tra phát hành, quy trình phát hành, ghi chú triển khai server, bản debug đã dựng | Thêm nghiệp vụ hoặc tích hợp; mỗi lần dựng bản debug |
-| Kiểm thử trên thiết bị (`docs/kiem-thu-tren-thiet-bi.md`) | Danh sách kiểm tra chạy khi có thiết bị. **Sẽ có**, chưa được viết | Có thiết bị |
-| [Thiết kế nguồn](../design/hoiMau.pen) | Tệp thiết kế để đối chiếu khi triển khai | Duyệt thay đổi giao diện |
+| [Kiểm thử trên thiết bị](kiem-thu-tren-thiet-bi.md) | Danh sách kiểm tra chạy khi có thiết bị hoặc emulator: chuẩn bị, từng khối kiểm tra, cột kết quả để trống (chưa chạy lần nào) | Có thiết bị, hoặc thêm một hành vi chỉ thiết bị mới kiểm được |
 | [Phân tích màn hình](design/screen-map.md) | Màn chức năng, trạng thái và luồng UX | Thay đổi luồng sử dụng |
 | [Animation](design/animation.md) | GIF, timing, easing và giảm chuyển động | Thay đổi tương tác |
-| [Bộ xem trước](../design/index.html) | Ảnh màn hình và liên kết GIF | Xuất lại thiết kế |
 
 ## Quy tắc duy trì
 
@@ -28,4 +26,4 @@ Muốn xem ứng dụng chạy thì đọc đầu tiên: [Chạy demo trên Andr
 - Phân biệt hiện trạng, đề xuất và kết quả đã kiểm chứng. Chỉ đánh dấu hoàn thành khi có bằng chứng kiểm thử hoặc đầu ra được nghiệm thu. Điều chưa chạy trên thiết bị thì nói là chưa chạy.
 - Đổi API thì sửa `docs/api/openapi.yaml`, `domain/contract/` và server trong cùng thay đổi: `npm run domain:test` (đối chiếu YAML với `OPERATIONS`) và `npm run server:test` (các route server nạp phải đúng bằng `OPERATIONS`) sẽ đỏ nếu lệch. Quyết định kiến trúc lớn thì thêm một tệp trong `docs/decisions/` với bối cảnh, lựa chọn, hệ quả và trạng thái. Chưa tạo tài liệu rỗng.
 - Người thay đổi mã cập nhật tài liệu liên quan trong cùng thay đổi; người review kiểm tra liên kết và lệnh chạy. Tài liệu người đọc không liên kết tới đường dẫn bị Git bỏ qua.
-- Ghi chú nội bộ agent phải ở đường dẫn được Git bỏ qua, không đưa vào bộ tài liệu này.
+- Ghi chú làm việc cá nhân phải ở đường dẫn được Git bỏ qua, không đưa vào bộ tài liệu này.

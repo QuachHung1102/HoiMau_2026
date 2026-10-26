@@ -83,7 +83,7 @@ export function MealDetailScreen({ route, navigation }: ScreenProps<'MealDetail'
     const outcome = await log(mealSlot);
     if (!outcome) return;
     if (outcome.state === 'confirmed') {
-      // The total and the reward are the server's. No Undo: a logged meal cannot be removed (AR-12).
+      // The total and the reward are the server's. No Undo: a logged meal cannot be removed.
       snackbar.show({
         message: [vi.logged(outcome.total), outcome.questDone ? vi.questReward(outcome.xp) : undefined].filter(Boolean).join('\n'),
         durationMs: CONFIRMATION_MS,

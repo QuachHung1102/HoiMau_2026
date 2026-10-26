@@ -1,5 +1,4 @@
-// The stand-in server of todayTestKit against what the real routes answer for the export and the deletion (server Task 46:
-// routes/privacy.ts, readModels/export.ts, sql/61-privacy.sql; the order of the refusals is app.ts). Every mobile test of S44 and S52
+// The stand-in server of todayTestKit against what the real routes answer for the export and the deletion (server routes/privacy.ts, readModels/export.ts, sql/61-privacy.sql; the order of the refusals is app.ts). Every mobile test of S44 and S52
 // is only as true as these. No app is mounted: the requests go straight to the stubbed fetch.
 import { LIMITS } from '../../../domain/validation.ts';
 import { newActionId } from '../../shared/api/uuid';

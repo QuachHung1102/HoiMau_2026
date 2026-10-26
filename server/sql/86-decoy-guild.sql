@@ -1,6 +1,6 @@
 -- Decoy rows of 50-guild.sql: the guild "decoy-guild" with decoy 1 as its LEADER and decoy 2 as
 -- a MEMBER. The rules are those of 80-decoy-base.sql (never clean these up; fixed values; ON
--- CONFLICT DO NOTHING). Its invite code holds O and 0, outside the AR-18 alphabet: guild_join
+-- CONFLICT DO NOTHING). Its invite code holds O and 0, outside the invite alphabet: guild_join
 -- refuses such a code before it looks, so nobody can join the decoy guild. The values are
 -- repeated in server/checks/attacks/guild.ts.
 

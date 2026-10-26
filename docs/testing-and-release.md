@@ -4,7 +4,7 @@
 
 Bản dùng nội bộ đầu tiên (giai đoạn 1 của đặc tả §11: một người đăng ký, nhận mục tiêu, ghi nhận ba ngày liên tiếp và thấy chuỗi tăng đúng qua mốc nửa đêm) đã được chứng minh **không cần thiết bị**: ở mức HTTP với server và PostgreSQL thật, và một lần bằng chính cây ứng dụng React Native chạy trong Jest, nói chuyện với server dev thật.
 
-**Chưa có lần chạy nào trên thiết bị**, thật hay giả lập. Máy phát triển không chạy được emulator (ảo hóa CPU đang tắt trong firmware) và chưa có điện thoại nào được cắm. Những gì chỉ kiểm được trên thiết bị (keychain thật, TalkBack, font, cử chỉ, chuyển động, bàn phím, hiệu năng…) được gom dần vào danh sách nội bộ `.superpowers/sdd/device-checks.md` (không nằm trong Git); Task 54 chạy danh sách đó khi có thiết bị và ghi kết quả vào tài liệu này.
+**Chưa có lần chạy nào trên thiết bị**, thật hay giả lập. Máy phát triển không chạy được emulator (ảo hóa CPU đang tắt trong firmware) và chưa có điện thoại nào được cắm. Những gì chỉ kiểm được trên thiết bị (keychain thật, TalkBack, font, cử chỉ, chuyển động, bàn phím, hiệu năng…) được gom vào [danh sách kiểm tra trên thiết bị](kiem-thu-tren-thiet-bi.md); khi có thiết bị thì chạy danh sách đó và ghi kết quả vào tài liệu này.
 
 Các mục của ma trận bên dưới là yêu cầu cho toàn sản phẩm; bảng sau nói lớp kiểm chứng nào đang có và nó chứng minh tới đâu.
 
@@ -21,12 +21,12 @@ Các mục của ma trận bên dưới là yêu cầu cho toàn sản phẩm; b
 | Build native | `cd android; .\gradlew.bat assembleDebug --console=plain` và `npx react-native bundle --platform android --dev false --entry-file index.js --bundle-output <tệp>` | Dự án Android biên dịch ra APK debug; bundle Metro bản phát hành dựng được, không chứa `react-native-web` hay `vite`; font nằm trong APK. | APK chạy được trên máy. |
 | Kiểu và lint | `npm run lint`, `npx tsc --noEmit`, `npx tsc -p tools/preview`, `npm run server:typecheck` | Kiểu của app, `domain/`, bản xem trước và server; ESLint trên `src/`, `domain/`, `server/`, `__tests__/`, `tools/` và các tệp cấu hình JS ở gốc repo. | Hành vi. |
 
-### Yêu cầu phi chức năng đã đo (Task 51)
+### Yêu cầu phi chức năng đã đo
 
 | NFR | Yêu cầu | Phép đo | Kết quả (23/10/2026, Ryzen 5 5600X, 31,9 GiB, Windows 11, Node 24.8.0, PostgreSQL 18.4 nhúng, một máy) |
 |---|---|---|---|
 | NFR-01 | p95 của API < 300 ms; bảng xếp hạng < 500 ms | `npm run server:perf`: 200 lần gọi tuần tự mỗi endpoint qua HTTP thật, 2 000 người dùng, 300 tổ đội, 30 ngày dữ liệu | p95: `GET /day` 8,0 ms; `POST /day/quests/WATER_8/progress` 12,4 ms; `GET /me` 7,0 ms; `GET /nutrition/plan` 8,1 ms; `GET /guilds/me` 9,5 ms; `GET /leaderboard?week=current` 3,1 ms (lần tính bảng đầu tiên 167 ms). `day-close` 2 000 người: 3,40 s; `weekly-rollover`: 10,32 s. Đồng hồ đóng băng, nên lần chạy lặp lại được. Chi tiết và số dòng: [backend](backend.md#hiệu-năng-checksperftestts-npm-run-serverperf). |
-| NFR-01 (thiết bị) | thời gian phản hồi người dùng thấy | chưa đo: khởi động nguội, Today đầu tiên, cuộn, bộ nhớ sau 45 phút nằm trong `.superpowers/sdd/device-checks.md` (Task 54) | **chưa có số**; số của server không phải số của điện thoại. |
+| NFR-01 (thiết bị) | thời gian phản hồi người dùng thấy | chưa đo: khởi động nguội, Today đầu tiên, cuộn, bộ nhớ sau 45 phút nằm trong [danh sách kiểm tra trên thiết bị](kiem-thu-tren-thiet-bi.md) | **chưa có số**; số của server không phải số của điện thoại. |
 | NFR-10 | log có cấu trúc cho mọi bút toán sổ cái; cảnh báo khi `day-close` trễ | `server/test/observability.test.ts` | Số dòng log `evt:'ledger'` bằng số dòng `xp_ledger` + `coin_ledger` mới (và cùng nội dung); không email, mật khẩu, token, mã, số đo, calo hay câu nhật ký nào trong log (có đối chứng); `job_late` ở phút 91, không ở phút 90. |
 | §12 M-01…M-05, M-07 | tiêu chí thành công | `server/scripts/metrics.sql`, `server/test/metrics.test.ts` | Câu lệnh chạy được và đúng trên fixture; chưa có số thật vì chưa có người dùng thật. M-06 không đo được từ server. |
 
@@ -45,7 +45,7 @@ Trong PowerShell: `$env:E2E_BASE_URL='http://127.0.0.1:8787/api/v1'; npm run tes
 - Khi xong, bộ test dựng lại `fresh` và trả đồng hồ về giờ thật (`scenario -- clock off`). Nó dời đồng hồ của cả cơ sở dữ liệu dev, nên cũng từ chối chạy khi có tài khoản dev đã onboarding không phải `demo-*@hoimau.test` (xem [backend](backend.md#kịch-bản-phát-triển-và-dịch-chuyển-thời-gian-scriptsscenariots-scriptsscenariosts)).
 - Chạy xong thì dừng `server:dev` (Ctrl+C); nếu nó bị buộc dừng, chạy `npm run db:cleanup`.
 
-### Trợ năng và độ phủ (Task 49)
+### Trợ năng và độ phủ
 
 Hai bộ quét chạy trong `npm test` và phải luôn xanh:
 
@@ -54,9 +54,9 @@ Hai bộ quét chạy trong `npm test` và phải luôn xanh:
 - Mỗi bộ có đối chứng âm: một `Pressable` không nhãn, không vai trò làm phép kiểm tra trượt; mã khung bịa `S99` bị báo thiếu; một route chỉ được nhắc trong chú thích bị báo là không tới được (chú thích bị bỏ trước khi quét).
 - `node design/check.mjs` kiểm tra độ tương phản ≥ 4,5:1 cho mọi cặp màu chữ / nền mà bộ thành phần `src/shared/ui/` dùng, cả ở ba giao diện màu, và ≥ 3:1 (tương phản phi văn bản, WCAG 1.4.11) cho viền ô nhập `field-line` so với `white` và với `bg` của cả ba giao diện; lệnh in ra các tỉ lệ này.
 
-Những gì máy ở đây không kiểm được nằm trong danh sách kiểm tra trên thiết bị (Task 54): thứ tự đọc và tiêu điểm của TalkBack sau khi chuyển màn và sau khi đóng lớp phủ, cỡ chữ 2.0 thật ở bề rộng 360 dp, vùng bấm 48 dp trên màn hình thật, độ tương phản trên tấm nền thật (kể cả viền ô nhập `field-line`), bàn phím che ô đang nhập.
+Những gì máy ở đây không kiểm được nằm trong danh sách kiểm tra trên thiết bị: thứ tự đọc và tiêu điểm của TalkBack sau khi chuyển màn và sau khi đóng lớp phủ, cỡ chữ 2.0 thật ở bề rộng 360 dp, vùng bấm 48 dp trên màn hình thật, độ tương phản trên tấm nền thật (kể cả viền ô nhập `field-line`), bàn phím che ô đang nhập.
 
-### Chuyển động (Task 50)
+### Chuyển động
 
 Bộ quét `__tests__/motion-sweep.test.tsx` chạy trong `npm test` và phải luôn xanh:
 
@@ -66,7 +66,7 @@ Bộ quét `__tests__/motion-sweep.test.tsx` chạy trong `npm test` và phải 
 - **Quét tĩnh `src/`:** không hàm gọi lại của `.start(` / `.addListener(` nào gọi api, mutation, điều hướng hay đặt trạng thái "đã lưu" (hiện chỉ có ba hàm ghi nhớ "đã chạy xong" vào một `ref`, và các bộ nghe chỉ vẽ); mọi `setTimeout` / `setInterval` được giữ trong biến và có `clearTimeout` / `clearInterval` tương ứng; mọi `Animated.loop` nằm trong tệp có `useLoopGate` hoặc `AppState`; mọi hoạt ảnh được `start` đều có `stop` trong cùng tệp.
 - Đối chứng âm: một mục đồ giả bắt đầu `Animated.loop` dưới giảm chuyển động bị bắt; một mục mất chữ khi giảm bị bắt còn chữ thêm thì không; mục thiếu dấu tier 1 và dấu sai id bị báo; hàm gọi lại có `api.post`, bộ hẹn giờ không xóa và bộ hẹn giờ không giữ biến đều bị báo.
 
-Những gì chỉ thiết bị kiểm được (bật / tắt "Giảm chuyển động" của hệ thống khi app đang mở, 60 fps trên máy yếu, vòng lặp dừng khi khóa màn hình) nằm trong danh sách kiểm tra trên thiết bị (Task 54).
+Những gì chỉ thiết bị kiểm được (bật / tắt "Giảm chuyển động" của hệ thống khi app đang mở, 60 fps trên máy yếu, vòng lặp dừng khi khóa màn hình) nằm trong danh sách kiểm tra trên thiết bị.
 
 <!-- motion-table:start -->
 | id | tier | kind | tệp cài đặt |
@@ -162,7 +162,7 @@ Những gì chỉ thiết bị kiểm được (bật / tắt "Giảm chuyển �
 | stage-path | 2 | transition | src/features/pet/PetStagesScreen.tsx |
 <!-- motion-table:end -->
 
-### Lần chạy gần nhất (18/10/2026, Task 29, Windows)
+### Lần chạy gần nhất (18/10/2026, Windows)
 
 Mọi lệnh dưới đây đã chạy thật và thoát 0:
 
@@ -176,7 +176,7 @@ Mọi lệnh dưới đây đã chạy thật và thoát 0:
 
 ## Kết quả kiểm chứng
 
-Cổng cuối của Task 53, chạy ngày 26/10/2026 trên commit `2051016` (mã cuối; commit tài liệu sau đó chỉ thêm mục này). Máy: Ryzen 5 5600X, 31,9 GiB, Windows 11 Pro, Node 24.8.0, PostgreSQL 18.4 nhúng. Mọi lệnh dưới đây đã chạy thật và thoát 0:
+Cổng cuối, chạy ngày 26/10/2026 trên commit `2051016` (mã cuối; commit tài liệu sau đó chỉ thêm mục này). Máy: Ryzen 5 5600X, 31,9 GiB, Windows 11 Pro, Node 24.8.0, PostgreSQL 18.4 nhúng. Mọi lệnh dưới đây đã chạy thật và thoát 0:
 
 | Cổng | Kết quả |
 |---|---|
@@ -203,29 +203,29 @@ Sau cùng: dừng `server:dev`, `npm run db:cleanup` báo "nothing running", c�
 
 **Bộ đầu-cuối qua app** (`__tests__/e2e/full.e2e.test.tsx`, kịch bản `e2e-full`): đăng nhập; qua bốn tab; viết nhật ký và thấy phản hồi; mở vé và màn xem trước; tick nước, mở thực đơn và đổi món, ghi calo, một buổi tập; Mầm → cửa hàng, mua và dùng giao diện "Rừng xanh" (màu nền của bảng màu đổi); tổ đội, gửi lời nhắc; đổi một cài đặt; xuất dữ liệu (bản giả của hộp chia sẻ nhận một chuỗi JSON đọc được); đăng xuất; người nhận đăng nhập, thấy lời nhắc trong hộp thư, đăng xuất. Mỗi màn hình đi qua đều không có trạng thái lỗi. Nhật ký và vé đi trước phần ghi ngày: khi hai việc chính đã xong thì hôm nay không cần vé và nút xem trước bị khóa.
 
-**Lỗi còn mở:** không có. Task 53 không tìm thấy lỗi nào trong `src/`, `domain/` hay `server/`. Thay đổi ngoài tệp của task: `server/scripts/scenario.ts` nhận tên kịch bản có dấu gạch nối (`e2e-full`), và `server/scripts/scenario.test.ts` có thêm kịch bản đó. Không đổi `src/` hay `android/`, nên APK ở "Bản debug đã dựng" vẫn là bản của commit `5d54c70`.
+**Lỗi còn mở:** không có. Lần chạy này không tìm thấy lỗi nào trong `src/`, `domain/` hay `server/`. Thay đổi ngoài các tệp kiểm thử: `server/scripts/scenario.ts` nhận tên kịch bản có dấu gạch nối (`e2e-full`), và `server/scripts/scenario.test.ts` có thêm kịch bản đó. Không đổi `src/` hay `android/`, nên APK ở "Bản debug đã dựng" vẫn là bản của commit `5d54c70`.
 
-**Chưa kiểm chứng trên thiết bị nào**, thật hay giả lập. Mọi kết quả trên đến từ Jest, Node, PostgreSQL và trình duyệt trên máy phát triển (xem Task 54 và `.superpowers/sdd/device-checks.md`).
+**Chưa kiểm chứng trên thiết bị nào**, thật hay giả lập. Mọi kết quả trên đến từ Jest, Node, PostgreSQL và trình duyệt trên máy phát triển (xem [danh sách kiểm tra trên thiết bị](kiem-thu-tren-thiet-bi.md)).
 
 ## Ma trận kiểm chứng
 
-Cột cuối nói cổng nào hiện đang phủ hàng đó và kết quả gần nhất chạy trong Task 52 (26/10/2026, commit `5d54c70`, Windows 11): `npm run lint` thoát 0, `npx tsc --noEmit` thoát 0, `npx tsc -p tools/preview` thoát 0, `npm run server:test` 612/612 test, `domain/contract/operations.test.ts` 7/7. Bộ Jest đầy đủ, ba cổng lược đồ, hiệu năng, `test:e2e` và bản xem trước cho mọi mục chạy lại ở Task 53 trên commit cuối; bảng "Kết quả kiểm chứng" ở đó là nguồn cho các con số. Hàng nào còn ghi "chỉ thiết bị" thì chưa có kết quả nào.
+Cột cuối nói cổng nào hiện đang phủ hàng đó và kết quả gần nhất (26/10/2026, commit `5d54c70`, Windows 11): `npm run lint` thoát 0, `npx tsc --noEmit` thoát 0, `npx tsc -p tools/preview` thoát 0, `npm run server:test` 612/612 test, `domain/contract/operations.test.ts` 7/7. Bộ Jest đầy đủ, ba cổng lược đồ, hiệu năng, `test:e2e` và bản xem trước cho mọi mục chạy lại trên commit cuối; bảng "Kết quả kiểm chứng" ở trên là nguồn cho các con số. Hàng nào còn ghi "chỉ thiết bị" thì chưa có kết quả nào.
 
 | Phạm vi | Kiểm tra cần có | Cổng nghiệm thu | Cổng đang phủ · kết quả |
 |---|---|---|---|
 | Nền ứng dụng | Render, lint, typecheck, khởi động native | Mở app trên từng nền tảng cam kết | lint, `tsc`, Jest, `assembleDebug` và bundle Metro: xanh. Mở app trên máy: chỉ thiết bị, chưa chạy. iOS: chưa build |
 | Auth/hồ sơ | Hết hạn phiên, sai chủ sở hữu, biên dữ liệu, snapshot | Không đọc/ghi hồ sơ người khác | `server:test` (route, hàm SQL), `db:api-check` · `server:test` xanh. Keychain thật: chỉ thiết bị |
-| F-02/F-03 | Công thức, clamp, dữ liệu biên, chỉ số dẫn xuất | Kết quả từ test thực thi, không tính nhẩm | `domain:test` (ngưỡng phủ 90 %) và `server:test` · `server:test` xanh; `domain:test` chạy lại ở Task 53 |
+| F-02/F-03 | Công thức, clamp, dữ liệu biên, chỉ số dẫn xuất | Kết quả từ test thực thi, không tính nhẩm | `domain:test` (ngưỡng phủ 90 %) và `server:test` · `server:test` xanh; `domain:test` chạy lại ở cổng cuối |
 | F-06/F-07 | Retry, tick khác nhau, undo, race, lên cấp | Không cộng trùng hoặc mất thao tác hợp lệ | `server:test` (khóa idempotency, sổ cái, khóa dòng), đầu-cuối HTTP · `server:test` xanh |
 | F-08 | Ranh giới ngày, DST, đổi timezone, ngày không log, job lặp | Chuỗi/kỷ lục đúng chính sách đã chốt | `domain:test`, `server:test` (đồng hồ test, job chạy hai lần) · `server:test` xanh |
-| Offline | Mất mạng, restart, đổi tài khoản, qua ngày đóng | Không mất queue hoặc gửi sang tài khoản khác | Jest (hàng đợi `pendingActions`, `applyPending`) · chạy lại ở Task 53. Mất mạng thật, restart tiến trình: chỉ thiết bị |
+| Offline | Mất mạng, restart, đổi tài khoản, qua ngày đóng | Không mất queue hoặc gửi sang tài khoản khác | Jest (hàng đợi `pendingActions`, `applyPending`) · chạy lại ở cổng cuối. Mất mạng thật, restart tiến trình: chỉ thiết bị |
 | F-04/F-05 | Hết ứng viên, giới hạn đổi món, tập dở, background | Nhật ký và thời gian tập đúng | `server:test`, Jest · `server:test` xanh. Tập khi app xuống nền: chỉ thiết bị |
 | F-09/F-10 | Tiến hóa, mood, mua đồng thời, không đủ xu | Xu/kho đồ nhất quán trong transaction | `domain:test`, `server:test` · `server:test` xanh |
 | F-11/F-12 | Thiếu thành viên, vào/rời nhóm, chốt lặp, mute, hạn mức | Không lộ số đo hoặc nhắc ngoài chính sách | `server:test`, `db:api-check` · `server:test` xanh |
 | F-13 | Nhật ký riêng tư, mã hóa, retry, giới hạn vé, cứu chuỗi | Không log nội dung hoặc cấp/thưởng trùng | `server:test`, `observability.test.ts` · `server:test` xanh |
 | Quyền riêng tư | Xuất JSON, xóa tài khoản/cache, job xóa cứng | Chủ sở hữu kiểm soát dữ liệu | `server:test` (xuất, xóa, purge) · `server:test` xanh. Bảng chia sẻ tệp native: chỉ thiết bị |
-| Accessibility | TalkBack/VoiceOver, chữ lớn, nhãn, tương phản, giảm chuyển động | Dùng được các luồng chính | Bộ quét trợ năng và chuyển động trong Jest, `node design/check.mjs` · chạy lại ở Task 53. TalkBack, chữ lớn thật: chỉ thiết bị |
-| Hiệu năng | Đo khởi động/dashboard/API, ghi rõ môi trường | Đối chiếu NFR; chốt phép đo mobile thay LCP web | `server:perf` (Task 51, bảng trên). Khởi động nguội, cuộn, bộ nhớ: chỉ thiết bị |
+| Accessibility | TalkBack/VoiceOver, chữ lớn, nhãn, tương phản, giảm chuyển động | Dùng được các luồng chính | Bộ quét trợ năng và chuyển động trong Jest, `node design/check.mjs` · chạy lại ở cổng cuối. TalkBack, chữ lớn thật: chỉ thiết bị |
+| Hiệu năng | Đo khởi động/dashboard/API, ghi rõ môi trường | Đối chiếu NFR; chốt phép đo mobile thay LCP web | `server:perf` (bảng trên). Khởi động nguội, cuộn, bộ nhớ: chỉ thiết bị |
 
 Áp dụng ngưỡng coverage NFR-09 cho các hàm nghiệp vụ được đặc tả nêu tên ở nơi chúng thực sự chạy, kể cả backend riêng. Coverage client template không đại diện cho nghiệp vụ.
 
@@ -235,7 +235,7 @@ Ký hiệu: **xong** = đã làm và có bằng chứng; **chưa** = chưa làm,
 
 ### Nội dung và pháp lý
 
-- [ ] **chưa** Nội dung sức khỏe và khủng hoảng **chưa được chuyên gia duyệt**. Các module cần người có chuyên môn đọc trước khi phát hành: `src/shared/i18n/vi/health.ts` (lời khuyên, cảnh báo, khối khủng hoảng S56 với 115 và 111), `server/content/meals.ts` (thực đơn, kcal, đại lượng), `server/content/exercises.ts` (bài tập, mức độ, lưu ý an toàn), `server/content/quotes.ts` (câu trích sau nhật ký). Căn cứ: ruling R-D10, đặc tả §9.
+- [ ] **chưa** Nội dung sức khỏe và khủng hoảng **chưa được chuyên gia duyệt**. Các module cần người có chuyên môn đọc trước khi phát hành: `src/shared/i18n/vi/health.ts` (lời khuyên, cảnh báo, khối khủng hoảng S56 với 115 và 111), `server/content/meals.ts` (thực đơn, kcal, đại lượng), `server/content/exercises.ts` (bài tập, mức độ, lưu ý an toàn), `server/content/quotes.ts` (câu trích sau nhật ký). Căn cứ: decision D-10, đặc tả §9.
 - [ ] **chưa** Điều khoản sử dụng và chính sách riêng tư (`src/shared/i18n/vi/legal.ts`) **chưa được pháp lý duyệt**; văn bản hiện chỉ là bản nháp theo các cam kết của đặc tả.
 - [ ] **chưa** Giấy phép ảnh. Mọi ảnh đang đóng gói trong `src/assets/` mà `design/assets/sources.json` ghi `kind` là `stock-unsplash` hoặc `ai-generated`:
 
@@ -253,7 +253,7 @@ Các tệp `design/assets/` khác (`yDIOq`, `fyyAz`, `cKgNX`, `uWHhz`) có trong
 
 ### Thiết bị và nền tảng
 
-- [ ] **không làm được ở đây** Chưa có kiểm chứng trên thiết bị: xem [quyết định 0002](decisions/0002-kiem-chung-khong-co-thiet-bi.md) và danh sách kiểm tra trên thiết bị (`docs/kiem-thu-tren-thiet-bi.md`, sẽ có, do Task 54 tạo; chưa có tệp).
+- [ ] **không làm được ở đây** Chưa có kiểm chứng trên thiết bị: xem [quyết định 0002](decisions/0002-kiem-chung-khong-co-thiet-bi.md) và [danh sách kiểm tra trên thiết bị](kiem-thu-tren-thiet-bi.md) (chưa chạy).
 - [ ] **không làm được ở đây** iOS chưa build, chưa kiểm chứng (không có macOS).
 
 ### Kênh bên ngoài
@@ -327,7 +327,7 @@ Mỗi dòng `ponytail:` trong repo là một giản lược có chủ ý, kèm g
 | SHA-256 | `8bad41b324c360abfe7b9a22d1b52a43dc5ce8637fe4b95a75e9763c35f007dc` |
 | Bundle Metro bản phát hành | `npx react-native bundle --platform android --dev false --entry-file index.js --bundle-output node_modules/.cache/hoi-mau/release.bundle`: thoát 0, 4241131 byte |
 
-Task 53 dựng lại APK nếu `src/` hoặc `android/` đổi, và ghi lại mã băm mới trong "Kết quả kiểm chứng". APK này **chưa từng chạy** trên thiết bị.
+Phải dựng lại APK nếu `src/` hoặc `android/` đổi, và ghi lại mã băm mới trong bảng trên. APK này **chưa từng chạy** trên thiết bị.
 
 ## Quy trình phát hành dự kiến
 

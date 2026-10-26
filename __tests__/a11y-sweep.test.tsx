@@ -5,8 +5,8 @@ import { render } from '@testing-library/react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { all, DRIVE_LIMIT_MS, entries, isHost, resetAfterEntry, roleOf, setTree, settle, stateOf, textOf, typeOf, type Node } from '../tools/preview/sweepKit';
 
-// Task 49: every preview entry is rendered under Jest and its tree is checked for what a machine can see of
-// accessibility (P1.6-UI-STD). What only a device shows is in .superpowers/sdd/device-checks.md.
+// every preview entry is rendered under Jest and its tree is checked for what a machine can see of
+// accessibility. What only a device shows is in docs/kiem-thu-tren-thiet-bi.md.
 
 /** A host element the user can press: a Pressable's view (it carries the responder handlers) or a Text with onPress. */
 const isPressable = (n: Node) => isHost(n) && (typeof n.props.onPress === 'function' || typeof n.props.onClick === 'function');

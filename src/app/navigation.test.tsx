@@ -175,7 +175,7 @@ test('signed out: the auth screens, starting on Welcome, and no request', async 
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
-test('a link to a declared route that is not registered yet is inert and silent (AR-25)', async () => {
+test('a link to a declared route that is not registered yet is inert and silent', async () => {
   await open({ signedIn: false });
   await screen.findByText('screen Welcome {}');
   press('go SignUp');

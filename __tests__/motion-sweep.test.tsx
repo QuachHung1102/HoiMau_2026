@@ -13,12 +13,12 @@ import { Mam } from '../src/shared/ui/mam/Mam';
 import { LoadingState } from '../src/shared/ui/States';
 import { all, DRIVE_LIMIT_MS, entries, isHost, resetAfterEntry, setTree, settle, textOf, typeOf, type Node } from '../tools/preview/sweepKit';
 
-// Task 50: motion. (1) every tier-1 catalog id has an implementation marker and the table in the docs is the generated one;
+// Motion. (1) every tier-1 catalog id has an implementation marker and the table in the docs is the generated one;
 // (2) under reduced motion no preview entry starts an animation and none shows less text than under full motion;
 // (3) the decorative loops and the one-shot celebrations obey the screen's focus and the app's foreground;
 // (4) static scans: no animation callback does business work, every timer is cleared, every loop is gated.
 // What only a device shows (the system switch flipped while the app is open, 60 fps, a locked screen) is in
-// .superpowers/sdd/device-checks.md.
+// docs/kiem-thu-tren-thiet-bi.md.
 
 // Every preview entry builds its tree with withApp(); both passes of the sweep decide the motion preference here.
 const mockMotion: { current: 'FULL' | 'REDUCED' } = { current: 'FULL' };

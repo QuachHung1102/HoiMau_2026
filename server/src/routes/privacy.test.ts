@@ -1,5 +1,5 @@
 // GET /me/export and POST /me/delete over HTTP on the real database; the jobs run after a
-// deletion; the guild a deleted leader leaves (AR-30); nudges to and from a deleted user.
+// deletion; the guild a deleted leader leaves; nudges to and from a deleted user.
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, test } from 'node:test';

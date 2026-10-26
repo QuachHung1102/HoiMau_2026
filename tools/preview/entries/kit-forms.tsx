@@ -170,7 +170,7 @@ function LoadFailed() {
   );
 }
 
-// S75: nothing here yet. The sprout stands in for Mầm (Task 12).
+// S75: nothing here yet. The sprout stands in for Mầm.
 function Empty() {
   return (
     <Screen title="Hộp thư" subtitle="Lời nhắc và những cột mốc của bạn." onBack={noop}>

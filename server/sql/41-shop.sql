@@ -39,7 +39,7 @@ SELECT meta.expect_function('app._lock_progression(uuid)', 'invoker', '{}');
 -- Buys p_item_code with coins. In this order: ITEM_NOT_FOUND; ITEM_NOT_PURCHASABLE (an earned
 -- badge, a default item); ITEM_LOCKED_LEVEL {minLevel} (the level of the current XP sum);
 -- ALREADY_OWNED; INSUFFICIENT_COINS {price, coin}. Then the coins go through app._grant with
--- reason PURCHASE and ref = the item code (AR-34: an item is paid for once ever) and the
+-- reason PURCHASE and ref = the item code (an item is paid for once ever) and the
 -- inventory row is added, in this one transaction (R-10.2).
 --   the result of app._grant + {reason, ref}
 -- p_action_id names no row: a replay is the idempotency layer's.
@@ -87,7 +87,7 @@ END $$;
 -- Equips p_item_code: ITEM_NOT_OWNED unless the item is the caller's or a default (an unknown
 -- code included). Every inventory row of the item's kind is un-equipped, then the item's row is
 -- equipped; a default item has no row, so equipping it leaves that kind with none equipped,
--- which is what shows the default (AR-31).
+-- which is what shows the default.
 CREATE OR REPLACE FUNCTION inventory_equip(p_item_code text) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $$
@@ -108,7 +108,7 @@ END $$;
 -- Spends perk points (PERKS of domain/economy.ts: MEAL_SWAP_PLUS 2, TICKET_CAP_PLUS 3,
 -- THEME_UNLOCK 1). VALIDATION_FAILED (perkCode) for another code. MEAL_SWAP_PLUS and
 -- TICKET_CAP_PLUS once each (PERK_ALREADY_UNLOCKED). THEME_UNLOCK takes the theme p_item_code,
--- whatever its price (AR-31): ITEM_NOT_FOUND (not a theme, or the default one), ALREADY_OWNED,
+-- whatever its price: ITEM_NOT_FOUND (not a theme, or the default one), ALREADY_OWNED,
 -- ITEM_LOCKED_LEVEL {minLevel}; it adds the inventory row. Then PERK_POINTS_INSUFFICIENT unless
 -- the points available cover the cost: (the highest level whose cumulative_xp is at or below
 -- xp_high_water) - 1 - the costs spent. Points come from the high-water mark: an undo never

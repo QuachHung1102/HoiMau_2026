@@ -1,4 +1,4 @@
-// The reminder-dispatch job (spec 6.2, AR-23): at minutes 0, 15, 30 and 45, one QUEST_REMINDER
+// The reminder-dispatch job (spec 6.2): at minutes 0, 15, 30 and 45, one QUEST_REMINDER
 // inbox item per user who asked for it, inside the chosen window of the user's own wall clock,
 // once per logical day (job_reminder_dispatch, 52-nudge.sql: one statement, the dedupe key is
 // the logical date, so a second run in the window creates nothing).

@@ -1,4 +1,4 @@
-// The measurement fields of S05 (and of the profile editor, Task 47), with the rules that read what was typed.
+// The measurement fields of S05 (and of the profile editor), with the rules that read what was typed.
 // Every limit and the age rule come from domain/validation.ts; nothing here judges a value beyond "inside the range".
 import type { RefObject } from 'react';
 import { StyleSheet, View } from 'react-native';

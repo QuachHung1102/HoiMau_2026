@@ -27,7 +27,7 @@ const routes: Route[] = [
     path: '/guilds/nudge',
     auth: 'user',
     idempotent: true,
-    rateLimit: { perMinute: 10 }, // AR-21
+    rateLimit: { perMinute: 10 },
     handler: async ctx => {
       const { receiverId, templateCode } = objectBody(ctx.body);
       const fields: FieldError[] = [];

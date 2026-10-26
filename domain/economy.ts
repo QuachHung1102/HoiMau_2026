@@ -1,4 +1,4 @@
-/** Perk costs in perk points (R-D07). */
+/** Perk costs in perk points (D-07). */
 export const PERKS = {
   MEAL_SWAP_PLUS: { cost: 2 },
   TICKET_CAP_PLUS: { cost: 3 },

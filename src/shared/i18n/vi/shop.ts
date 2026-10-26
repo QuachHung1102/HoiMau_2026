@@ -1,4 +1,4 @@
-// The shop, the item screens, the inventory and the perk sheet (Task 38: S23 S40 S71 S72 S24 and the sheet of S46).
+// The shop, the item screens, the inventory and the perk sheet (S23 S40 S71 S72 S24 and the sheet of S46).
 import type { PerkCode } from '../../../../domain/contract/core.ts';
 import { SWAPS_PER_SLOT, TICKET_CAP } from '../../../../domain/economy.ts';
 import { formatNumber } from './pet';

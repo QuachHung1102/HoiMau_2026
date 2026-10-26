@@ -5,7 +5,7 @@ import type { JournalCreateResult } from '../../domain/contract/social.ts';
 import type { DateLabel, MealSlot } from '../../domain/types.ts';
 import type { IconName } from '../shared/ui/Icon';
 
-/** Every route of the app and its params, declared once (AR-25). Screens are registered in screens.tsx. */
+/** Every route of the app and its params, declared once. Screens are registered in screens.tsx. */
 export type RootParamList = {
   // signed out
   Welcome: undefined;
@@ -52,7 +52,7 @@ export type RootParamList = {
   Nudge: { receiverId: string; receiverName: string };
   Inbox: undefined;
   JournalWrite: undefined;
-  /** `crisis`: the device's own check of the text that was saved (AR-20); it lives in memory, in this param, and nowhere else. */
+  /** `crisis`: the device's own check of the text that was saved; it lives in memory, in this param, and nowhere else. */
   JournalFeedback: { result: JournalCreateResult; crisis: boolean };
   Support: undefined;
   JournalList: undefined;

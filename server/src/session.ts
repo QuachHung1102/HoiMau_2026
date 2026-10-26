@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { PoolClient } from 'pg';
 
-/** A session token: 32 random bytes in base64url, 43 characters (AR-06). Shown to the client once. */
+/** A session token: 32 random bytes in base64url, 43 characters. Shown to the client once. */
 export const newToken = (): string => randomBytes(32).toString('base64url');
 
 /** What the database stores and compares: SHA-256 of the token text. The token itself goes no further. */

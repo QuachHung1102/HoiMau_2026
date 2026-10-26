@@ -456,7 +456,7 @@ test('a signed-in user reads the own rows only, and the content', async () => {
 
 // ---------------------------------------------------------------- shape and seeds
 
-test('nothing derivable is stored: no xp, coin, level, perk point or stat column (AR-04)', async () => {
+test('nothing derivable is stored: no xp, coin, level, perk point or stat column', async () => {
   const { rows } = await db.admin.query<{ column: string }>(
     `SELECT table_name || '.' || column_name AS column
        FROM information_schema.columns

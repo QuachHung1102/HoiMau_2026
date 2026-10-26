@@ -160,7 +160,7 @@ test('a frozen or completed day after a break clears the break fields', () => {
   assert.deepEqual(run('CMC').states[2], st(1, 1, null, null, 0, 'COMPLETED'));
 });
 
-test('a day both completed and ticketed counts as completed (AR-10)', () => {
+test('a day both completed and ticketed counts as completed', () => {
   const { states, events } = run('CCB');
   assert.deepEqual(states[2], st(3, 3, null, null, 0, 'COMPLETED'));
   assert.deepEqual(events, [[], [], []]);

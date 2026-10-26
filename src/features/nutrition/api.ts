@@ -66,7 +66,7 @@ export type LogKcalOutcome =
 /**
  * Records one nutrition log (`POST /nutrition/log`) through the offline queue, and nothing else: the screen decides
  * what to show. `record` answers undefined when a record is already on its way (a second press) or when the person
- * has signed out meanwhile. There is no undo for a logged meal (AR-12).
+ * has signed out meanwhile. There is no undo for a logged meal.
  * - confirmed: the server's day replaces the cached one (no local arithmetic) and `delta.events` go to the
  *   celebrations once; the rest of the answer is returned for the screen's message.
  * - queued / failed: nothing is changed here; the waiting amount is laid over the day by `applyPending`.

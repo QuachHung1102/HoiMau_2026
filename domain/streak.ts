@@ -4,7 +4,7 @@ import type { DateLabel, DayOutcome } from './types.ts';
 export type StreakState = {
   streakCurrent: number;
   streakBest: number;
-  /** Set only by the most recent close, when that day broke a streak (R-D04 rescue window). */
+  /** Set only by the most recent close, when that day broke a streak (D-04 rescue window). */
   streakBeforeBreak: number | null;
   breakDate: DateLabel | null;
   /** Consecutive missed days; a frozen day neither adds to it nor resets it. */
@@ -38,7 +38,7 @@ function closeDay(
   events: CloseEvent[],
 ): StreakState {
   const { date } = day;
-  // Completed wins over a ticket applied to the same date (AR-10).
+  // Completed wins over a ticket applied to the same date.
   if (day.storyCompleted) {
     const streakCurrent = state.streakCurrent + 1;
     const milestone = STREAK_MILESTONES.find(m => m.days === streakCurrent);
@@ -98,7 +98,7 @@ export function closeDays(
 }
 
 /**
- * A ticket applied to the day that just broke the streak (R-D04): that day becomes frozen.
+ * A ticket applied to the day that just broke the streak (D-04): that day becomes frozen.
  * Throws RangeError when `date` is not the break date.
  */
 export function rescueWithTicket(

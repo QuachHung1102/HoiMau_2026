@@ -1,4 +1,4 @@
-// The guild: the tab (S25 empty, S27 members, S76 quiet), joining (S26), creating (S42) and managing it (S54) (Task 42).
+// The guild: the tab (S25 empty, S27 members, S76 quiet), joining (S26), creating (S42) and managing it (S54).
 import type { NudgeBlockReason } from '../../../../domain/contract/social.ts';
 import { GUILD_MAX_MEMBERS, GUILD_MIN_ACTIVE } from '../../../../domain/guild.ts';
 import { LIMITS } from '../../../../domain/validation.ts';
@@ -111,7 +111,7 @@ export const noGuildTitle = 'Bạn chưa có tổ đội';
 export const noGuildBody = 'Tạo một nhóm hoặc tham gia bằng mã mời từ bạn bè.';
 export const backToGuild = 'Về tab Tổ đội';
 
-// S28 and S73: the weekly ranking (Task 43)
+// S28 and S73: the weekly ranking
 export const boardTitle = 'Bảng xếp hạng';
 export const boardSubtitle = 'Theo mức hoàn thành, không theo số đo.';
 export const weekChoice = 'Chọn tuần';
@@ -135,7 +135,7 @@ export const toGuildTab = 'Đến tab Tổ đội';
 export const emptyBoardTitle = { current: 'Chưa có tổ đội nào lên bảng tuần này', previous: 'Chưa có kết quả tuần trước' } as const;
 export const emptyBoardBody = { current: 'Khi có nhóm đủ thành viên hoạt động, bảng sẽ hiện ở đây.', previous: 'Tuần trước chưa có tổ đội nào lên bảng. Kết quả mỗi tuần được chốt vào sáng thứ Hai.' } as const;
 
-// S29 and S74: a nudge (Task 43)
+// S29 and S74: a nudge
 export const nudgeDailyLimit = 3;
 export const nudgeTitle = 'Gửi một lời nhắc';
 export const nudgeSubtitle = (name: string) => `Một lời mời nhẹ nhàng cho ${name}.`;

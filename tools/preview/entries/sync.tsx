@@ -60,7 +60,7 @@ function Ping() {
   return null;
 }
 
-/** How a screen reads the queue (Task 25 does this on Hôm nay): the badge and one row per waiting record. */
+/** How a screen reads the queue (Hôm nay does this): the badge and one row per waiting record. */
 function WaitingRecords() {
   const { userId } = useSession();
   const pending = usePendingActions(userId);

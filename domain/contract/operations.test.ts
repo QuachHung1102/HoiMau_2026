@@ -21,7 +21,7 @@ test('every authenticated write except logout requires an Idempotency-Key', () =
   assert.deepEqual(missing, []);
 });
 
-test('reads, anonymous endpoints and logout take no Idempotency-Key (AR-08)', () => {
+test('reads, anonymous endpoints and logout take no Idempotency-Key', () => {
   const wrong = OPERATIONS.filter(
     op => (op.method === 'GET' || keyless(op)) && op.idempotent,
   );
@@ -39,7 +39,7 @@ const linesOf = (relative: string) =>
   readFileSync(new URL(relative, import.meta.url), 'utf8').split(/\r?\n/);
 
 /**
- * Line scan of docs/api/openapi.yaml — no YAML parser (AR-01). It relies on the one layout the
+ * Line scan of docs/api/openapi.yaml — no YAML parser. It relies on the one layout the
  * document keeps: a path at 2 spaces, a method at 4, `operationId` and `x-auth` at 6, the
  * Idempotency-Key parameter as a `$ref`, and the members of the `ErrorCode` enum at 8.
  */

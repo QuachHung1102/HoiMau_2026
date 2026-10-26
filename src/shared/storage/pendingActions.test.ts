@@ -402,7 +402,7 @@ describe('never under another account', () => {
   });
 });
 
-describe('occurredAt (AR-08)', () => {
+describe('occurredAt', () => {
   test('absent when the action leaves within 60 s of its creation', async () => {
     await enqueueAction(action('a1'));
     jest.setSystemTime(T0 + 60_000);

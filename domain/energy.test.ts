@@ -71,7 +71,7 @@ const CASES: [string, Input, Prescription][] = [
     { bmr: 1155, tdee: 1386, calorieTarget: 1500, proteinG: 80, carbsG: 201, fatG: 42, waterMl: 1750, safetyClamped: true, macroAdjusted: false },
   ],
   [
-    'macro fallback 1: protein lowered to 1.6 g/kg, not flagged as adjusted (AR-14)',
+    'macro fallback 1: protein lowered to 1.6 g/kg, not flagged as adjusted',
     { heightCm: 120, weightKg: 250, ageYears: 90, sex: 'FEMALE', activityLevel: 'SEDENTARY', archetype: 'ASSASSIN' },
     { bmr: 2639, tdee: 3166.8, calorieTarget: 2692, proteinG: 400, carbsG: 105, fatG: 75, waterMl: 4000, safetyClamped: false, macroAdjusted: false },
   ],

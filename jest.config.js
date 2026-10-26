@@ -1,7 +1,7 @@
 module.exports = {
   preset: '@react-native/jest-preset',
   setupFiles: ['<rootDir>/jest.setup.js'],
-  // server/ and domain/ run on node:test; tools/, design/ and .superpowers/ (agent scratch) are not app code;
+  // server/ and domain/ run on node:test; tools/, design/ and .superpowers/ (local scratch) are not app code;
   // __tests__/e2e/ needs the running dev server (npm run test:e2e, jest.e2e.config.js).
   testPathIgnorePatterns: [
     '/node_modules/',

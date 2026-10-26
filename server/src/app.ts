@@ -170,7 +170,7 @@ function compile(all: Route[]): (method: string, path: string) => Found | null {
     if (!route.path.startsWith('/')) {
       throw new Error(`route path must start with "/": ${route.path}`);
     }
-    // a key belongs to a user (R-D05), and a stored answer is only ever served to that user
+    // a key belongs to a user (D-05), and a stored answer is only ever served to that user
     if (route.idempotent && (route.auth === 'anon' || route.method === 'GET')) {
       throw new Error(`${name}: only a write with a session can be idempotent`);
     }

@@ -7,7 +7,7 @@ import { tickPath, WATER } from '../quests/api';
 import { COMPLETE, detail, installWorkoutTestEnv, openPlan } from './workoutTestKit';
 
 // The real registry; `navigate` of the tab roots and detail screens is recorded on its way to the navigator, so a link
-// to a route that no task has registered yet (inert, AR-25) can still be asserted by name.
+// to a route that no task has registered yet (inert) can still be asserted by name.
 const mockNavigate = jest.fn();
 jest.mock('../../app/screens', () => {
   const actual = jest.requireActual('../../app/screens');

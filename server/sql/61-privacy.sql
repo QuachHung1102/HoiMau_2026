@@ -1,4 +1,4 @@
--- Privacy (spec 10, AR-08, AR-30): account deletion, the nudges of the export, and the purge
+-- Privacy (spec 10): account deletion, the nudges of the export, and the purge
 -- jobs. No table of its own. Re-runnable.
 --
 -- Deletion is soft first: account_delete sets deleted_at and purge_after (30 days later), revokes
@@ -31,7 +31,7 @@ AS $$
   SELECT coalesce((SELECT u.email LIKE '%@decoy.invalid' FROM users u WHERE u.id = p_user), false)
 $$;
 
--- Takes p_user out of its guild, whoever calls (AR-30): a MEMBER's row is deleted; a LEADER hands
+-- Takes p_user out of its guild, whoever calls: a MEMBER's row is deleted; a LEADER hands
 -- the guild to the live member with the earliest joined_at (then user id) and loses the row;
 -- a leader without another live member takes the guild with it (its memberships and scores
 -- cascade). The caller holds p_user's users row; this takes the guild row next, and reads the
@@ -153,7 +153,7 @@ SELECT meta.expect_function('export_nudges()', 'definer', '{app_auth}');
 -- The job functions (app_job), run by the housekeeping job.
 
 -- Hard-deletes every user whose purge_after has come (never a decoy); every table of user data
--- cascades from users. A user still in a guild leaves it first (AR-30). Then, for guilds left
+-- cascades from users. A user still in a guild leaves it first. Then, for guilds left
 -- by any other path (a users row deleted by hand): a guild with members and no leader gets the
 -- earliest-joined live member as LEADER, a guild without members is deleted. Returns the number
 -- of users deleted: at most 50 per call (the housekeeping job calls it again until 0). A user
@@ -206,7 +206,7 @@ BEGIN
   RETURN v_count;
 END $$;
 
--- Deletes the idempotency keys made 7 days or more before p_now (AR-08), stored answers with
+-- Deletes the idempotency keys made 7 days or more before p_now, stored answers with
 -- them, except the decoys'. Returns how many.
 CREATE OR REPLACE FUNCTION job_purge_idempotency(p_now timestamptz) RETURNS int
 LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp

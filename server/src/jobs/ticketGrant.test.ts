@@ -1,4 +1,4 @@
-// The ticket-grant job (job_ticket_grant, AR-10): the safety net that finds the week decided by
+// The ticket-grant job (job_ticket_grant): the safety net that finds the week decided by
 // journal_create, recreates a lost decision once, and never races journal_create into a second
 // decision. Decisions are deleted through the owner connection; entries are written over HTTP;
 // the clock is the test clock. 2027-03-10 is a Wednesday; Asia/Ho_Chi_Minh (UTC+7).

@@ -85,7 +85,7 @@ export function StandUpHost() {
  *   `AppState` changes and the clock, and owns the one timer, which is cleared on unmount and on sign-out.
  * - When it runs out and the quest still has parts left: a snackbar "Đến lúc đứng dậy vươn vai một chút" with
  *   "Mình vừa đứng dậy" (one STAND_UP tick, with its own S11 snackbar and Undo), and a new hour begins. Never an OS
- *   notification (AR-23).
+ *   notification.
  * - A part recorded from anywhere (the prompt, the board) also begins a new hour.
  * - While a focus-flow screen holds it (`useStandUpHold`) no prompt is shown; when the hold ends a new hour begins.
  * - The countdown is kept under `standup:v1:<userId>` (timing only) so that a restart of the app does not give a

@@ -18,7 +18,7 @@ export type MemberWeek = {
 };
 
 /**
- * One member's week from `weekStart` through `throughDate` (F-11, R-D08). Days count from the
+ * One member's week from `weekStart` through `throughDate` (F-11, D-08). Days count from the
  * join date; a frozen day, a day without a log and a day without STORY quests contribute 0.
  * `active` needs a log inside the week and at least one counted day: whoever joined after
  * `throughDate` was not a member during it, whatever they logged.
@@ -49,7 +49,7 @@ export function memberWeek(
 /**
  * Mean of the active members' averages; ranked from GUILD_MIN_ACTIVE active members.
  * Rounded to 9 decimals: guilds with the same exact mean must get the same number, or float
- * noise in the last bit would decide the leaderboard instead of the AR-17 tie-breaks.
+ * noise in the last bit would decide the leaderboard instead of the tie-breaks.
  */
 export function scoreGuildWeek(
   members: MemberWeek[],
@@ -69,7 +69,7 @@ export function scoreGuildWeek(
 
 /**
  * Ranked rows first, numbered 1…n by avgCompletion desc, activeMembers desc, createdAt asc
- * (AR-17); unranked rows follow in input order with `rank: null`. `createdAt` is an ISO-8601
+ *; unranked rows follow in input order with `rank: null`. `createdAt` is an ISO-8601
  * instant. The input is not modified.
  */
 export function rankGuilds<

@@ -113,7 +113,7 @@ async function userWithThreeDays() {
 
 test('candidates: one element per date from the day after the last close through yesterday; the decoy, a user not onboarded and a deleted user are never offered', async () => {
   const userId = await userWithThreeDays();
-  // a ticket on the 11th (Task 44 writes these; the owner stands in)
+  // a ticket on the 11th (the owner stands in for the ticket routes)
   await db.admin.query(
     `INSERT INTO freeze_tickets (user_id, grant_week, used_at, used_for_date)
      VALUES ($1, '2027-03-08', '2027-03-11T10:00:00Z', '2027-03-11')`,

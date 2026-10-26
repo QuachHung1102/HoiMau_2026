@@ -11,7 +11,7 @@ if (!name) {
   process.exit(2);
 }
 const here = path.dirname(fileURLToPath(import.meta.url));
-const out = path.resolve(outArg ?? path.join(here, '../../.superpowers/preview', `${name}.png`));
+const out = path.resolve(outArg ?? path.join(here, '../../node_modules/.cache/hoi-mau/preview', `${name}.png`));
 fs.mkdirSync(path.dirname(out), { recursive: true });
 
 // Browser: PREVIEW_BROWSER, else a Playwright-cached Chromium, else installed Chrome, else Edge.

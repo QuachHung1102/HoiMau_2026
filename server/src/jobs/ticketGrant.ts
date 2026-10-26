@@ -1,4 +1,4 @@
-// The ticket-grant job (AR-10): at minute 20 of every hour, job_ticket_grant (60-journal.sql)
+// The ticket-grant job: at minute 20 of every hour, job_ticket_grant (60-journal.sql)
 // decides the weekly ticket of every user who wrote in the journal this week and has no
 // decision for it. journal_create decides it already, so a run normally finds nothing: this is
 // the idempotent safety net, calling the same app._ticket_grant_check.

@@ -1,10 +1,9 @@
-// The guild week as the domain counts it, and the live leaderboard kept in memory (AR-17).
+// The guild week as the domain counts it, and the live leaderboard kept in memory.
 // scoreWeek reads every guild with job_guild_week_inputs (51-guild-week.sql, app_job only) and
 // scores and ranks it with scoreGuildWeek and rankGuilds: the leaderboard-refresh job, the
 // weekly-rollover job and GET /leaderboard all go through it, so they cannot count apart.
 //
-// The live week is the Monday-based Asia/Ho_Chi_Minh one, through today's date there (AR-17,
-// R-D08). The board is refreshed every 5 minutes by the job; a request finds it fresh, or
+// The live week is the Monday-based Asia/Ho_Chi_Minh one, through today's date there (D-08). The board is refreshed every 5 minutes by the job; a request finds it fresh, or
 // computes it once (single flight) when it is missing, older than 10 minutes or of another week.
 import type { PoolClient } from 'pg';
 import { memberWeek, rankGuilds, scoreGuildWeek } from '../../domain/guild.ts';

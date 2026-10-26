@@ -1,4 +1,4 @@
-// Welcome (S01), the start-up gate (S39) and signing out (Task 17); the sign-in, sign-up and recovery forms (Task 18).
+// Welcome (S01), the start-up gate (S39) and signing out; the sign-in, sign-up and recovery forms.
 // The "session expired" notice is `errorText.SESSION_INVALID` in common.ts.
 export const productName = 'Hồi Máu';
 export const tagline = 'Mỗi ngày, một chút tốt hơn.';
@@ -14,7 +14,7 @@ export const loadingSubtitle = 'Dữ liệu của bạn đang được tải.';
 /** The start-up load failed for lack of a connection (NETWORK / TIMEOUT); other codes use common `errorText`. */
 export const loadFailedOffline = 'Kiểm tra kết nối rồi thử lại. Những ghi nhận đã lưu vẫn còn.';
 
-// Sign in, sign up and password recovery (Task 18). The server's `error.message` is never shown (AR-07).
+// Sign in, sign up and password recovery. The server's `error.message` is never shown.
 export const emailLabel = 'Email';
 export const emailPlaceholder = 'ban@example.com';
 export const passwordLabel = 'Mật khẩu';

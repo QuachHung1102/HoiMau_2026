@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PET_STAGES, petMood, petProgress } from './pet.ts';
 
-test('PET_STAGES are the R-D07 sizes, MYTHIC terminal', () => {
+test('PET_STAGES are the D-07 sizes, MYTHIC terminal', () => {
   assert.deepEqual(PET_STAGES, [
     { stage: 'EGG', sizeXp: 300 },
     { stage: 'HATCHLING', sizeXp: 1200 },

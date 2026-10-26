@@ -185,7 +185,7 @@ describe('the Targets screen (opened later, from the main app)', () => {
     screen.unmount();
   });
 
-  test('"Chỉnh lại hồ sơ" opens the profile editor (S37, Task 47), and Back returns to the targets, then to where they were opened from', async () => {
+  test('"Chỉnh lại hồ sơ" opens the profile editor (S37), and Back returns to the targets, then to where they were opened from', async () => {
     serve({ 'GET /me': respond(200, meOnboarded), 'GET /me/prescription': respond(200, answer) });
     await openTargets();
     await screen.findByText(`${dotted(answer.calorieTarget)} kcal / ngày`);

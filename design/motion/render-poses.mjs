@@ -1,7 +1,7 @@
 // Key-pose PNGs for the exercise demos, rendered from the rig SVG and catalog keyframes in a real browser
 // (the same WAAPI path the playground uses), so a poster is exactly the pose the app will draw.
 //   node design/motion/render-poses.mjs                    write design/motion/exercises/<id>.png (480x360) for every
-//                                                           exercise entry without a WebM (the Task 8A six keep theirs)
+//                                                           exercise entry without a WebM (the six rigged first keep theirs)
 //   node design/motion/render-poses.mjs --sheet <out.png>   contact sheet of every exercise poster (+ <out>.html)
 //   node design/motion/render-poses.mjs --strip <id> <out>  8 frames across one cycle, for reviewing the motion
 import fs from 'node:fs';

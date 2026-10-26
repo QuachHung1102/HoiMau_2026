@@ -29,7 +29,7 @@ export type BiometricsInput = {
   activityLevel: ActivityLevel;
 };
 
-/** Current year in the user's time zone minus birthYear (R-D06). */
+/** Current year in the user's time zone minus birthYear (D-06). */
 export function ageFrom(
   birthYear: number,
   nowMs: number,

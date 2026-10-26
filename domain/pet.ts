@@ -1,6 +1,6 @@
 import type { DayOutcome, PetMood, PetStage } from './types.ts';
 
-/** One-way stages; `sizeXp` is the XP earned inside the stage that completes it (R-D07). */
+/** One-way stages; `sizeXp` is the XP earned inside the stage that completes it (D-07). */
 export const PET_STAGES: readonly { stage: PetStage; sizeXp: number | null }[] =
   [
     { stage: 'EGG', sizeXp: 300 },

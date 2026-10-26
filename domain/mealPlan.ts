@@ -7,7 +7,7 @@ export const SLOT_SHARE: Record<MealSlot, number> = {
   SNACK: 0.1,
 };
 
-/** kcal tolerance steps around the slot target, tried in order (F-04, AR-15). */
+/** kcal tolerance steps around the slot target, tried in order (F-04). */
 export const TOLERANCES = [0.12, 0.2, 0.3] as const;
 
 export type MacroTarget = {

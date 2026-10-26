@@ -1,4 +1,4 @@
-// The stand-in server of todayTestKit against what the real guild routes answer (server Tasks 39 and 41: routes/guild.ts,
+// The stand-in server of todayTestKit against what the real guild routes answer (server routes/guild.ts,
 // sql/50-guild.sql, readModels/guild.ts, sql/52-nudge.sql). Every mobile test that reads a guild answer is only as true as
 // these. No app is mounted: the requests go straight to the stubbed fetch.
 import { newActionId } from '../../shared/api/uuid';

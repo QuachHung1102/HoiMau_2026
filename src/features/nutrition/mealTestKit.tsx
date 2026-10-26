@@ -1,7 +1,7 @@
 /* eslint-env jest */
 // Test kit for the meal screens (used by *.test.tsx files; never imported by app code). It builds on the home-tab kit:
 // the same whole app against the same stand-in server, which also holds today's meal plan (`world.plan`) and answers
-// the plan, the swap and the exclusions as the routes of server Task 33 do.
+// the plan, the swap and the exclusions as the server routes do.
 import { fireEvent, screen } from '@testing-library/react-native';
 import type { MealSlot } from '../../../domain/types.ts';
 import * as vi from '../../shared/i18n/vi/nutrition';

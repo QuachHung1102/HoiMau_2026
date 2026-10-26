@@ -4,7 +4,7 @@ import { healthVi } from '../../shared/i18n/vi/health';
 import { dayOf, installTodayTestEnv, openToday, settle, USER, world } from './todayTestKit';
 
 // The real registry; the explainer's `navigate` is recorded on its way to the navigator, so a link to a route that no
-// task has registered yet (inert, AR-25) can still be asserted by name.
+// task has registered yet (inert) can still be asserted by name.
 const mockNavigate = jest.fn();
 jest.mock('../../app/screens', () => {
   const actual = jest.requireActual('../../app/screens');

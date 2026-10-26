@@ -1,4 +1,4 @@
-// Game components and Mầm (Task 12): stats, level, chips, milestones, the mascot.
+// Game components and Mầm: stats, level, chips, milestones, the mascot.
 import type { PetMood, PetStage } from '../../../../domain/types.ts';
 
 /** 1118 -> "1.118"; anything that is not a finite number -> "0". Hermes is not guaranteed to ship `Intl.NumberFormat('vi-VN')`. */
@@ -41,7 +41,7 @@ export const moodText: Record<PetMood, string> = {
 /** What a screen reader says for the mascot picture. */
 export const mamLabel = (stage: PetStage, mood: PetMood) => `${stageName[stage]}. ${moodText[mood]}`;
 
-// S22, S70, S68 and S69 (Task 38).
+// S22, S70, S68 and S69.
 export const petTitle = 'Mầm của bạn';
 export const petSubtitle = 'Người bạn nhỏ trên một hành trình dài.';
 /** "64% tới Chồi non". */
@@ -60,7 +60,7 @@ export const stagesTitle = 'Hành trình lớn lên';
 export const stagesSubtitle = 'Giai đoạn đã đạt sẽ không mất đi.';
 export type StageState = 'past' | 'current' | 'next';
 export const stageState: Record<StageState, string> = { past: 'Đã qua', current: 'Hiện tại', next: 'Sắp tới' };
-/** The XP earned inside a stage that completes it (R-D07), in words. */
+/** The XP earned inside a stage that completes it (D-07), in words. */
 export const stageSize = (xp: number | null) => (xp === null ? 'Giai đoạn cuối' : `${formatNumber(xp)} XP để lớn lên`);
 export const stagesFooter = 'Mầm lớn lên nhờ những việc bạn đã làm, không mua được bằng xu.';
 export const stageRowLabel = (name: string, state: StageState, size: string) => `${name}. ${stageState[state]}. ${size}`;

@@ -6,11 +6,11 @@ import type {
   WorkoutStepSeed,
 } from './types.ts';
 
-// Exercise library: moves and workouts (spec F-05, PLAN P1.4 `exercise_*`). Vietnamese, self-authored.
-// NOT reviewed by a fitness or medical professional (R-D10): the content is general guidance for
+// Exercise library: moves and workouts (spec F-05, tables `exercise_*`). Vietnamese, self-authored.
+// NOT reviewed by a fitness or medical professional (D-10): the content is general guidance for
 // beginners, makes no promise of results and no medical claim, and must stay worded as such.
 // Every move has exactly 3 short instruction steps and one caution line that says when to stop or
-// ease off. Every move carries a `demoCode`: an `exercise-*` entry of design/motion/catalog.json (Task 31A),
+// ease off. Every move carries a `demoCode`: an `exercise-*` entry of design/motion/catalog.json,
 // except THO_4_4, whose guide is the `focus-breathe` animation of Focus Mode.
 // Timing rule for every workout: sum WARMUP + `sets` x sum MAIN + sum COOLDOWN seconds = `durationSec`,
 // each step at least 20 s. A step's text is honest for its seconds: a hold or a count that is shorter
@@ -580,7 +580,7 @@ function workout(
 const HOLD = 'giữ 20 giây, lặp lại';
 
 export const WORKOUTS: WorkoutSeed[] = [
-  // ------------------------------------------------ the starter set (PLAN Task 21; frame S18)
+  // ------------------------------------------------ the starter set (frame S18)
   workout(
     'FULL_BODY_EASY',
     'Toàn thân vừa sức',

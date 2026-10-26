@@ -1,5 +1,5 @@
 // The stand-in server of todayTestKit against what the real routes answer for the weekly ranking, the nudge and the inbox
-// (server Tasks 40, 41, 22: routes/leaderboard.ts, routes/nudge.ts, routes/inbox.ts, sql/52-nudge.sql). Every mobile test that
+// (server routes/leaderboard.ts, routes/nudge.ts, routes/inbox.ts, sql/52-nudge.sql). Every mobile test that
 // reads one of these answers is only as true as these. No app is mounted: the requests go straight to the stubbed fetch.
 import { newActionId } from '../../shared/api/uuid';
 import { fetchMock, inboxItem, installTodayTestEnv, seedGuild, seedInbox, seedOtherGuild, world } from './guildTestKit';

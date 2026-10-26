@@ -4,11 +4,11 @@
 --
 -- The jobs (server/src/jobs/weeklyRollover.ts, leaderboardRefresh.ts) read the members' days
 -- with job_guild_week_inputs, score and rank them in TypeScript (scoreGuildWeek, rankGuilds,
--- guildWeeklyReward of the domain: AR-03) and, for a closed week, hand the result to
+-- guildWeeklyReward of the domain) and, for a closed week, hand the result to
 -- job_apply_guild_week, which stores it and pays the rewards once.
 --
 -- Rules for whoever edits this file:
---   * a week is matched on the logical_date label of the logs (R-D08): a log labelled Sunday is
+--   * a week is matched on the logical_date label of the logs (D-08): a log labelled Sunday is
 --     Sunday's, in whatever zone and at whatever instant it was written;
 --   * a week is applied once: its record in job_runs (job 'guild-week', run_for = its Monday
 --     00:00 Asia/Ho_Chi_Minh, unique) is the FIRST row the apply writes, so a second run waits
@@ -87,7 +87,7 @@ $$;
 -- Stores the closed week p_week_start and pays it, once (see the rules above). p_rows: one per
 -- guild (app._guild_week_rows). Every guild that still exists gets its guild_weekly_scores row;
 -- for a ranked one, each of its active members who is a member of it still is paid `coins`
--- through app._grant (reason GUILD_WEEKLY, ref = the week start, AR-34), the badge into
+-- through app._grant (reason GUILD_WEEKLY, ref = the week start), the badge into
 -- inventory when there is one, and a GUILD_WEEKLY_RESULT notification {rank, coins, weekStart}
 -- (dedupe key = the week start). Returns {applied: false, grants: []} when the week is recorded
 -- already, else {applied: true, grants}: the app._grant results that wrote ledger rows, each with

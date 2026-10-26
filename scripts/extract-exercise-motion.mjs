@@ -1,4 +1,4 @@
-// Copies what the move demos need out of design/ into the app (Task 36):
+// Copies what the move demos need out of design/ into the app:
 //   src/assets/motion/exercises.json   both rigs as element trees + every `kind: "exercise"` entry of the catalog
 //   src/assets/motion/poses/<id>.png   the key pose of each entry (design/motion/exercises/<id>.png)
 //   src/assets/motion/poses.ts         the static require() of each pose (Metro needs literal paths)

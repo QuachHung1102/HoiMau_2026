@@ -1,5 +1,5 @@
 /// <reference types="node" />
-// What the Jest sweeps over every preview entry share (Task 49: __tests__/a11y-sweep.test.tsx, Task 50: __tests__/motion-sweep.test.tsx):
+// What the Jest sweeps over every preview entry share (__tests__/a11y-sweep.test.tsx, __tests__/motion-sweep.test.tsx):
 // the entries, the tree helpers, the document shim the driven entries need, and the settle that waits for them.
 import fs from 'node:fs';
 import path from 'node:path';

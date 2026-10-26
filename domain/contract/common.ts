@@ -75,7 +75,7 @@ export type ErrorCode =
   | 'TICKET_ALREADY_USED_FOR_DATE'
   | 'TICKET_NOT_NEEDED';
 
-/** `message` is an English diagnostic, never shown to the user (AR-07). */
+/** `message` is an English diagnostic, never shown to the user. */
 export type ApiErrorBody = {
   error: {
     code: ErrorCode;

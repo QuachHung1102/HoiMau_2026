@@ -66,7 +66,7 @@ const routes: Route[] = [
     path: '/journal',
     auth: 'user',
     idempotent: true,
-    rateLimit: { perMinute: 10 }, // AR-21
+    rateLimit: { perMinute: 10 },
     handler: async ctx => {
       const id = ctx.actionId as string;
       const blob = encryptJournal(ctx.journalKey, ctx.userId as string, id, bodyOf(ctx));

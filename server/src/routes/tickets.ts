@@ -1,4 +1,4 @@
-// Freeze ticket routes: GET /freeze-tickets, POST /freeze-tickets/use (F-08, R-D04, AR-10). Every
+// Freeze ticket routes: GET /freeze-tickets, POST /freeze-tickets/use (F-08, D-04). Every
 // rule (eligible dates, one ticket per date, a ticket in hand, something to protect) and every
 // lock is ticket_use's (60-journal.sql); a refusal is THROWN, so a refused use leaves no row.
 import type { Route } from '../app.ts';

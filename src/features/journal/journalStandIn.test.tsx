@@ -1,5 +1,4 @@
-// The stand-in server of todayTestKit against what the real routes answer for the journal and the freeze tickets (server Task 44:
-// routes/journal.ts, routes/tickets.ts, readModels/tickets.ts, sql/60-journal.sql). Every mobile test that reads one of these
+// The stand-in server of todayTestKit against what the real routes answer for the journal and the freeze tickets (server routes/journal.ts, routes/tickets.ts, readModels/tickets.ts, sql/60-journal.sql). Every mobile test that reads one of these
 // answers is only as true as these. No app is mounted: the requests go straight to the stubbed fetch.
 import { QUOTES } from '../../../server/content/quotes.ts';
 import { newActionId } from '../../shared/api/uuid';

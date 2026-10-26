@@ -1,5 +1,5 @@
 // Seeds level_thresholds and pet_stages from the domain: the numbers live in TypeScript once,
-// SQL only looks them up (AR-04). Idempotent: a second run rewrites no row.
+// SQL only looks them up. Idempotent: a second run rewrites no row.
 import type { ClientBase } from 'pg';
 import { PET_STAGES } from '../../../domain/pet.ts';
 import {

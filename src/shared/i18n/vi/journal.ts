@@ -1,4 +1,4 @@
-// The journal and the freeze tickets (Task 45): S32, S33, S77, S56 (the words of the support block are health.ts's),
+// The journal and the freeze tickets: S32, S33, S77, S56 (the words of the support block are health.ts's),
 // S49, S50, S34, S78. Nothing here reads the person's mood into their words: no analysis, no advice.
 import { LIMITS } from '../../../../domain/validation.ts';
 

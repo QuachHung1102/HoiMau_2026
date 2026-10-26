@@ -1,8 +1,8 @@
 /* eslint-env jest */
 // Test kit for the home tab and its water tracker (used by *.test.tsx files; never imported by app code).
 // The whole app as App.tsx mounts it (the sync kit), opened on the first tab, against a small stand-in for the day
-// routes of the server: it keeps a day and a profile, applies a write to both, and answers as the routes of server
-// Tasks 20 and 21 do (status, error code, body, what a replay remembers).
+// routes of the server: it keeps a day and a profile, applies a write to both, and answers as the server does
+// (status, error code, body, what a replay remembers).
 import { configure, screen } from '@testing-library/react-native';
 import type { ActionResult, GameEvent } from '../../../domain/contract/common.ts';
 import type { Inventory, Meal, MealPlanState, PurchaseResult, Shop, ShopItem, SwapCandidates } from '../../../domain/contract/content.ts';
@@ -130,7 +130,7 @@ type Init = Parameters<typeof fetchMock>[1];
  * The stand-in server. A test changes `day`, `me`, `settings`; sets `down` for "no connection"; sets `hour` (the
  * hour of the server's clock in the user's zone, which only the bedtime mark reads); or takes a request over with
  * `answer` ("METHOD /path" -> a response, a promise of one, or undefined to let the server answer).
- * What it answers is what server Tasks 20 and 21 answer (task-20-report.md §6, task-21-report.md §8): only what the
+ * What it answers is what the server's day, quest, workout and nutrition routes answer: only what the
  * mobile tests exercise is modelled, and the places where it stays short say `not modelled`.
  */
 export const world = {} as {
@@ -593,7 +593,7 @@ function addCalories(id: string, amount: number) {
   return answerOf(id, { xp: meal.xpReward, coin: meal.coinReward, events });
 }
 
-// ---- the meal plan (server Task 33; task-33-report.md "Notes for Task 34") ----
+// ---- the meal plan (server routes/nutritionPlan.ts) ----
 
 // Illustrative meals in the shape of server/content/meals.ts (the three pictures are the real keys; names and numbers are in
 // the fixture file). The macros are chosen so that, for the target below, the ranking of a lunch swap is the one of frame S15:
@@ -728,7 +728,7 @@ function patchSettings(_id: string, body: Record<string, unknown>) {
 }
 
 
-// ---- privacy (server Task 46: routes/privacy.ts, readModels/export.ts, sql/61-privacy.sql) ----
+// ---- privacy (server routes/privacy.ts, readModels/export.ts, sql/61-privacy.sql) ----
 // `GET /me/export`: the 5th an hour of one account is the last (every request counts, a refused one too), then 409 ONBOARDING_REQUIRED,
 // then the document. `POST /me/delete` (a session, not an onboarded user): the Idempotency-Key (400 / 422), the account's 10 a minute
 // (429), the password (422 required / format / max, NFC like a login), then account_delete: a key that is not the account's is 401
@@ -785,7 +785,7 @@ function deleteAccount(request: string, init: Init) {
   );
 }
 
-// ---- the profile and settings writes (server Task 14: routes/me.ts, readModels/me.ts, sql/21-profile.sql; routes/settings.ts) ----
+// ---- the profile and settings writes (server routes/me.ts, readModels/me.ts, sql/21-profile.sql; routes/settings.ts) ----
 // Every route here is for an onboarded user and every write is idempotent. The order of the refusals is the server's: the
 // Idempotency-Key header (400 / 422, before anything is read), 409 ONBOARDING_REQUIRED, the replay of a key, then the handler (the
 // members of the body, then the rules). Not modelled: the 120 writes a minute of one account (no screen of these can reach it), and
@@ -927,7 +927,7 @@ function changeArchetype(_key: string, body: Record<string, unknown>) {
   return respond(200, world.me);
 }
 
-// ---- the shop, the inventory, the perks (server Task 37: server/src/routes/shop.ts, perks.ts, sql/41-shop.sql) ----
+// ---- the shop, the inventory, the perks (server/src/routes/shop.ts, perks.ts, sql/41-shop.sql) ----
 // The items are the server's own content (server/content/shopItems.ts). Every route here is for an onboarded user (409
 // ONBOARDING_REQUIRED first) and every write is idempotent. The coin sum is `progression.coin`, the points are
 // `progression.perkPointsAvailable` (the server derives both; here the profile holds them), the level is `progression.level`.
@@ -1011,7 +1011,7 @@ function unlockPerk(body: Record<string, unknown>) {
   return respond(200, perksState());
 }
 
-// ---- the guild (server Tasks 39 and 41: routes/guild.ts, sql/50-guild.sql, readModels/guild.ts, sql/52-nudge.sql) ----
+// ---- the guild (server routes/guild.ts, sql/50-guild.sql, readModels/guild.ts, sql/52-nudge.sql) ----
 // Every route is for an onboarded user (409 ONBOARDING_REQUIRED first) and every write is idempotent. The statuses, the
 // order of the refusals and the shape of `GuildState` are the server's; so is the nudge of each member row: the reason
 // is worked out from what the member is (muted, done, already nudged) in the order of app._nudge_block_reason, and the
@@ -1158,7 +1158,7 @@ function transferGuild(body: Record<string, unknown>) {
   return respond(200, guildState());
 }
 
-// ---- the weekly ranking, the nudge and the inbox (server Tasks 40, 41 and 22: routes/leaderboard.ts, routes/nudge.ts, routes/inbox.ts) ----
+// ---- the weekly ranking, the nudge and the inbox (server routes/leaderboard.ts, routes/nudge.ts, routes/inbox.ts) ----
 // Every route is for an onboarded user (409 ONBOARDING_REQUIRED first; the nudge is counted by the rate limit before that).
 // Not modelled: the computation of a board (a test gives the standings, best first), the cache that refreshes the running week
 // every few minutes, the Retry-After header, a nudge to a member in another time zone, a notification a nudge makes for the
@@ -1191,7 +1191,7 @@ function leaderboard(query: URLSearchParams) {
   return respond(200, { weekStart, final: week === 'previous', updatedAt, entries, mine } satisfies Leaderboard);
 }
 
-/** AR-21: the 11th `POST /guilds/nudge` of one account within a minute is 429 RATE_LIMITED; refused requests count too. */
+/** The 11th `POST /guilds/nudge` of one account within a minute is 429 RATE_LIMITED; refused requests count too. */
 function limitNudges() {
   const now = Date.now();
   const calls = (world.guild.nudgeCalls = world.guild.nudgeCalls.filter(at => at > now - 60_000));
@@ -1268,7 +1268,7 @@ function inboxPage(query: URLSearchParams) {
 }
 
 // ---- the journal and the freeze tickets ----
-// What server Task 44 answers (routes/journal.ts, routes/tickets.ts, sql/60-journal.sql, readModels/tickets.ts). Every route is for an
+// What the server answers for the journal and the tickets (routes/journal.ts, routes/tickets.ts, sql/60-journal.sql, readModels/tickets.ts). Every route is for an
 // onboarded user (409 ONBOARDING_REQUIRED first, the rate limit of POST /journal before even that). The text of an entry never
 // leaves `world.journal`: nothing here logs it. The journal's clock is the machine's (an entry is created "now", a quote is recent
 // for 30 days of it); the tickets' clock is the server's wall clock in the user's zone, `world.hour` on the day of `world.day`
@@ -1327,7 +1327,7 @@ const storyOf = (date: string) => (date === world.day.logicalDate ? storyWhole()
 const mine = (row: JournalRow) => (row.owner ?? USER) === USER;
 const newestFirst = (a: JournalRow, b: JournalRow) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
 
-/** AR-21: the 11th `POST /journal` of one account within a minute is 429 RATE_LIMITED; refused requests count too. */
+/** The 11th `POST /journal` of one account within a minute is 429 RATE_LIMITED; refused requests count too. */
 function limitJournal() {
   const now = Date.now();
   const calls = (world.journal.calls = world.journal.calls.filter(at => at > now - 60_000));

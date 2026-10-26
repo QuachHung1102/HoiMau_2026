@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { AppError } from './errors.ts';
 
 export const BASE_PATH = '/api/v1';
-/** P1.3: a request body is at most 64 KiB. */
+/** A request body is at most 64 KiB. */
 export const MAX_BODY_BYTES = 64 * 1024;
 /** Deeper than any body of the contract; keeps every recursive walk of a body shallow. */
 const MAX_BODY_DEPTH = 32;

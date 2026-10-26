@@ -212,7 +212,7 @@ test('every non-null imageKey is an id in design/assets/sources.json', () => {
     if (m.imageKey !== null) assert.ok(ids.includes(m.imageKey), m.code);
 });
 
-test('the dishes in the approved frames keep their name, slot and kcal (R-D07)', () => {
+test('the dishes in the approved frames keep their name, slot and kcal (D-07)', () => {
   const frames: [string, MealSlot, number][] = [
     ['Yến mạch và trái cây', 'BREAKFAST', 540],
     ['Cơm gà, rau củ', 'LUNCH', 820],

@@ -64,7 +64,7 @@ const decoys = async () =>
       ) AS snapshot`)
   ).rows[0].snapshot;
 
-test('every file of scripts/scenarios is found: the six of Task 23, rich of Task 37, guild4 of Task 39, ticket of Task 44 and e2e-full of Task 53', async () => {
+test('every file of scripts/scenarios is found: the base six, rich, guild4, ticket and e2e-full', async () => {
   assert.deepEqual(
     (await loadScenarios()).map(scenario => scenario.name),
     ['broken', 'day1', 'e2e-full', 'fresh', 'guild4', 'missed3', 'rich', 'streak2', 'streak6', 'ticket'],

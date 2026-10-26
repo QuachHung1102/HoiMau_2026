@@ -2,7 +2,7 @@
 //
 // The two reads run as app_auth over the content tables; the kcal estimate uses the caller's
 // latest weight, read in the same statement and never handed to Node. The session goes to
-// workout_complete (31-story.sql), which decides the day and the XP (AR-11). Every refusal is
+// workout_complete (31-story.sql), which decides the day and the XP. Every refusal is
 // THROWN: a refused session leaves no row and frees its key.
 import type { GameEvent } from '../../../domain/contract/common.ts';
 import type {

@@ -55,7 +55,7 @@ test('nothing waiting: the day as the server gave it, nothing marked', () => {
   expect(applyPending(day, [])).toEqual({ ...day, pending: { ticks: {}, bedtime: false, kcal: 0 } });
 });
 
-test('waiting ticks are added to their own quest and marked; water in ml follows the parts (AR-12)', () => {
+test('waiting ticks are added to their own quest and marked; water in ml follows the parts', () => {
   const shown = applyPending(day, [water(), water(), action('/day/quests/STAND_UP/progress')]);
   expect(progressOf(shown, 'WATER_8')).toBe(5);
   expect(progressOf(shown, 'STAND_UP')).toBe(2);

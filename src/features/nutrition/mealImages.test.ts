@@ -28,7 +28,7 @@ describe('meal pictures', () => {
     expect(planHeaderImage).toBeDefined();
   });
 
-  test('the pictures to list for licence review (Task 52) are the stock ones: the three meal pictures; the plan header is generated', () => {
+  test('the pictures to list for licence review are the stock ones: the three meal pictures; the plan header is generated', () => {
     const kind = (key: string) => sources.find(item => item.id === key)?.kind;
     expect(mealImageKeys.map(kind)).toEqual(mealImageKeys.map(() => 'stock-unsplash'));
     expect(kind('b4IYqX')).toBe('ai-generated');

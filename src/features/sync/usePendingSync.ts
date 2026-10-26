@@ -22,7 +22,7 @@ export function usePendingSync() {
   const queryClient = useQueryClient();
   const queued = usePendingActions(userId).length > 0;
   const waiting = useWaitingCount(userId);
-  /** How the last request ended: there is no other connectivity signal (AR-26). */
+  /** How the last request ended: there is no other connectivity signal. */
   const [offline, setOffline] = useState(false);
   const [syncedFor, setSyncedFor] = useState<string | null>(null);
 

@@ -287,7 +287,7 @@ test('endpoints: 200 sequential calls each', async () => {
   await measure('GET /me', LIMIT_MS, get('/me'));
   await measure('GET /nutrition/plan', LIMIT_MS, get('/nutrition/plan'));
   await measure('GET /guilds/me', LIMIT_MS, get('/guilds/me'));
-  // The leaderboard is served from the in-process cache (AR-17): the warm-up computes the board
+  // The leaderboard is served from the in-process cache: the warm-up computes the board
   // once and the 200 requests after it read it from memory. The limit alone would not show it:
   // computing the board takes a fraction of 500 ms at this size.
   let reads = 0;

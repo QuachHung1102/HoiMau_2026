@@ -1,5 +1,5 @@
-// Exercise demonstrations (Task 31A): joint-angle tables -> `exercise-*` keyframes in catalog.json.
-//   node design/motion/rig-keyframes.mjs          regenerate the generated entries (and normalise the six rigged in Task 8A)
+// Exercise demonstrations: joint-angle tables -> `exercise-*` keyframes in catalog.json.
+//   node design/motion/rig-keyframes.mjs          regenerate the generated entries (and normalise the six rigged first)
 //   node design/motion/rig-keyframes.mjs --check  exit 1 when catalog.json differs from what this script generates
 // Each move is a pose function of the cycle phase t in [0, 1): world joint angles, inverse kinematics for planted
 // hands and feet, prop contacts. The script samples it into keyframes, then replays those keyframes the way the
@@ -743,7 +743,7 @@ function entry(m) {
   }
 }
 
-// the six rigged in Task 8A keep their keyframes; they get the shared fields (poster = their PNG's moment)
+// the six rigged first keep their keyframes; they get the shared fields (poster = their PNG's moment)
 const ORIGINAL = { 'exercise-xoay-vai': 0.3, 'exercise-squat': 0.5, 'exercise-chong-day-tua-ban': 0.5, 'exercise-chung-chan-lui': 0.5, 'exercise-plank-tua-goi': 0.5, 'exercise-tha-long-vai': 0.28 };
 const FIELDS = ['id', 'tier', 'kind', 'screens', 'trigger', 'durationToken', 'easingToken', 'loop', 'demo', 'rig', 'prop', 'poster', 'pattern', 'highlight', 'reducedMotion', 'tracks'];
 const reorder = e => Object.fromEntries(FIELDS.filter(k => k in e).map(k => [k, e[k]]));

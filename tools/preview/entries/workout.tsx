@@ -15,7 +15,7 @@ import { beginDrive, withApp, type Entries } from '../harness';
 import { app, dayOf, meOf, pathOf, respond, settingsOf, USER } from './today';
 
 // The answers of the server for a person who has 15 minutes, a room and no equipment: values copied from the real
-// content (server/content/exercises.ts) by .superpowers/sdd/evidence/task-27/make-fixture.mjs.
+// content (server/content/exercises.ts): the catalog items and the starter workout as the routes answer them.
 const catalog = { items: fixture.catalog } as unknown as WorkoutCatalog;
 const detail = fixture.detail as unknown as WorkoutDetail;
 const START: CatalogFilters = { duration: 15, space: 'ROOM', equipment: [] };
@@ -71,7 +71,7 @@ const refusedLater = () => {
   };
 };
 
-// ---- Task 36: the demos. app() takes its screenshots under reduced motion; these show the moving figure. ----
+// ---- The demos. app() takes its screenshots under reduced motion; these show the moving figure. ----
 type Move = WorkoutDetail['steps'][number]['move'];
 /** The workout with the move of step `index` replaced (moves of the real content, copied from server/content/exercises.ts). */
 const withMove = (index: number, move: Move, repsText?: string): WorkoutDetail => ({
@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
 
 const demoOf = (workout: WorkoutDetail, index: number) => moving('MoveDemo', { workoutId: workout.id, code: workout.steps[index].move.code }, workout);
 
-// What the server answers to a recorded session (AR-11): at least half completes the quest (the rest of its 50 XP
+// What the server answers to a recorded session: at least half completes the quest (the rest of its 50 XP
 // and 20 coins), less gives its share of the XP and no coins.
 const result = (elapsedSec: number): WorkoutResult => {
   const completed = elapsedSec * 2 >= detail.durationSec;

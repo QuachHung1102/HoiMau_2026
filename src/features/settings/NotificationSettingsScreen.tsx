@@ -21,7 +21,7 @@ type Window = Settings['reminderWindow'];
 const WINDOWS = (Object.keys(vi.windows) as Window[]).map(value => ({ value, label: vi.windows[value] }));
 
 /**
- * S36 with the S80 layout (AR-23): this build sends nothing outside the app, so the card at the top says so and opens the inbox,
+ * S36 with the S80 layout: this build sends nothing outside the app, so the card at the top says so and opens the inbox,
  * where the reminders are; no permission is asked. Each change is shown at once and goes to the server as one PATCH.
  */
 export function NotificationSettingsScreen({ navigation }: ScreenProps<'NotificationSettings'>) {

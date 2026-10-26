@@ -354,7 +354,7 @@ test('isValidationDetails narrows VALIDATION_FAILED details and rejects anything
   }
 });
 
-describe('onRequestOutcome and boundUserId (Task 24)', () => {
+describe('onRequestOutcome and boundUserId', () => {
   const network = () => Promise.reject(new TypeError('Network request failed'));
 
   test('every request reports how it ended, with the outcome and nothing else', async () => {

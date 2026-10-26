@@ -1,4 +1,4 @@
-// The weekly-rollover job (F-11, R-D07, R-D08): from Monday 03:30 Asia/Ho_Chi_Minh, every closed
+// The weekly-rollover job (F-11, D-07, D-08): from Monday 03:30 Asia/Ho_Chi_Minh, every closed
 // week not older than 28 days that is not applied yet is scored for its full seven days and
 // handed to job_apply_guild_week (51-guild-week.sql), which stores it and pays the rewards once.
 // Oldest first, one transaction per week: a server that was down for two Mondays settles both

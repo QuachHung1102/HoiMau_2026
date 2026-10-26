@@ -12,7 +12,7 @@ import {
   guildWeeklyReward,
 } from './economy.ts';
 
-test('economy constants are the plan values (R-D05, R-D07)', () => {
+test('economy constants are the plan values (D-05, D-07)', () => {
   assert.deepEqual(PERKS, {
     MEAL_SWAP_PLUS: { cost: 2 },
     TICKET_CAP_PLUS: { cost: 3 },

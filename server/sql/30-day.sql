@@ -3,7 +3,7 @@
 --
 -- A logical day runs 03:00 -> 02:59:59 on the wall clock of users.timezone (spec 6.1); its label
 -- is app.logical_date(instant, zone). A day is open until the day-close job has processed it
--- (progression_state.last_closed_date, AR-09), whatever the wall clock says. A day without any
+-- (progression_state.last_closed_date), whatever the wall clock says. A day without any
 -- action has no daily_logs row: reading never creates one.
 --
 -- Rules for whoever edits this file, or writes a function that maps a write to a day:
@@ -21,7 +21,7 @@
 --     details): nothing a refused call wrote may stay, so the caller rolls back;
 --   * the zone given to AT TIME ZONE is users.timezone and nothing else: never the zone of the
 --     session, never an offset ('+07:00' is seven hours WEST of Greenwich to PostgreSQL);
---   * a ledger row is keyed by what may happen once (AR-34): the tick id for a tick and for its
+--   * a ledger row is keyed by what may happen once: the tick id for a tick and for its
 --     undo, <QUEST_CODE>:<logical_date> for a quest completed once a day;
 --   * time is app.now() only.
 
@@ -161,7 +161,7 @@ SELECT meta.expect_function('app.logical_day_end(timestamptz, text)', 'invoker',
 -- ---------------------------------------------------------------------------------------------
 -- Internal helpers: EXECUTE for no role, and none is SECURITY DEFINER.
 
--- The instant a write counts for (AR-08, R-D05). Null: now. More than 120 s ahead of app.now():
+-- The instant a write counts for (D-05). Null: now. More than 120 s ahead of app.now():
 -- OCCURRED_AT_INVALID. Ahead by less: now (the device clock runs fast). More than 48 hours
 -- old (LATE_WINDOW_HOURS of domain/economy.ts): DAY_CLOSED.
 CREATE OR REPLACE FUNCTION app._occurred_at(p_occurred_at timestamptz) RETURNS timestamptz
@@ -333,7 +333,7 @@ BEGIN
    WHERE id = c.id
   RETURNING * INTO c;
   IF q.code = 'WATER_8' THEN
-    -- AR-12: the share of the water target that the ticks stand for
+    -- The share of the water target that the ticks stand for
     UPDATE daily_logs
        SET water_ml = (SELECT round(p.water_ml::numeric * c.progress / q.target_count)
                          FROM prescriptions p WHERE p.user_id = v_user)
@@ -414,7 +414,7 @@ BEGIN
     RAISE EXCEPTION 'UNDO_COINS_SPENT' USING ERRCODE = 'HM000', DETAIL = '{}';
   END IF;
   IF (v_grant ->> 'xpAfter')::bigint < 0 THEN
-    -- XP is never spent: only a ledger edited by hand gets here (unchanged since Task 20)
+    -- XP is never spent: only a ledger edited by hand gets here
     RAISE EXCEPTION 'UNDO_WINDOW_EXPIRED' USING ERRCODE = 'HM000', DETAIL = '{}';
   END IF;
   RETURN v_grant || jsonb_build_object(
@@ -422,7 +422,7 @@ BEGIN
     'progress', c.progress, 'completed', false);
 END $$;
 
--- "Close today" (S45, AR-13). The wall clock of the instant in the user's zone decides:
+-- "Close today" (S45). The wall clock of the instant in the user's zone decides:
 -- 03:00-17:59 BEDTIME_TOO_EARLY; otherwise bedtime_marked_at becomes that instant unless an
 -- earlier one is marked already (marks can arrive out of order: the earliest accepted instant is
 -- when the person marked), and from 18:00 to 22:59 the hidden quest BEDTIME_BEFORE_23 of that log is completed, once,

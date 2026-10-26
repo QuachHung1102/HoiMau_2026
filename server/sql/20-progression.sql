@@ -1,7 +1,7 @@
 -- Progression: streak state, the XP and coin ledgers with their single writer, and the content
 -- the level, the pet and the shop are read from. Re-runnable.
 --
--- Nothing derivable is stored (AR-04): there is no xp, coin, level or perk point column anywhere.
+-- Nothing derivable is stored: there is no xp, coin, level or perk point column anywhere.
 -- XP and coins are the sums of the ledgers; the level is looked up from the XP sum; perk points
 -- and the pet stage come from xp_high_water; skin and theme from the equipped inventory rows.
 --
@@ -9,7 +9,7 @@
 --   * a ledger row is written by app._grant and by nothing else, and app._grant is executable by
 --     no app_* role: only a SECURITY DEFINER function that decided the amount itself calls it;
 --   * the ledgers are append-only: a correction is a new row with the opposite sign;
---   * (user_id, reason, ref_id) is unique. The caller of app._grant picks ref_id (AR-34): the
+--   * (user_id, reason, ref_id) is unique. The caller of app._grant picks ref_id: the
 --     action id for a per-action grant, the natural key for a grant that may exist once per day,
 --     week, milestone or item. That constraint is what makes "once" a fact of the database;
 --   * time is app.now() only.
@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS shop_items (
   CONSTRAINT shop_items_id_kind_key UNIQUE (id, kind)
 );
 -- "the default theme", "the default skin": at most one per kind. A default is owned by everyone
--- and is never an inventory row (AR-31).
+-- and is never an inventory row.
 CREATE UNIQUE INDEX IF NOT EXISTS shop_items_one_default_idx ON shop_items (kind) WHERE is_default;
 
 -- kind is a copy of the item's kind (held true by the foreign key), there so that "one equipped

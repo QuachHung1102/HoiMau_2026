@@ -1,9 +1,9 @@
 -- Day close: the freeze ticket tables (read by the close; their functions come with the journal
 -- task), the record of job runs, and the functions the day-close job calls as app_job. Re-runnable.
 --
--- A logical day is open until this job has processed it (AR-09). The job (server/src/jobs/
+-- A logical day is open until this job has processed it. The job (server/src/jobs/
 -- dayClose.ts) asks job_day_close_candidates which users have past days to close and what those
--- days were, computes the streak in TypeScript (closeDays of domain/streak.ts, AR-03) and hands
+-- days were, computes the streak in TypeScript (closeDays of domain/streak.ts) and hands
 -- the result to job_apply_day_close, one user per transaction.
 --
 -- Rules for whoever edits this file:
@@ -20,10 +20,10 @@
 --     and the user is offered again with the new truth;
 --   * only onboarded, not deleted users are candidates: the decoys (onboarded_at null) are never
 --     processed;
---   * a milestone is paid through app._grant with ref '7', '30' or '100' (AR-34): once ever;
+--   * a milestone is paid through app._grant with ref '7', '30' or '100': once ever;
 --   * time is app.now() only; the job's own instant is a parameter.
 
--- One row per ticket. grant_week: the Monday of the week it was granted for (AR-10, at most one
+-- One row per ticket. grant_week: the Monday of the week it was granted for (at most one
 -- per week); used_for_date: the logical date it protects, one ticket per date.
 CREATE TABLE IF NOT EXISTS freeze_tickets (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -106,7 +106,7 @@ REVOKE ALL ON FUNCTION app._close_days(uuid, date, date) FROM PUBLIC, app_anon, 
 SELECT meta.expect_function('app._close_days(uuid, date, date)', 'invoker', '{}');
 
 -- ---------------------------------------------------------------------------------------------
--- The functions of the day-close job: SECURITY DEFINER, EXECUTE for app_job only (AR-03: the one
+-- The functions of the day-close job: SECURITY DEFINER, EXECUTE for app_job only (the one
 -- sanctioned kind of function that takes a user id, and no request role may call it).
 
 -- At most p_limit users, in id order after p_after (null: from the first), who are onboarded, not

@@ -1,7 +1,7 @@
 /* eslint-env jest */
 // Test kit for Mầm, the shop, the inventory and the perk sheet (used by *.test.tsx files; never imported by app code).
 // It builds on the home-tab kit: the same whole app against the same stand-in server, which also holds what the shop knows
-// of the person (`world.shop`) and answers the shop, the inventory, the perks and the pet as the routes of server Task 37 do.
+// of the person (`world.shop`) and answers the shop, the inventory, the perks and the pet as the server routes do.
 import { fireEvent, screen } from '@testing-library/react-native';
 import type { Progression } from '../../../domain/contract/core.ts';
 import { Text } from 'react-native';

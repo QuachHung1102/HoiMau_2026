@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// The highest level and the highest pet stage of one user that have been celebrated on this device (Task 28, the
+// The highest level and the highest pet stage of one user that have been celebrated on this device (kept by the
 // celebration host): a number only, never anything about health. Not in `cache.ts` on purpose: that file is the list of
 // what a person's data may keep on disk. Sign-out removes both (`leave` in session.ts).
 export const celebratedKey = (userId: string) => `celebrated:v1:${userId}`;

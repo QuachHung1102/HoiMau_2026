@@ -1,6 +1,6 @@
 /* eslint-env jest */
 // Test kit for the guild screens (used by *.test.tsx files; never imported by app code). The whole app against the stand-in
-// server of the home-tab kit, which holds the guilds (`world.guild`) and answers the guild routes as server Tasks 39 and 41 do.
+// server of the home-tab kit, which holds the guilds (`world.guild`) and answers the guild routes as the server does.
 import { fireEvent, screen } from '@testing-library/react-native';
 import words from './guildFixture.json';
 import { GUILD_MAX_MEMBERS } from '../../../domain/guild.ts';

@@ -35,7 +35,7 @@ import { routeNames, type RouteName, type ScreenEntry, type TabRootName } from '
 import { authScreens, detailScreens, focusScreens, onboardingScreens, tabRoots } from './screens';
 import { TAB_BAR_HEIGHT, TabBar } from './TabBar';
 
-// Structure (PLAN P1.6): one root stack whose content follows the session.
+// Structure: one root stack whose content follows the session.
 //   signed out                -> the auth screens
 //   signed in, not onboarded  -> the onboarding screens
 //   signed in, onboarded      -> MainTabs (each tab = a stack: its root + every detail screen) and, above the
@@ -53,7 +53,7 @@ const MAIN_TABS = 'MainTabs';
 const TAB_ORDER: readonly TabRootName[] = ['Today', 'Plan', 'Guild', 'Profile'];
 const tabNameOf = (root: string) => `${root}Tab`;
 const rootNameOf = (root: string) => `${root}Root`;
-// The bar always has its four tabs. One whose root has not been registered yet (AR-25) shows the notice of
+// The bar always has its four tabs. One whose root has not been registered yet shows the notice of
 // `GroupPending` under the label and icon of the design.
 const PENDING_TAB_ICON: Record<TabRootName, IconName> = { Today: 'Sun', Plan: 'Route', Guild: 'Users', Profile: 'User' };
 const tabRootOf = (name: TabRootName) => tabRoots.find(tab => tab.name === name);
@@ -168,7 +168,7 @@ function LoadFailed({ error, onRetry }: { error: unknown; onRetry: () => void })
   );
 }
 
-/** A group, or a tab, whose screens have not been registered yet (AR-25): say so and offer the way out. */
+/** A group, or a tab, whose screens have not been registered yet: say so and offer the way out. */
 function GroupPending() {
   return (
     <Screen title={authVi.productName}>
@@ -274,7 +274,7 @@ export function AppNavigation({ initialState, children }: { initialState?: Initi
       const name = (action.payload as { name?: unknown } | undefined)?.name;
       if (typeof name === 'string') {
         if (action.type === 'NAVIGATE' && TAB_ORDER.some(root => root === name) && openTabRoot(navigationRef, name)) return;
-        // AR-25: a link to a declared route whose screen has not been registered yet is inert.
+        // A link to a declared route whose screen has not been registered yet is inert.
         if (routeNames.some(declared => declared === name) && !isRegistered(name)) return;
       }
       // Anything else is a mistake worth seeing: an undeclared name, or a route of a group that is not on screen.

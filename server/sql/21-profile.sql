@@ -2,7 +2,7 @@
 -- that complete onboarding, record new numbers and change the archetype. Re-runnable.
 --
 -- The prescription is computed in Node (domain/energy.ts) and handed in as values; it is not
--- currency. The functions re-check what makes it safe, as the last fence (AR-03): the ranges,
+-- currency. The functions re-check what makes it safe, as the last fence: the ranges,
 -- the age, the BMI rule for ASSASSIN and the absolute calorie floor. A refusal is raised with
 -- SQLSTATE HM000 (MESSAGE = error code of the API, DETAIL = its details): nothing a refused
 -- call wrote may stay, so the caller rolls back.
@@ -75,7 +75,7 @@ ALTER TABLE prescriptions DROP CONSTRAINT IF EXISTS prescriptions_fat_g_check;
 ALTER TABLE prescriptions ADD CONSTRAINT prescriptions_fat_g_check CHECK (fat_g >= 0 AND fat_g <= 500);
 
 -- The owner of the row writes six of these columns directly, so their rules are constraints.
--- sound_enabled is not one of the six and is false in this build (AR-22: the app has no audio).
+-- sound_enabled is not one of the six and is false in this build (the app has no audio).
 CREATE TABLE IF NOT EXISTS user_settings (
   user_id uuid PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
   nudges_enabled boolean NOT NULL DEFAULT true,

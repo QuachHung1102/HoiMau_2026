@@ -79,7 +79,7 @@ components:
 
 Hồi Máu là một người bạn nhắc nhẹ: nền sáng, chữ rõ, khoảng nghỉ thoáng và màu xanh tập trung vào hành động. Mầm mang sự ấm áp đến những lần ghi nhận nhỏ; tiến bộ được diễn đạt bằng điều người dùng đã làm, không bằng phán xét cơ thể hay việc đứt chuỗi.
 
-Tài liệu này chốt hệ thống của bản thiết kế bàn giao, dựa trên canvas và ảnh xuất trong [design/exports](design/exports). Đây là thiết kế tĩnh và nguyên tắc triển khai; chưa phải xác nhận rằng ứng dụng React Native đã có các component, trạng thái hoặc tính năng tương ứng. Định hướng hình ảnh được đề xuất trong lần thiết kế này, chưa thay thế một bộ nhận diện thương hiệu đã được duyệt. Ràng buộc sản phẩm nằm tại [PRODUCT.md](PRODUCT.md).
+Tài liệu này chốt hệ thống của bản thiết kế bàn giao, dựa trên bản thiết kế màn hình của dự án (canvas và ảnh xuất, giữ ngoài repo này). Đây là thiết kế tĩnh và nguyên tắc triển khai; chưa phải xác nhận rằng ứng dụng React Native đã có các component, trạng thái hoặc tính năng tương ứng. Định hướng hình ảnh được đề xuất trong lần thiết kế này, chưa thay thế một bộ nhận diện thương hiệu đã được duyệt. Ràng buộc sản phẩm nằm trong [đặc tả gốc](docs/product/SPEC-QUEST-001-dac-ta-he-thong.md) và [phạm vi mobile](docs/product/mobile-scope.md).
 
 **Key Characteristics:**
 
@@ -175,7 +175,7 @@ Thanh chính gồm **Hôm nay / Lộ trình / Tổ đội / Cá nhân**. Icon m�
 
 ### Thành phần bổ sung
 
-Khung `C · Thành phần` trong `hoiMau.pen` là nguồn chuẩn: `StatBar` (4 chỉ số, luôn kèm số), `LevelStrip`, `CoinChip`, `StreakChip` (chỉ khi chuỗi ≥ 3), `RewardChip`, `Snackbar` (hoàn tác có thanh đếm ngược), `InlineError`, `DisabledReason`, `Switch` (luôn kèm nhãn trạng thái), `FilterChip`, `LockChip`, `OwnedChip`, `ProgressRing`, `MilestoneBadge` (đã đạt: màu `flame`; chưa đạt: nền trắng, viền `line`, chữ `muted`, luôn kèm nhãn trạng thái), `FrostDot`, `EmptyState`, `OverlayCelebration`, `Dialog`, `BottomSheet`. Trạng thái của mọi thành phần phải đọc được bằng chữ hoặc biểu tượng, không chỉ bằng màu.
+Khung `C · Thành phần` của bản thiết kế là nguồn chuẩn: `StatBar` (4 chỉ số, luôn kèm số), `LevelStrip`, `CoinChip`, `StreakChip` (chỉ khi chuỗi ≥ 3), `RewardChip`, `Snackbar` (hoàn tác có thanh đếm ngược), `InlineError`, `DisabledReason`, `Switch` (luôn kèm nhãn trạng thái), `FilterChip`, `LockChip`, `OwnedChip`, `ProgressRing`, `MilestoneBadge` (đã đạt: màu `flame`; chưa đạt: nền trắng, viền `line`, chữ `muted`, luôn kèm nhãn trạng thái), `FrostDot`, `EmptyState`, `OverlayCelebration`, `Dialog`, `BottomSheet`. Trạng thái của mọi thành phần phải đọc được bằng chữ hoặc biểu tượng, không chỉ bằng màu.
 
 ### Mầm, hình ảnh và chuyển động
 

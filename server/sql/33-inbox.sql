@@ -1,4 +1,4 @@
--- The in-app inbox (AR-23: the guaranteed channel, there are no OS notifications). Re-runnable.
+-- The in-app inbox (the guaranteed channel: there are no OS notifications). Re-runnable.
 --
 -- A notification is written by app._notify, called by a job or a function that decided it; the
 -- owner reads it and may set read_at, and nothing else, by a plain UPDATE under row level security

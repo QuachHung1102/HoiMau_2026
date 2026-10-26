@@ -6,7 +6,7 @@ import { clearUserCache } from '../../shared/storage/cache';
 import { dayOf, fetchMock, hold, HIDDEN, installTodayTestEnv, openToday, queryClient, refuse, requested, settle, STAND_UP, USER, world, writes } from '../dashboard/todayTestKit';
 
 // The real registry; the detail screens' `navigate` is recorded on its way to the navigator, so a link to a route that
-// no task has registered yet (inert, AR-25) can still be asserted by name.
+// no task has registered yet (inert) can still be asserted by name.
 const mockNavigate = jest.fn();
 jest.mock('../../app/screens', () => {
   const actual = jest.requireActual('../../app/screens');
