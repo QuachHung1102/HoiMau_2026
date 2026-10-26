@@ -95,3 +95,10 @@ server/.pgdata/
 server/.pgdata-dev/
 server/.outbox/
 server/.env
+
+# Design source and exports kept locally (not published)
+/design/hoiMau.pen
+/design/exports/
+/design/images/
+/design/index.html
+/design/README.md
